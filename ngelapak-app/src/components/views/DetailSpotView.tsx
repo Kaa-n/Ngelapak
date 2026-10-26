@@ -4,16 +4,20 @@ import { useState } from "react";
 import type { Spot } from "@/lib/mock-data";
 import { formatRupiah, formatDate } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
+import { useDemo, createDemoBooking, today } from "@/lib/demo-store";
 
 interface DetailSpotViewProps {
   spot: Spot;
   onBack: () => void;
+  onLogin: () => void;
+  onOrders: () => void;
   onShowToast: (toast: Omit<ToastMessage, "id">) => void;
 }
 
-export default function DetailSpotView({ spot, onBack, onShowToast }: DetailSpotViewProps) {
+export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShowToast }: DetailSpotViewProps) {
+  const { user } = useDemo();
   const [selectedDays, setSelectedDays] = useState(1);
-  const [startDate, setStartDate] = useState("2025-10-25");
+  const [startDate, setStartDate] = useState(today);
   const [jenisUsaha, setJenisUsaha] = useState("");
   const [catatanTambahan, setCatatanTambahan] = useState("");
   const [metodePembayaran, setMetodePembayaran] = useState("transfer-bni");
@@ -26,9 +30,9 @@ export default function DetailSpotView({ spot, onBack, onShowToast }: DetailSpot
 
   const totalBayar = spot.tarifPerHari * selectedDays;
 
-  const endDate = new Date(startDate);
-  endDate.setDate(endDate.getDate() + selectedDays - 1);
-  const endDateStr = endDate.toISOString().split("T")[0];
+  const endDate = new Date((startDate || today()) + "T00:00:00Z");
+  endDate.setUTCDate(endDate.getUTCDate() + selectedDays - 1);
+  const endDateStr = Number.isFinite(endDate.getTime()) ? endDate.toISOString().split("T")[0] : today();
 
   const ULASAN_MOCK = [
     { nama: "Ayu Maharani", fakultas: "FT", rating: 5, komentar: "Lokasi sangat strategis, banyak mahasiswa lewat. Fasilitas lengkap!", tanggal: "15 Okt 2025" },
@@ -37,6 +41,11 @@ export default function DetailSpotView({ spot, onBack, onShowToast }: DetailSpot
   ];
 
   const handleBooking = () => {
+    if (!user) { onLogin(); return; }
+    if (user.role !== "penyewa") {
+      onShowToast({ type: "error", message: "Pemesanan hanya tersedia untuk penyewa" });
+      return;
+    }
     if (!jenisUsaha.trim()) {
       onShowToast({ type: "error", message: "Jenis usaha harus diisi", description: "Lengkapi semua field yang diperlukan" });
       return;
@@ -46,16 +55,18 @@ export default function DetailSpotView({ spot, onBack, onShowToast }: DetailSpot
       return;
     }
     setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setReservationId(`TXN-2025-${String(Date.now()).slice(-4)}`);
+    try {
+      const id = createDemoBooking({ spotId: spot.id, tanggalMulai: startDate, jumlahHari: selectedDays, jenisUsaha, catatan: catatanTambahan, metodePembayaran });
+      setReservationId(id);
       setBookingSuccess(true);
       onShowToast({
         type: "success",
         message: "Pengajuan booking berhasil!",
         description: `Spot ${spot.kode} – Menunggu verifikasi pembayaran admin`,
       });
-    }, 1800);
+    } catch (error) {
+      onShowToast({ type: "error", message: error instanceof Error ? error.message : "Pengajuan gagal disimpan" });
+    } finally { setIsSubmitting(false); }
   };
 
   if (bookingSuccess) {
@@ -69,7 +80,7 @@ export default function DetailSpotView({ spot, onBack, onShowToast }: DetailSpot
           Pengajuan sewa Spot <strong>{spot.nama}</strong> selama <strong>{selectedDays} hari</strong> telah dikirim.
         </p>
         <p className="text-[13px] text-[#737781] mb-8">
-          Total: <strong className="text-[#003466]">{formatRupiah(totalBayar)}</strong> • Admin akan memverifikasi dalam 1×24 jam.
+          Total: <strong className="text-[#003466]">{formatRupiah(totalBayar)}</strong> · Pengajuan menunggu pemeriksaan admin dalam demo.
         </p>
 
         <div className="w-full bg-[#f2f3ff] rounded-xl p-4 mb-6 text-left space-y-2.5">
@@ -97,15 +108,10 @@ export default function DetailSpotView({ spot, onBack, onShowToast }: DetailSpot
             Kembali ke Katalog
           </button>
           <button
-            onClick={() => {
-              setBookingSuccess(false);
-              setJenisUsaha("");
-              setCatatanTambahan("");
-              setAgreeTerms(false);
-            }}
+            onClick={onOrders}
             className="flex-1 h-11 rounded-xl bg-[#003466] text-white text-[14px] font-semibold hover:bg-[#1a4b84] transition-colors"
           >
-            Booking Lain
+            Lihat Pesanan Saya
           </button>
         </div>
       </div>
@@ -372,7 +378,12 @@ export default function DetailSpotView({ spot, onBack, onShowToast }: DetailSpot
                 </div>
               </div>
 
-              {spot.status !== "pemeliharaan" ? (
+              {!user || user.role === "admin" ? (
+                <div className="rounded-xl bg-[#f2f3ff] p-5 text-sm space-y-3">
+                  <p>{user ? "Anda masuk sebagai admin. Gunakan menu Verifikasi untuk memeriksa pengajuan penyewa." : "Masuk sebagai penyewa untuk memilih jadwal dan mengajukan sewa lapak."}</p>
+                  {!user && <button onClick={onLogin} className="w-full rounded-lg bg-[#003466] text-white py-3 font-semibold">Masuk untuk menyewa</button>}
+                </div>
+              ) : spot.status !== "pemeliharaan" ? (
                 <div className="space-y-4">
                   {/* Tanggal Mulai */}
                   <div>
@@ -383,7 +394,7 @@ export default function DetailSpotView({ spot, onBack, onShowToast }: DetailSpot
                       type="date"
                       value={startDate}
                       onChange={(e) => setStartDate(e.target.value)}
-                      min="2025-10-25"
+                      min={today()}
                       className="w-full h-10 px-3 bg-[#f2f3ff] text-[#131b2e] text-[14px] rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-[#003466]/20 transition-all"
                     />
                   </div>

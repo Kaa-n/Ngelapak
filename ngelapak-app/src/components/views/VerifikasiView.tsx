@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { MOCK_BOOKINGS, formatRupiah, formatDate } from "@/lib/mock-data";
+import { formatRupiah, formatDate } from "@/lib/mock-data";
+import { useDemo, verifyDemoBooking } from "@/lib/demo-store";
 import type { Booking, TransactionStatus } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
 
@@ -25,10 +26,8 @@ export default function VerifikasiView({ onShowToast }: VerifikasiViewProps) {
   const [selectedBooking, setSelectedBooking] = useState<BookingState | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
 
-  // Local state to simulate approve/reject
-  const [bookings, setBookings] = useState<BookingState[]>(
-    MOCK_BOOKINGS.map((b) => ({ ...b, localStatus: b.statusVerifikasi }))
-  );
+  const { user, bookings: storedBookings } = useDemo();
+  const bookings = useMemo(() => storedBookings.map(b => ({ ...b, localStatus: b.statusVerifikasi })), [storedBookings]);
 
   const menungguCount = bookings.filter(b => b.localStatus === "menunggu").length;
 
@@ -54,9 +53,8 @@ export default function VerifikasiView({ onShowToast }: VerifikasiViewProps) {
   }, [bookings, searchQuery, filterStatus]);
 
   const handleApprove = (bookingId: string) => {
-    setBookings((prev) =>
-      prev.map((b) => b.id === bookingId ? { ...b, localStatus: "disetujui" } : b)
-    );
+    try { verifyDemoBooking(bookingId, "disetujui"); }
+    catch (error) { onShowToast({ type: "error", message: error instanceof Error ? error.message : "Verifikasi gagal" }); return; }
     setShowDetailModal(false);
     setSelectedBooking(null);
     onShowToast({
@@ -67,9 +65,8 @@ export default function VerifikasiView({ onShowToast }: VerifikasiViewProps) {
   };
 
   const handleReject = (bookingId: string) => {
-    setBookings((prev) =>
-      prev.map((b) => b.id === bookingId ? { ...b, localStatus: "ditolak" } : b)
-    );
+    try { verifyDemoBooking(bookingId, "ditolak"); }
+    catch (error) { onShowToast({ type: "error", message: error instanceof Error ? error.message : "Verifikasi gagal" }); return; }
     setShowDetailModal(false);
     setSelectedBooking(null);
     onShowToast({
@@ -83,6 +80,8 @@ export default function VerifikasiView({ onShowToast }: VerifikasiViewProps) {
     setSelectedBooking(booking);
     setShowDetailModal(true);
   };
+
+  if (user?.role !== "admin") return null;
 
   return (
     <div className="bg-[#faf8ff] min-h-screen pb-24 md:pb-8">
@@ -157,7 +156,7 @@ export default function VerifikasiView({ onShowToast }: VerifikasiViewProps) {
           </div>
           <div className="pb-3 flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-[#4edea3]" />
-            <span className="text-[11px] text-[#424750]">Gateway Host-to-Host Aktif</span>
+            <span className="text-[11px] text-[#424750]">Simulasi verifikasi · Data browser</span>
           </div>
         </div>
 
@@ -418,7 +417,7 @@ export default function VerifikasiView({ onShowToast }: VerifikasiViewProps) {
             {/* Stats Summary */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               {[
-                { label: "Total Transaksi", value: MOCK_BOOKINGS.length.toString(), icon: "receipt_long", color: "#003466" },
+                { label: "Total Transaksi", value: bookings.length.toString(), icon: "receipt_long", color: "#003466" },
                 { label: "Disetujui", value: bookings.filter(b => b.localStatus === "disetujui").length.toString(), icon: "check_circle", color: "#003c27" },
                 { label: "Ditolak", value: bookings.filter(b => b.localStatus === "ditolak").length.toString(), icon: "cancel", color: "#93000a" },
                 { label: "Total Nilai", value: "Rp 14,8jt", icon: "payments", color: "#855300" },
