@@ -5,6 +5,7 @@ import SpotCard from "@/components/ui-custom/SpotCard";
 import { MOCK_SPOTS, ZONA_LABELS, ZONA_COUNTS } from "@/lib/mock-data";
 import type { Spot } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
+import { today } from "@/lib/demo-store";
 
 type ZonaFilter = "all" | "rektorat" | "boulevard" | "sc" | "agrokompleks";
 type UkuranFilter = "all" | "2x2" | "3x3" | "4x4";
@@ -24,8 +25,8 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
   const [sortBy, setSortBy] = useState<SortOption>("populer");
   const [activeChips, setActiveChips] = useState<Set<string>>(new Set(["listrik"]));
   const [currentPage, setCurrentPage] = useState(1);
-  const [dateStart, setDateStart] = useState("2025-10-25");
-  const [dateEnd, setDateEnd] = useState("2025-10-27");
+  const [dateStart, setDateStart] = useState(today);
+  const [dateEnd, setDateEnd] = useState(today);
   const [isFiltering, setIsFiltering] = useState(false);
   const [mapPinHover, setMapPinHover] = useState<string | null>(null);
 
