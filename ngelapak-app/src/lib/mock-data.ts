@@ -1,3 +1,5 @@
+import type { DemoUser } from "./types";
+
 // ============================================================
 // NGELAPAK - Mock Data untuk Prototipe (Tanpa Backend)
 // ============================================================
@@ -29,6 +31,8 @@ export interface Spot {
 
 export interface Booking {
   id: string;
+  /** Stable local fixture owner ID; mapped to Supabase auth.uid() in production. */
+  ownerId?: string;
   spotId: string;
   spotNama: string;
   spotKode: string;
@@ -67,6 +71,15 @@ export interface SpotManagement {
   terakhirDiperiksa: string;
   fasilitas: string[];
 }
+
+// ============================================================
+// CENTRALIZED DEMO ACCOUNTS (fixture only; no credentials)
+// ============================================================
+export const DEMO_USERS: DemoUser[] = [
+  { id: "admin", nama: "I Made Ariawan", email: "ariawan@unud.ac.id", role: "admin" },
+  { id: "ayu", nama: "Ni Kadek Ayu Maharani", email: "ayu.maharani@student.unud.ac.id", role: "penyewa" },
+  { id: "bayu", nama: "I Wayan Bayu Pratama", email: "bayu.pratama@student.unud.ac.id", role: "penyewa" },
+];
 
 // ============================================================
 // DATA SPOTS
@@ -320,6 +333,7 @@ export const MOCK_SPOTS: Spot[] = [
 export const MOCK_BOOKINGS: Booking[] = [
   {
     id: "TXN-2025-001",
+    ownerId: "ayu",
     spotId: "spot-001",
     spotNama: "Spot Rektorat A-01",
     spotKode: "A-01",
@@ -344,6 +358,7 @@ export const MOCK_BOOKINGS: Booking[] = [
   },
   {
     id: "TXN-2025-002",
+    ownerId: "bayu",
     spotId: "spot-004",
     spotNama: "Spot Student Center C-01",
     spotKode: "C-01",
@@ -368,6 +383,7 @@ export const MOCK_BOOKINGS: Booking[] = [
   },
   {
     id: "TXN-2025-003",
+    ownerId: "external:deva.mahendra@student.unud.ac.id",
     spotId: "spot-007",
     spotNama: "Spot Boulevard B-05",
     spotKode: "B-05",
@@ -391,6 +407,7 @@ export const MOCK_BOOKINGS: Booking[] = [
   },
   {
     id: "TXN-2025-004",
+    ownerId: "external:made.arisanti@student.unud.ac.id",
     spotId: "spot-011",
     spotNama: "Spot Boulevard Bazar B-08",
     spotKode: "B-08",
@@ -414,6 +431,7 @@ export const MOCK_BOOKINGS: Booking[] = [
   },
   {
     id: "TXN-2025-005",
+    ownerId: "external:darma.putra@student.unud.ac.id",
     spotId: "spot-002",
     spotNama: "Spot Rektorat A-04",
     spotKode: "A-04",
@@ -438,6 +456,7 @@ export const MOCK_BOOKINGS: Booking[] = [
   },
   {
     id: "TXN-2025-006",
+    ownerId: "external:tri.dewi@student.unud.ac.id",
     spotId: "spot-006",
     spotNama: "Spot Agrokompleks D-03",
     spotKode: "D-03",
@@ -461,6 +480,7 @@ export const MOCK_BOOKINGS: Booking[] = [
   },
   {
     id: "TXN-2025-007",
+    ownerId: "external:reza.saputra@student.unud.ac.id",
     spotId: "spot-009",
     spotNama: "Spot Rektorat A-12",
     spotKode: "A-12",
@@ -484,6 +504,7 @@ export const MOCK_BOOKINGS: Booking[] = [
   },
   {
     id: "TXN-2025-008",
+    ownerId: "external:ayu.lestari@student.unud.ac.id",
     spotId: "spot-005",
     spotNama: "Spot Gerbang Utama A-08",
     spotKode: "A-08",
