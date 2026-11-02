@@ -3,8 +3,8 @@
 import { useState } from "react";
 import type { Spot } from "@/lib/mock-data";
 import dynamic from "next/dynamic";
-const InteractiveMap = dynamic(
-  () => import("@/components/ui-custom/InteractiveMap"),
+const MapComponent = dynamic(
+  () => import("@/components/home/MapComponent"),
   {
     ssr: false,
   }
@@ -236,7 +236,7 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
                     </p>
                   </div>
 
-                  <InteractiveMap spots={[spot]} />
+                  <MapComponent spots={[spot]} />
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

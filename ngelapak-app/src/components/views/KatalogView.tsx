@@ -3,8 +3,8 @@
 import { useState, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
 import SpotCard from "@/components/ui-custom/SpotCard";
-const InteractiveMap = dynamic(
-  () => import("@/components/ui-custom/InteractiveMap"),
+const MapComponent = dynamic(
+  () => import("@/components/home/MapComponent"),
   {
     ssr: false,
     loading: () => (
@@ -479,47 +479,13 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
                   sentral.
                 </p>
               </div>
-
-              {/* Daftar Zona */}
-              <div className="space-y-2">
-                {MAP_PINS.map((pin) => (
-                  <div
-                    key={pin.zona}
-                    className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all ${
-                      zonaFilter === pin.zona
-                        ? "bg-[#eaedff]"
-                        : "bg-[#f2f3ff] hover:bg-[#eaedff]"
-                    }`}
-                    onClick={() => {
-                      setZonaFilter(pin.zona as ZonaFilter);
-                      setCurrentPage(1);
-                    }}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="w-3 h-3 rounded-full"
-                        style={{ backgroundColor: pin.bgColor }}
-                      />
-
-                      <span className="text-[13px] font-semibold text-[#131b2e]">
-                        {pin.label}
-                      </span>
-                    </div>
-
-                    <span className="text-[12px] text-[#424750]">
-                      {pin.spots} Lapak Siap
-                    </span>
-                  </div>
-                ))}
-              </div>
             </div>
 
             {/* Interactive Map */}
-            <div className="lg:w-2/3 h-[400px] rounded-xl overflow-hidden">
-              <InteractiveMap
+            <div className="w-full self-start">
+            <MapComponent
                 spots={MOCK_SPOTS}
                 defaultStatus="tersedia"
-                defaultZone={zonaFilter}
                 context="katalog"
                 onSelectSpot={onNavigateToDetail}
               />
