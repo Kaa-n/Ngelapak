@@ -211,13 +211,14 @@ export default function InteractiveMap({
 
   return (
     <div
-      className={`rounded-2xl bg-white border border-[#e2e7ff] shadow-sm overflow-hidden flex flex-col ${className}`}
+      className={`relative isolate rounded-2xl bg-white border border-[#e2e7ff] shadow-sm overflow-hidden flex flex-col ${className}`}
+      style={{ isolation: "isolate" }}
     >
       {/* ========================================================
           FILTER & KONTROL BAR PETA (SESUAI MAPS HOME)
           ======================================================== */}
       {shouldShowFilters && (
-        <div className="p-4 sm:p-5 border-b border-[#e2e7ff] bg-[#faf8ff] flex flex-col gap-3.5">
+        <div className="relative z-[100] shrink-0 p-4 sm:p-5 border-b border-[#e2e7ff] bg-[#faf8ff] flex flex-col gap-3.5">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             {/* Header info */}
             <div className="flex items-center gap-2.5">
@@ -331,12 +332,12 @@ export default function InteractiveMap({
       {/* ========================================================
           KANVAS PETA LEAFLET
           ======================================================== */}
-      <div className="relative w-full h-[400px] sm:h-[440px] bg-[#eef2f9] overflow-hidden">
+      <div className="relative z-0 shrink-0 w-full h-[400px] sm:h-[440px] bg-[#eef2f9] overflow-hidden">
         <MapContainer
           center={activeCenter.center}
           zoom={activeCenter.zoom}
           scrollWheelZoom={false}
-          className="w-full h-full z-10"
+          className="w-full h-full"
         >
           {/* Tile Layer OpenStreetMap */}
           <TileLayer
