@@ -8,6 +8,16 @@ export type SpotStatus = "tersedia" | "dipesan" | "pemeliharaan";
 export type TransactionStatus = "menunggu" | "disetujui" | "ditolak";
 export type BookingStatus = "aktif" | "selesai" | "dibatalkan" | "menunggu";
 
+// TAMBAHAN TIPE: Item Jadwal Operasional per Spot (Tugas FE 3 Poin 5)
+export interface JadwalOperasionalItem {
+  id: string;
+  penjual: string;
+  kategori: "Mahasiswa Wirausaha" | "UMKM Umum";
+  startDate: string;
+  endDate: string;
+  status: "Active" | "Upcoming";
+}
+
 export interface Spot {
   id: string;
   kode: string;
@@ -28,6 +38,8 @@ export interface Spot {
   totalSewa: number;
   deskripsi: string;
   jenisUsaha?: string;
+  // TAMBAHAN PROPERTI: Jadwal Operasional Unik per Spot
+  jadwalOperasional?: JadwalOperasionalItem[];
 }
 
 export interface Product {
@@ -92,7 +104,7 @@ export const DEMO_USERS: DemoUser[] = [
 ];
 
 // ============================================================
-// DATA SPOTS
+// DATA SPOTS (DILENGKAPI JADWAL OPERASIONAL UNIK DI TIAP SPOT)
 // ============================================================
 export const MOCK_SPOTS: Spot[] = [
   {
@@ -114,6 +126,10 @@ export const MOCK_SPOTS: Spot[] = [
     rating: 4.8,
     totalSewa: 47,
     deskripsi: "Spot premium di Lapangan Rektorat Jimbaran, lokasi sangat strategis dekat gedung administrasi pusat. Cocok untuk stan kuliner, merchandise, maupun pameran karya mahasiswa.",
+    jadwalOperasional: [
+      { id: "j-001-1", penjual: "Kopi Janji Mahasiswa", kategori: "Mahasiswa Wirausaha", startDate: "2026-11-01", endDate: "2026-11-04", status: "Active" },
+      { id: "j-001-2", penjual: "Stan Souvenir FT Unud", kategori: "Mahasiswa Wirausaha", startDate: "2026-11-12", endDate: "2026-11-15", status: "Upcoming" },
+    ],
   },
   {
     id: "spot-002",
@@ -134,6 +150,9 @@ export const MOCK_SPOTS: Spot[] = [
     rating: 4.6,
     totalSewa: 32,
     deskripsi: "Spot berukuran medium di area dekat gazebo Lapangan Rektorat. Memiliki akses air bersih dan tenda lipat premium. Cocok untuk usaha kuliner dan minuman.",
+    jadwalOperasional: [
+      { id: "j-002-1", penjual: "Warung Sate Ayam Bu Sri", kategori: "UMKM Umum", startDate: "2026-11-08", endDate: "2026-11-12", status: "Upcoming" },
+    ],
   },
   {
     id: "spot-003",
@@ -155,6 +174,10 @@ export const MOCK_SPOTS: Spot[] = [
     totalSewa: 61,
     deskripsi: "Spot di titik paling ramai Boulevard Kampus Jimbaran, jalur utama mahasiswa menuju gedung kuliah. Memiliki jalur air aktif yang memudahkan usaha kuliner.",
     jenisUsaha: "Kuliner - Makanan & Minuman",
+    jadwalOperasional: [
+      { id: "j-003-1", penjual: "Nasi Ayam Sambal Matah B-02", kategori: "UMKM Umum", startDate: "2026-11-01", endDate: "2026-11-07", status: "Active" },
+      { id: "j-003-2", penjual: "Es Boba Kampus", kategori: "Mahasiswa Wirausaha", startDate: "2026-11-15", endDate: "2026-11-18", status: "Upcoming" },
+    ],
   },
   {
     id: "spot-004",
@@ -175,6 +198,9 @@ export const MOCK_SPOTS: Spot[] = [
     rating: 4.7,
     totalSewa: 28,
     deskripsi: "Spot semi-indoor di Plaza Student Center, pusat kegiatan organisasi mahasiswa Udayana. Dilengkapi meja pameran dan akses WiFi kampus.",
+    jadwalOperasional: [
+      { id: "j-004-1", penjual: "Merchandise BEM Unud", kategori: "Mahasiswa Wirausaha", startDate: "2026-11-20", endDate: "2026-11-23", status: "Upcoming" },
+    ],
   },
   {
     id: "spot-005",
@@ -195,6 +221,9 @@ export const MOCK_SPOTS: Spot[] = [
     rating: 4.5,
     totalSewa: 55,
     deskripsi: "Spot di jalur masuk gerbang utama Rektorat, visibilitas sangat tinggi karena dilalui seluruh civitas akademika. Ideal untuk penjualan merchandise kampus.",
+    jadwalOperasional: [
+      { id: "j-005-1", penjual: "Snack & Pastry Bali", kategori: "UMKM Umum", startDate: "2026-11-03", endDate: "2026-11-06", status: "Active" },
+    ],
   },
   {
     id: "spot-006",
@@ -215,6 +244,9 @@ export const MOCK_SPOTS: Spot[] = [
     rating: 4.4,
     totalSewa: 19,
     deskripsi: "Spot terbesar di kawasan Agrokompleks Sudirman dengan luas 4×4m. Dapat diakses kendaraan box untuk bongkar muat. Cocok untuk bazar skala besar.",
+    jadwalOperasional: [
+      { id: "j-006-1", penjual: "Pameran Pertanian Organik", kategori: "Mahasiswa Wirausaha", startDate: "2026-11-25", endDate: "2026-11-28", status: "Upcoming" },
+    ],
   },
   {
     id: "spot-007",
@@ -235,6 +267,9 @@ export const MOCK_SPOTS: Spot[] = [
     rating: 4.6,
     totalSewa: 38,
     deskripsi: "Spot di sisi timur Boulevard dekat kantin utama, ramai pada jam makan siang. Strategis untuk penjualan makanan dan minuman.",
+    jadwalOperasional: [
+      { id: "j-007-1", penjual: "Nasi Jinggo Om Deva", kategori: "Mahasiswa Wirausaha", startDate: "2026-11-01", endDate: "2026-11-03", status: "Active" },
+    ],
   },
   {
     id: "spot-008",
@@ -255,6 +290,7 @@ export const MOCK_SPOTS: Spot[] = [
     rating: 4.3,
     totalSewa: 22,
     deskripsi: "Spot di teras selatan Student Center dengan kursi dan meja tersedia. Cocok untuk usaha yang membutuhkan area duduk seperti konsultasi atau pameran.",
+    jadwalOperasional: [],
   },
   {
     id: "spot-009",
@@ -275,6 +311,9 @@ export const MOCK_SPOTS: Spot[] = [
     rating: 4.2,
     totalSewa: 15,
     deskripsi: "Spot di area parkir utara rektorat, mudah diakses dari pintu masuk kampus. Cocok untuk pameran produk atau stan informasi.",
+    jadwalOperasional: [
+      { id: "j-009-1", penjual: "Layanan Cetak & Foto FH", kategori: "Mahasiswa Wirausaha", startDate: "2026-11-18", endDate: "2026-11-20", status: "Upcoming" },
+    ],
   },
   {
     id: "spot-010",
@@ -295,6 +334,7 @@ export const MOCK_SPOTS: Spot[] = [
     rating: 4.1,
     totalSewa: 11,
     deskripsi: "Spot ekonomis di Kampus Sudirman, dekat Fakultas Kedokteran. Cocok untuk penjualan makanan sehat dan perlengkapan medis.",
+    jadwalOperasional: [],
   },
   {
     id: "spot-011",
@@ -315,6 +355,10 @@ export const MOCK_SPOTS: Spot[] = [
     rating: 4.9,
     totalSewa: 74,
     deskripsi: "Spot terpopuler di Boulevard dengan gazebo permanen. Menjadi pusat kegiatan bazar kampus. Dilengkapi meja permanen dan daya listrik besar.",
+    jadwalOperasional: [
+      { id: "j-011-1", penjual: "Bazar Merchandise Udayana", kategori: "Mahasiswa Wirausaha", startDate: "2026-11-01", endDate: "2026-11-05", status: "Active" },
+      { id: "j-011-2", penjual: "Ayam Geprek Kampus B-08", kategori: "UMKM Umum", startDate: "2026-11-10", endDate: "2026-11-16", status: "Upcoming" },
+    ],
   },
   {
     id: "spot-012",
@@ -336,6 +380,9 @@ export const MOCK_SPOTS: Spot[] = [
     totalSewa: 29,
     deskripsi: "Spot di lapangan selatan rektorat dengan pemandangan hijau asri. Suasana nyaman dan teduh, cocok untuk usaha yang membutuhkan suasana santai.",
     jenisUsaha: "Kuliner - Makanan & Minuman",
+    jadwalOperasional: [
+      { id: "j-012-1", penjual: "Warung Nasi Goreng A-16", kategori: "UMKM Umum", startDate: "2026-11-02", endDate: "2026-11-08", status: "Active" },
+    ],
   },
 ];
 
