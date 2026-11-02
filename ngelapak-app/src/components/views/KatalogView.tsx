@@ -1,7 +1,21 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
+import dynamic from "next/dynamic";
 import SpotCard from "@/components/ui-custom/SpotCard";
+const InteractiveMap = dynamic(
+  () => import("@/components/ui-custom/InteractiveMap"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-[400px] rounded-xl bg-[#eaedff] flex items-center justify-center">
+        <span className="text-sm text-[#424750]">
+          Memuat peta...
+        </span>
+      </div>
+    ),
+  }
+);
 import { MOCK_SPOTS, ZONA_LABELS, ZONA_COUNTS } from "@/lib/mock-data";
 import type { Spot } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
@@ -444,106 +458,73 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
             ======================================================== */}
         {!isFiltering && filteredAndSorted.length > 0 && (
           <div className="rounded-2xl bg-white p-6 shadow-sm mb-10 flex flex-col lg:flex-row items-stretch gap-6 border border-[#e2e7ff]">
+            
+            {/* Informasi Zona */}
             <div className="lg:w-1/3 flex flex-col justify-between">
               <div>
                 <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#eaedff] text-[#003466] text-[12px] font-semibold mb-3">
-                  <span className="material-symbols-outlined text-[14px]">map</span>
+                  <span className="material-symbols-outlined text-[14px]">
+                    map
+                  </span>
                   Peta Spasial Udayana
                 </div>
+
                 <h3 className="text-[20px] font-bold text-[#131b2e] mb-2 leading-snug">
                   Tinjau Sebaran Lapak di Kampus Jimbaran
                 </h3>
+
                 <p className="text-[14px] text-[#424750] leading-relaxed mb-5">
-                  Pilih titik secara presisi berdekatan dengan pusat aktivitas mahasiswa, gedung kuliah bersama, halte bus kampus, dan kantin sentral.
+                  Pilih titik secara presisi berdekatan dengan pusat aktivitas
+                  mahasiswa, gedung kuliah bersama, halte bus kampus, dan kantin
+                  sentral.
                 </p>
               </div>
 
+              {/* Daftar Zona */}
               <div className="space-y-2">
                 {MAP_PINS.map((pin) => (
                   <div
                     key={pin.zona}
                     className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all ${
-                      zonaFilter === pin.zona ? "bg-[#eaedff]" : "bg-[#f2f3ff] hover:bg-[#eaedff]"
+                      zonaFilter === pin.zona
+                        ? "bg-[#eaedff]"
+                        : "bg-[#f2f3ff] hover:bg-[#eaedff]"
                     }`}
-                    onClick={() => { setZonaFilter(pin.zona as ZonaFilter); setCurrentPage(1); }}
+                    onClick={() => {
+                      setZonaFilter(pin.zona as ZonaFilter);
+                      setCurrentPage(1);
+                    }}
                   >
                     <div className="flex items-center gap-2">
                       <span
                         className="w-3 h-3 rounded-full"
                         style={{ backgroundColor: pin.bgColor }}
                       />
-                      <span className="text-[13px] font-semibold text-[#131b2e]">{pin.label}</span>
+
+                      <span className="text-[13px] font-semibold text-[#131b2e]">
+                        {pin.label}
+                      </span>
                     </div>
-                    <span className="text-[12px] text-[#424750]">{pin.spots} Lapak Siap</span>
+
+                    <span className="text-[12px] text-[#424750]">
+                      {pin.spots} Lapak Siap
+                    </span>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Map */}
-            <div className="lg:w-2/3 min-h-[280px] relative rounded-xl overflow-hidden shadow-inner bg-[#d2d9f4]">
-              {/* Placeholder map background */}
-              <div className="w-full h-full min-h-[280px] relative bg-gradient-to-br from-[#eaedff] via-[#f2f3ff] to-[#dae2fd]">
-                {/* Grid lines */}
-                <svg className="absolute inset-0 w-full h-full opacity-20" xmlns="http://www.w3.org/2000/svg">
-                  <defs>
-                    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#003466" strokeWidth="0.5" />
-                    </pattern>
-                  </defs>
-                  <rect width="100%" height="100%" fill="url(#grid)" />
-                </svg>
-
-                {/* Campus label */}
-                <div className="absolute top-4 left-4 bg-white/80 backdrop-blur-sm px-2 py-1 rounded text-[10px] font-semibold text-[#003466]">
-                  Kampus Bukit Jimbaran, Bali
-                </div>
-
-                {/* Map Pins */}
-                {MAP_PINS.map((pin) => (
-                  <div
-                    key={pin.zona}
-                    className="absolute cursor-pointer group"
-                    style={{ left: pin.x, top: pin.y, transform: "translate(-50%, -50%)" }}
-                    onMouseEnter={() => setMapPinHover(pin.zona)}
-                    onMouseLeave={() => setMapPinHover(null)}
-                    onClick={() => { setZonaFilter(pin.zona as ZonaFilter); setCurrentPage(1); }}
-                  >
-                    <div className="relative flex items-center">
-                      {/* Pulse */}
-                      {pin.spots > 0 && (
-                        <span
-                          className="absolute inline-flex h-9 w-9 rounded-full opacity-30 animate-ping"
-                          style={{ backgroundColor: pin.bgColor }}
-                        />
-                      )}
-                      {/* Pin */}
-                      <div
-                        className="relative w-9 h-9 rounded-full flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform z-10"
-                        style={{ backgroundColor: pin.bgColor }}
-                      >
-                        <span className="material-symbols-outlined text-white text-[18px]">{pin.icon}</span>
-                      </div>
-                      {/* Tooltip */}
-                      {mapPinHover === pin.zona && (
-                        <div className="ml-2 px-2.5 py-1.5 rounded-lg bg-white shadow-xl text-[12px] font-semibold text-[#131b2e] whitespace-nowrap z-20 border border-[#e2e7ff]">
-                          <span>{pin.label}</span>
-                          <span className="text-[#003466] font-bold ml-1.5">
-                            {pin.spots} Spot
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-
-                {/* Bottom hint */}
-                <div className="absolute bottom-3 right-3 bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-lg text-[11px] text-[#424750] shadow-sm flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-[14px] text-[#003466]">my_location</span>
-                  Klik pin untuk filter zona
-                </div>
-              </div>
+            {/* Interactive Map */}
+            <div className="lg:w-2/3 h-[400px] rounded-xl overflow-hidden">
+              <InteractiveMap
+                spots={MOCK_SPOTS}
+                defaultStatus="tersedia"
+                defaultZone={zonaFilter}
+                context="katalog"
+                onSelectSpot={onNavigateToDetail}
+              />
             </div>
+
           </div>
         )}
 

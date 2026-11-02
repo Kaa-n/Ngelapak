@@ -17,10 +17,6 @@ export interface DashboardBannerProps {
 
 /**
  * Komponen Banner CTA Utama (DashboardBanner)
- *
- * Ditampilkan di bagian paling atas Halaman Home sebagai titik awal interaksi penyewa.
- * Menggunakan Tailwind CSS modern dengan gradien warna mendalam (Material 3 style)
- * dan ornamen visual bertaraf kampus Universitas Udayana.
  */
 export default function DashboardBanner({
   onNavigateToKatalog,
@@ -31,9 +27,7 @@ export default function DashboardBanner({
       className={`relative overflow-hidden rounded-2xl md:rounded-3xl bg-gradient-to-br from-[#003466] via-[#1a4b84] to-[#002113] text-white shadow-xl shadow-[#003466]/15 p-6 sm:p-8 md:p-12 border border-white/10 ${className}`}
     >
       {/* ========================================================
-          DECORATIVE BACKGROUND BLURS (Aesthetic Glow)
-          TODO (Tim UI/UX): Sesuaikan intensitas atau warna ornamen
-          jika ada tema khusus per event/hari besar kampus.
+          DECORATIVE BACKGROUND
           ======================================================== */}
       <div
         aria-hidden="true"
@@ -90,8 +84,7 @@ export default function DashboardBanner({
             </span>
           </button>
 
-          {/* Tombol Sekunder / Panduan Singkat */}
-          {/* TODO (Tim Frontend): Hubungkan tombol ini ke modal panduan sewa atau FAQ jika sudah tersedia */}
+          {/* Tombol Sekunder */}
           <button
             type="button"
             onClick={onNavigateToKatalog}
@@ -105,9 +98,7 @@ export default function DashboardBanner({
         </div>
 
         {/* ========================================================
-            HIGHLIGHT FITUR / KEUNTUNGAN KILAT
-            TODO (Tim Konten/Bisnis): Ubah metrik dan poin fasilitas
-            berikut sesuai kebijakan sewa semester berjalan.
+            HIGHLIGHT FITUR
             ======================================================== */}
         <div className="mt-8 pt-6 border-t border-white/15 grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs md:text-sm text-[#d5e3ff]">
           <div className="flex items-center gap-2">
