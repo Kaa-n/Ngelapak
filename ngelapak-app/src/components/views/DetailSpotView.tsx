@@ -2,6 +2,13 @@
 
 import { useState } from "react";
 import type { Spot } from "@/lib/mock-data";
+import dynamic from "next/dynamic";
+const InteractiveMap = dynamic(
+  () => import("@/components/ui-custom/InteractiveMap"),
+  {
+    ssr: false,
+  }
+);
 import { formatRupiah, formatDate } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
 import { useDemo, createDemoBooking, today } from "@/lib/demo-store";
@@ -217,6 +224,20 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
             {activeTab === "detail" && (
               <div className="space-y-5">
                 <p className="text-[14px] text-[#424750] leading-relaxed">{spot.deskripsi}</p>
+                
+                {/* Lokasi Spot */}
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-[12px] text-[#737781] font-semibold uppercase tracking-wide">
+                      Lokasi Spot
+                    </p>
+                    <p className="text-[14px] text-[#424750] mt-1">
+                      {spot.lokasi}
+                    </p>
+                  </div>
+
+                  <InteractiveMap spots={[spot]} />
+                </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {[
