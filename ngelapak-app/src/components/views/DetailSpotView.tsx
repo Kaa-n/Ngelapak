@@ -1,20 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
 import type { Spot } from "@/lib/mock-data";
 import dynamic from "next/dynamic";
-const MapComponent = dynamic(
-  () => import("@/components/home/MapComponent"),
-  {
-    ssr: false,
-  }
-);
 import { formatRupiah, formatDate } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
 import { useDemo, createDemoBooking, today } from "@/lib/demo-store";
 
+// Dynamic import InteractiveMap buatan rekan tim (mencegah error window is not defined)
+const InteractiveMap = dynamic(
+  () => import("@/components/ui-custom/InteractiveMap"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-48 w-full animate-pulse rounded-xl bg-[#eaedff] flex items-center justify-center text-xs text-[#737781]">
+        Memuat Peta Lokasi...
+      </div>
+    ),
+  }
+);
+
 interface DetailSpotViewProps {
-  spot: Spot;
+  spot?: Spot;
   onBack: () => void;
   onLogin: () => void;
   onOrders: () => void;
@@ -23,59 +30,223 @@ interface DetailSpotViewProps {
 
 export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShowToast }: DetailSpotViewProps) {
   const { user } = useDemo();
+
+  // State Form Booking & Pendaftaran Penjual (Jobdesk FE 3)
   const [selectedDays, setSelectedDays] = useState(1);
-  const [startDate, setStartDate] = useState(today);
+  const [startDate, setStartDate] = useState(() => today());
+  const [kategoriPenjual, setKategoriPenjual] = useState<"Mahasiswa Wirausaha" | "UMKM Umum">("Mahasiswa Wirausaha");
+  const [namaUsaha, setNamaUsaha] = useState("");
   const [jenisUsaha, setJenisUsaha] = useState("");
   const [catatanTambahan, setCatatanTambahan] = useState("");
-  const [metodePembayaran, setMetodePembayaran] = useState("transfer-bni");
+  const [metodePembayaran, setMetodePembayaran] = useState("qris");
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [bookingSuccess, setBookingSuccess] = useState(false);
+  
+  // State Alur Pembayaran Interaktif
+  const [showPaymentStep, setShowPaymentStep] = useState(false); // Modal Barcode QRIS & Token
+  const [bookingSuccess, setBookingSuccess] = useState(false);   // Ringkasan Halaman Sukses
   const [reservationId, setReservationId] = useState("");
-  const [activeTab, setActiveTab] = useState<"detail" | "fasilitas" | "ulasan">("detail");
+  
+  const [activeTab, setActiveTab] = useState<"detail" | "operasional" | "fasilitas" | "ulasan">("detail");
   const [imgError, setImgError] = useState(false);
 
-  const totalBayar = spot.tarifPerHari * selectedDays;
+  // Client-side rendering flag untuk InteractiveMap Leaflet
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  // GUARD CLAUSE: Mencegah error jika spot belum dikirim dari parent component
+  if (!spot) {
+    return (
+      <div className="min-h-screen bg-[#faf8ff] flex items-center justify-center p-6">
+        <div className="text-center bg-white p-8 rounded-2xl border border-[#e2e7ff] shadow-sm max-w-sm w-full">
+          <div className="w-8 h-8 border-4 border-[#003466] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-sm font-bold text-[#131b2e] mb-1">Memuat Data Spot...</p>
+          <p className="text-xs text-[#737781] mb-6">Mohon tunggu sebentar</p>
+          <button
+            onClick={onBack}
+            className="w-full h-10 rounded-xl bg-[#eaedff] text-[#003466] text-xs font-semibold hover:bg-[#dae2fd] transition-colors"
+          >
+            ← Kembali ke Katalog
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // BACA DATA JADWAL OPERASIONAL UNIK PER SPOT (Dinamis dari mock-data.ts)
+  const jadwalList = spot.jadwalOperasional || [];
+
+  // Perhitungan Tarif & Durasi
+  const tarif = spot.tarifPerHari || (spot as any).hargaPerHari || 160000;
+  const totalBayar = tarif * selectedDays;
 
   const endDate = new Date((startDate || today()) + "T00:00:00Z");
   endDate.setUTCDate(endDate.getUTCDate() + selectedDays - 1);
   const endDateStr = Number.isFinite(endDate.getTime()) ? endDate.toISOString().split("T")[0] : today();
 
+  // Logika Validasi Tanggal Bentrok dengan Jadwal Operasional
+  const checkOverlap = (startInput: string, days: number) => {
+    try {
+      const sTime = new Date(startInput).getTime();
+      const eTime = sTime + (days - 1) * 86400000;
+      return jadwalList.find((sched) => {
+        const start = new Date(sched.startDate).getTime();
+        const end = new Date(sched.endDate).getTime();
+        return sTime <= end && eTime >= start;
+      });
+    } catch {
+      return null;
+    }
+  };
+
+  const conflictingSchedule = checkOverlap(startDate, selectedDays);
+  const isConflicted = !!conflictingSchedule;
+
   const ULASAN_MOCK = [
-    { nama: "Ayu Maharani", fakultas: "FT", rating: 5, komentar: "Lokasi sangat strategis, banyak mahasiswa lewat. Fasilitas lengkap!", tanggal: "15 Okt 2025" },
-    { nama: "Bayu Pratama", fakultas: "FEB", rating: 4, komentar: "Spotnya bersih dan nyaman. Kanopi cukup untuk melindungi dari hujan.", tanggal: "10 Okt 2025" },
-    { nama: "Deva Mahendra", fakultas: "FH", rating: 5, komentar: "Proses booking mudah, admin responsif. Pasti akan sewa lagi!", tanggal: "5 Okt 2025" },
+    { nama: "Ayu Maharani", fakultas: "FT", rating: 5, komentar: "Lokasi sangat strategis, banyak mahasiswa lewat. Fasilitas lengkap!", tanggal: "15 Okt 2026" },
+    { nama: "Bayu Pratama", fakultas: "FEB", rating: 4, komentar: "Spotnya bersih dan nyaman. Kanopi cukup untuk melindungi dari hujan.", tanggal: "10 Okt 2026" },
+    { nama: "Deva Mahendra", fakultas: "FH", rating: 5, komentar: "Proses booking mudah, admin responsif. Pasti akan sewa lagi!", tanggal: "5 Okt 2026" },
   ];
 
-  const handleBooking = () => {
+  // LANGKAH 1: Validasi Form & Buka Modal Pembayaran (Barcode QRIS & Token)
+  const handleOpenPayment = () => {
     if (!user) { onLogin(); return; }
     if (user.role !== "penyewa") {
       onShowToast({ type: "error", message: "Pemesanan hanya tersedia untuk penyewa" });
+      return;
+    }
+    if (!namaUsaha.trim()) {
+      onShowToast({ type: "error", message: "Nama Usaha / Brand harus diisi", description: "Lengkapi data pendaftaran penjual" });
       return;
     }
     if (!jenisUsaha.trim()) {
       onShowToast({ type: "error", message: "Jenis usaha harus diisi", description: "Lengkapi semua field yang diperlukan" });
       return;
     }
+    if (isConflicted) {
+      onShowToast({ type: "error", message: "Tanggal tidak tersedia", description: `Bertabrakan dengan jadwal '${conflictingSchedule?.penjual}'` });
+      return;
+    }
     if (!agreeTerms) {
       onShowToast({ type: "warning", message: "Setujui syarat & ketentuan", description: "Centang persetujuan untuk melanjutkan" });
       return;
     }
+
+    // Generate Token / ID Transaksi Unik
+    const generatedToken = `TXN-${Math.random().toString(36).substring(2, 8).toUpperCase()}-2026`;
+    setReservationId(generatedToken);
+    setShowPaymentStep(true); // Buka modal pembayaran
+  };
+
+  // LANGKAH 2: Konfirmasi Pembayaran Selesai -> Diteruskan ke Halaman Ringkasan Sukses
+  const handleConfirmPayment = () => {
     setIsSubmitting(true);
     try {
-      const id = createDemoBooking({ spotId: spot.id, tanggalMulai: startDate, jumlahHari: selectedDays, jenisUsaha, catatan: catatanTambahan, metodePembayaran });
-      setReservationId(id);
+      createDemoBooking({
+        spotId: spot.id,
+        tanggalMulai: startDate,
+        jumlahHari: selectedDays,
+        jenisUsaha,
+        catatan: catatanTambahan,
+        metodePembayaran,
+        ...( { namaUsaha, kategoriPenjual } as any )
+      });
+
+      setShowPaymentStep(false);
       setBookingSuccess(true);
       onShowToast({
         type: "success",
-        message: "Pengajuan booking berhasil!",
-        description: `Spot ${spot.kode} – Menunggu verifikasi pembayaran admin`,
+        message: "Pembayaran terverifikasi & Booking berhasil diajukan!",
+        description: `Token: ${reservationId}`,
       });
     } catch (error) {
       onShowToast({ type: "error", message: error instanceof Error ? error.message : "Pengajuan gagal disimpan" });
-    } finally { setIsSubmitting(false); }
+    } finally { 
+      setIsSubmitting(false); 
+    }
   };
 
+  // TAHAP 1: MODAL PEMBAYARAN INTERAKTIF (BARCODE & TOKEN TRANSAKSI)
+  if (showPaymentStep) {
+    return (
+      <div className="min-h-screen bg-black/50 fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-[#e2e7ff] relative animate-in fade-in zoom-in duration-200">
+          <button
+            onClick={() => setShowPaymentStep(false)}
+            className="absolute top-4 right-4 text-[#737781] hover:text-black text-sm font-bold"
+          >
+            ✕ Batal
+          </button>
+
+          <div className="text-center mb-5">
+            <span className="material-symbols-outlined text-[#003466] text-[40px] mb-1">qr_code_2</span>
+            <h3 className="text-[20px] font-bold text-[#131b2e]">Instruksi Pembayaran</h3>
+            <p className="text-[12px] text-[#737781]">Selesaikan pembayaran untuk memvalidasi sewa lapak</p>
+          </div>
+
+          {/* Token Transaksi */}
+          <div className="bg-[#f2f3ff] rounded-xl p-3 text-center mb-5 border border-[#e2e7ff]">
+            <span className="text-[11px] text-[#737781] uppercase font-semibold block mb-0.5">Token / ID Transaksi</span>
+            <span className="text-[16px] font-mono font-bold text-[#003466] tracking-wider">{reservationId}</span>
+          </div>
+
+          {/* Barcode QRIS / Virtual Account */}
+          {metodePembayaran === "qris" ? (
+            <div className="flex flex-col items-center justify-center bg-[#faf8ff] p-4 rounded-xl border border-[#e2e7ff] mb-5">
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${reservationId}`}
+                alt="Barcode Pembayaran QRIS"
+                className="w-44 h-44 border-4 border-white shadow-md rounded-lg mb-2"
+              />
+              <p className="text-[12px] font-semibold text-[#131b2e]">Pindai QRIS Menggunakan e-Wallet / Mobile Banking</p>
+            </div>
+          ) : (
+            <div className="bg-[#eaedff] p-4 rounded-xl mb-5 text-center border border-[#003466]/20 space-y-1.5">
+              <span className="text-[12px] font-bold text-[#003466] uppercase block">{metodePembayaran.replace("-", " ")}</span>
+              <p className="text-[11px] text-[#737781]">Nomor Virtual Account Bank:</p>
+              <div className="text-[20px] font-mono font-bold text-[#131b2e] tracking-wide">8821 0812 3456 7890</div>
+            </div>
+          )}
+
+          {/* Rincian Biaya */}
+          <div className="border-t border-[#e2e7ff] pt-3 mb-5 space-y-1.5 text-[13px]">
+            <div className="flex justify-between text-[#424750]">
+              <span>Spot Lapak</span>
+              <span className="font-semibold text-[#131b2e]">{spot.nama}</span>
+            </div>
+            <div className="flex justify-between text-[#424750]">
+              <span>Durasi Sewa</span>
+              <span className="font-semibold text-[#131b2e]">{selectedDays} Hari</span>
+            </div>
+            <div className="flex justify-between text-[#424750]">
+              <span>Total Tagihan</span>
+              <span className="font-bold text-[#003466]">{formatRupiah(totalBayar)}</span>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowPaymentStep(false)}
+              className="flex-1 h-11 rounded-xl bg-[#eaedff] text-[#131b2e] text-[13px] font-semibold hover:bg-[#dae2fd] transition-colors"
+            >
+              Ubah Opsi
+            </button>
+            <button
+              onClick={handleConfirmPayment}
+              disabled={isSubmitting}
+              className="flex-1 h-11 rounded-xl bg-[#003466] text-white text-[13px] font-bold hover:bg-[#1a4b84] transition-colors flex items-center justify-center gap-1 shadow-md"
+            >
+              {isSubmitting ? "Memverifikasi..." : "Saya Sudah Bayar ✓"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // TAHAP 2: RINGKASAN SETELAH VERIFIKASI PEMBAYARAN SUKSES
   if (bookingSuccess) {
     return (
       <div className="max-w-lg mx-auto px-4 py-16 flex flex-col items-center text-center">
@@ -84,18 +255,18 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
         </div>
         <h2 className="text-[24px] font-bold text-[#131b2e] mb-3">Booking Berhasil Diajukan!</h2>
         <p className="text-[14px] text-[#424750] mb-2 leading-relaxed max-w-sm">
-          Pengajuan sewa Spot <strong>{spot.nama}</strong> selama <strong>{selectedDays} hari</strong> telah dikirim.
+          Pengajuan sewa Spot <strong>{spot.nama}</strong> untuk <strong>{namaUsaha}</strong> ({kategoriPenjual}) selama <strong>{selectedDays} hari</strong> telah dikirim.
         </p>
         <p className="text-[13px] text-[#737781] mb-8">
-          Total: <strong className="text-[#003466]">{formatRupiah(totalBayar)}</strong> · Pengajuan menunggu pemeriksaan admin dalam demo.
+          Total: <strong className="text-[#003466]">{formatRupiah(totalBayar)}</strong> · Pengajuan menunggu pemeriksaan admin.
         </p>
 
         <div className="w-full bg-[#f2f3ff] rounded-xl p-4 mb-6 text-left space-y-2.5">
           {[
-            { icon: "confirmation_number", label: "ID Reservasi", value: reservationId || "TXN-2025-8821" },
-            { icon: "storefront", label: "Spot", value: `${spot.nama} (${spot.kode})` },
-            { icon: "calendar_today", label: "Periode", value: `${formatDate(startDate)} – ${formatDate(endDateStr)}` },
-            { icon: "payments", label: "Total Bayar", value: formatRupiah(totalBayar) },
+            { icon: "confirmation_number", label: "ID RESERVASI", value: reservationId },
+            { icon: "storefront", label: "NAMA USAHA", value: `${namaUsaha} (${kategoriPenjual})` },
+            { icon: "calendar_today", label: "PERIODE", value: `${formatDate(startDate)} – ${formatDate(endDateStr)}` },
+            { icon: "payments", label: "TOTAL BAYAR", value: formatRupiah(totalBayar) },
           ].map((item) => (
             <div key={item.label} className="flex items-start gap-3">
               <span className="material-symbols-outlined text-[16px] text-[#003466] mt-0.5">{item.icon}</span>
@@ -125,11 +296,12 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
     );
   }
 
+  // TAMPILAN UTAMA (KATALOG DETAIL SPOT & FORM PEMESANAN)
   return (
     <div className="bg-[#faf8ff] min-h-screen pb-24 md:pb-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
 
-        {/* Breadcrumb */}
+        {/* Breadcrumb Navigasi */}
         <div className="flex items-center gap-2 mb-6 text-[13px]">
           <button
             onClick={onBack}
@@ -139,19 +311,19 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
             Kembali ke Katalog
           </button>
           <span className="text-[#737781]">/</span>
-          <span className="text-[#424750]">{spot.zona.charAt(0).toUpperCase() + spot.zona.slice(1)}</span>
+          <span className="text-[#424750]">{spot.zona ? spot.zona.charAt(0).toUpperCase() + spot.zona.slice(1) : "Bazar"}</span>
           <span className="text-[#737781]">/</span>
           <span className="text-[#131b2e] font-semibold">{spot.nama}</span>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* LEFT: Detail Spot */}
+          {/* KIRI: Detail Spot & Peta Interaktif Leaflet */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Image Hero */}
+            {/* Gambar Hero Spot */}
             <div className="relative h-64 md:h-80 w-full rounded-2xl overflow-hidden bg-[#eaedff] shadow-sm">
               {!imgError ? (
                 <img
-                  src={spot.gambar}
+                  src={spot.gambar || (spot as any).gambarUrl}
                   alt={spot.nama}
                   className="w-full h-full object-cover"
                   onError={() => setImgError(true)}
@@ -163,7 +335,7 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
 
-              {/* Badge */}
+              {/* Status Badge */}
               <div className="absolute top-4 left-4">
                 <span className={`px-3 py-1 rounded-full text-[12px] font-bold uppercase tracking-wide shadow-sm ${
                   spot.status === "tersedia"
@@ -176,21 +348,21 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
                 </span>
               </div>
 
-              {/* Rating */}
+              {/* Rating & Total Sewa */}
               <div className="absolute bottom-4 left-4 flex items-center gap-2">
                 <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-sm">
                   <span className="material-symbols-outlined text-[#fea619] text-[14px]">star</span>
                   <span className="text-white text-[13px] font-semibold">{spot.rating}</span>
                 </div>
-                <span className="text-white/80 text-[12px]">{spot.totalSewa} kali disewa</span>
+                <span className="text-white/80 text-[12px]">{spot.totalSewa || (spot as any).jumlahSewa || 0} kali disewa</span>
               </div>
             </div>
 
-            {/* Name & Zone */}
+            {/* Nama & Zona Spot */}
             <div>
               <div className="flex items-center gap-2 text-[#855300] text-[13px] font-semibold mb-1.5">
                 <span className="material-symbols-outlined text-[14px]">domain</span>
-                {spot.zonaLabel}
+                {spot.zonaLabel || spot.zona}
               </div>
               <h1 className="text-[26px] md:text-[30px] font-bold text-[#131b2e] mb-2 leading-tight">
                 {spot.nama}
@@ -201,50 +373,62 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
               </div>
             </div>
 
-            {/* Tabs */}
+            {/* Navigasi Tabs */}
             <div className="border-b border-[#e2e7ff]">
-              <div className="flex gap-1">
-                {(["detail", "fasilitas", "ulasan"] as const).map((tab) => (
+              <div className="flex gap-1 overflow-x-auto">
+                {[
+                  { id: "detail", label: "Detail & Spesifikasi" },
+                  { id: "operasional", label: "Jadwal Operasional" },
+                  { id: "fasilitas", label: "Fasilitas" },
+                  { id: "ulasan", label: `Ulasan (${ULASAN_MOCK.length})` },
+                ].map((tab) => (
                   <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`px-4 py-2.5 text-[13px] font-semibold border-b-2 transition-all capitalize ${
-                      activeTab === tab
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id as any)}
+                    className={`px-4 py-2.5 text-[13px] font-semibold border-b-2 transition-all capitalize shrink-0 ${
+                      activeTab === tab.id
                         ? "border-[#003466] text-[#003466]"
                         : "border-transparent text-[#424750] hover:text-[#131b2e]"
                     }`}
                   >
-                    {tab === "detail" ? "Detail & Spesifikasi" : tab === "fasilitas" ? "Fasilitas" : `Ulasan (${ULASAN_MOCK.length})`}
+                    {tab.label}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Tab Content */}
+            {/* Tab Content 1: Detail & Spesifikasi + InteractiveMap */}
             {activeTab === "detail" && (
               <div className="space-y-5">
                 <p className="text-[14px] text-[#424750] leading-relaxed">{spot.deskripsi}</p>
-                
-                {/* Lokasi Spot */}
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-[12px] text-[#737781] font-semibold uppercase tracking-wide">
-                      Lokasi Spot
-                    </p>
-                    <p className="text-[14px] text-[#424750] mt-1">
-                      {spot.lokasi}
-                    </p>
-                  </div>
 
-                  <MapComponent spots={[spot]} />
+                {/* Integrasi Peta Interaktif Leaflet Rekan Tim */}
+                <div className="space-y-3">
+                  <p className="text-[12px] text-[#737781] font-semibold uppercase tracking-wide">
+                    Lokasi Spot & Peta Interaktif
+                  </p>
+                  <div className="overflow-hidden rounded-xl border border-[#e2e7ff]">
+                    {isMounted ? (
+                      <InteractiveMap
+                        spots={[spot]}
+                        context="detail"
+                        showFilters={false}
+                        showLegend={false}
+                      />
+                    ) : (
+                      <div className="h-48 w-full animate-pulse rounded-xl bg-[#eaedff] flex items-center justify-center text-xs text-[#737781]">
+                        Memuat Peta...
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {[
-                    { icon: "aspect_ratio", label: "Ukuran", value: spot.ukuranLabel },
-                    { icon: "bolt", label: "Daya Listrik", value: `${spot.daya} Watt` },
-                    { icon: "payments", label: "Tarif/Hari", value: formatRupiah(spot.tarifPerHari) },
-                    { icon: "event_available", label: "Total Sewa", value: `${spot.totalSewa}× disewa` },
+                    { icon: "aspect_ratio", label: "Ukuran", value: spot.ukuranLabel || (spot as any).ukuran },
+                    { icon: "bolt", label: "Daya Listrik", value: `${spot.daya || (spot as any).dayaListrik || 1300} Watt` },
+                    { icon: "payments", label: "Tarif/Hari", value: formatRupiah(tarif) },
+                    { icon: "event_available", label: "Total Sewa", value: `${spot.totalSewa || (spot as any).jumlahSewa || 0}× disewa` },
                   ].map((spec) => (
                     <div key={spec.label} className="bg-[#f2f3ff] rounded-xl p-3.5 flex flex-col gap-1">
                       <span className="material-symbols-outlined text-[#003466] text-[20px]">{spec.icon}</span>
@@ -255,140 +439,131 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
                 </div>
 
                 {/* Tags */}
-                <div>
-                  <p className="text-[12px] text-[#737781] font-semibold uppercase tracking-wide mb-2">Karakteristik Spot</p>
-                  <div className="flex flex-wrap gap-2">
-                    {spot.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="px-3 py-1 rounded-full bg-[#eaedff] text-[#003466] text-[12px] font-semibold"
-                      >
-                        {tag}
-                      </span>
-                    ))}
+                {spot.tags && (
+                  <div>
+                    <p className="text-[12px] text-[#737781] font-semibold uppercase tracking-wide mb-2">Karakteristik Spot</p>
+                    <div className="flex flex-wrap gap-2">
+                      {spot.tags.map((tag) => (
+                        <span key={tag} className="px-3 py-1 rounded-full bg-[#eaedff] text-[#003466] text-[12px] font-semibold">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                </div>
-
-                {/* Peraturan */}
-                <div className="bg-[#ffddb8]/30 rounded-xl p-4 border border-[#ffddb8]">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="material-symbols-outlined text-[#855300] text-[18px]">policy</span>
-                    <span className="text-[14px] font-bold text-[#855300]">Peraturan Penggunaan Spot</span>
-                  </div>
-                  <ul className="space-y-1.5 text-[13px] text-[#424750]">
-                    {[
-                      "Dilarang memasak makanan yang menghasilkan asap berlebih tanpa izin khusus",
-                      "Lapak harus dalam kondisi bersih setiap hari setelah operasional",
-                      "Jam operasional: 07.00 – 20.00 WITA",
-                      "Wajib memiliki Surat Izin Usaha Mahasiswa (SIUM) dari Kemahasiswaan",
-                      "Pembayaran dilakukan di muka sebelum penggunaan spot",
-                    ].map((rule, i) => (
-                      <li key={i} className="flex items-start gap-2">
-                        <span className="material-symbols-outlined text-[#855300] text-[14px] mt-0.5 shrink-0">chevron_right</span>
-                        {rule}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                )}
               </div>
             )}
 
+            {/* Tab Content 2: Jadwal Operasional Unik per Spot */}
+            {activeTab === "operasional" && (
+              <div className="space-y-4">
+                <h3 className="text-[14px] font-bold text-[#131b2e] flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[#855300] text-[18px]">local_fire_department</span>
+                  Operasional Sedang Berlangsung (Active)
+                </h3>
+                {jadwalList.filter((s) => s.status === "Active").length > 0 ? (
+                  jadwalList
+                    .filter((s) => s.status === "Active")
+                    .map((item) => (
+                      <div key={item.id} className="bg-[#ffddb8]/30 p-3.5 rounded-xl border border-[#ffddb8] flex justify-between items-center">
+                        <div>
+                          <span className="text-[11px] font-bold text-[#855300] bg-[#ffddb8] px-2 py-0.5 rounded inline-block mb-1">
+                            {item.kategori}
+                          </span>
+                          <p className="font-bold text-[#131b2e] text-[13px]">{item.penjual}</p>
+                          <p className="text-[11px] text-[#737781]">
+                            Tanggal Selesai: <strong>{formatDate(item.endDate)}</strong>
+                          </p>
+                        </div>
+                        <span className="bg-[#855300] text-white text-[11px] px-2.5 py-1 rounded-full font-bold">
+                          Sedang Beroperasi
+                        </span>
+                      </div>
+                    ))
+                ) : (
+                  <p className="text-xs text-[#737781] italic">Tidak ada operasional aktif di spot ini saat ini.</p>
+                )}
+
+                <h3 className="text-[14px] font-bold text-[#131b2e] mt-4 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[#003466] text-[18px]">event_upcoming</span>
+                  Jadwal Operasional Mendatang (Tervalidasi)
+                </h3>
+                {jadwalList.filter((s) => s.status === "Upcoming").length > 0 ? (
+                  jadwalList
+                    .filter((s) => s.status === "Upcoming")
+                    .map((item) => (
+                      <div key={item.id} className="bg-[#f2f3ff] p-3.5 rounded-xl border border-[#e2e7ff] flex justify-between items-center">
+                        <div>
+                          <span className="text-[11px] font-semibold text-[#003466] bg-[#eaedff] px-2 py-0.5 rounded inline-block mb-1">
+                            {item.kategori}
+                          </span>
+                          <p className="font-semibold text-[#131b2e] text-[13px]">{item.penjual}</p>
+                          <p className="text-[11px] text-[#737781]">
+                            {formatDate(item.startDate)} s/d {formatDate(item.endDate)}
+                          </p>
+                        </div>
+                        <span className="bg-[#eaedff] text-[#003466] text-[11px] px-2.5 py-1 rounded-full border border-[#003466]/20">
+                          Tervalidasi
+                        </span>
+                      </div>
+                    ))
+                ) : (
+                  <p className="text-xs text-[#737781] italic">Belum ada jadwal operasional mendatang untuk spot ini.</p>
+                )}
+              </div>
+            )}
+
+            {/* Tab Content 3: Fasilitas */}
             {activeTab === "fasilitas" && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
-                  ...spot.fasilitas.map((f) => ({ label: f, included: true })),
-                  { label: "Jalur Air Bersih", included: spot.fasilitas.some(f => f.toLowerCase().includes("air")) },
-                  { label: "WiFi Kampus", included: spot.fasilitas.some(f => f.toLowerCase().includes("wifi")) },
-                  { label: "Meja & Kursi", included: spot.fasilitas.some(f => f.toLowerCase().includes("meja")) },
+                  ...(spot.fasilitas ? spot.fasilitas.map((f) => ({ label: f, included: true })) : []),
+                  { label: "Jalur Air Bersih", included: spot.fasilitas?.some(f => f.toLowerCase().includes("air")) ?? false },
+                  { label: "WiFi Kampus", included: spot.fasilitas?.some(f => f.toLowerCase().includes("wifi")) ?? false },
+                  { label: "Meja & Kursi", included: spot.fasilitas?.some(f => f.toLowerCase().includes("meja")) ?? false },
                   { label: "CCTV Keamanan", included: true },
-                  { label: "Toilet Umum < 100m", included: true },
-                  { label: "Area Parkir Terdekat", included: spot.zona === "rektorat" },
                 ].filter((item, index, arr) => arr.findIndex(i => i.label === item.label) === index)
                   .map((facility) => (
-                  <div
-                    key={facility.label}
-                    className={`flex items-center gap-3 p-3.5 rounded-xl border ${
-                      facility.included
-                        ? "bg-[#002113]/5 border-[#4edea3]/30"
-                        : "bg-[#f2f3ff] border-[#e2e7ff] opacity-60"
-                    }`}
-                  >
-                    <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                        facility.included ? "bg-[#6ffbbe]" : "bg-[#e2e7ff]"
-                      }`}
-                    >
-                      <span className={`material-symbols-outlined text-[16px] ${
-                        facility.included ? "text-[#002113]" : "text-[#737781]"
-                      }`}>
-                        {facility.included ? "check_circle" : "cancel"}
-                      </span>
-                    </div>
-                    <span className={`text-[13px] font-medium ${
-                      facility.included ? "text-[#131b2e]" : "text-[#737781] line-through"
-                    }`}>
-                      {facility.label}
-                    </span>
+                  <div key={facility.label} className="flex items-center gap-3 p-3.5 rounded-xl border bg-white border-[#e2e7ff]">
+                    <span className="material-symbols-outlined text-[#003466] text-[18px]">check_circle</span>
+                    <span className="text-[13px] font-medium text-[#131b2e]">{facility.label}</span>
                   </div>
                 ))}
               </div>
             )}
 
+            {/* Tab Content 4: Ulasan */}
             {activeTab === "ulasan" && (
               <div className="space-y-4">
-                <div className="flex items-center gap-4 mb-6">
-                  <div className="text-center">
-                    <div className="text-[48px] font-bold text-[#131b2e] leading-none">{spot.rating}</div>
-                    <div className="flex items-center gap-0.5 mt-1 justify-center">
-                      {[...Array(5)].map((_, i) => (
-                        <span
-                          key={i}
-                          className={`material-symbols-outlined text-[16px] ${
-                            i < Math.floor(spot.rating) ? "text-[#fea619]" : "text-[#e2e7ff]"
-                          }`}
-                        >
-                          star
-                        </span>
-                      ))}
-                    </div>
-                    <div className="text-[11px] text-[#737781] mt-0.5">{spot.totalSewa} ulasan</div>
-                  </div>
-                </div>
-
                 {ULASAN_MOCK.map((ulasan, i) => (
                   <div key={i} className="bg-white rounded-xl p-4 border border-[#e2e7ff] shadow-sm">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="w-9 h-9 rounded-full bg-[#1a4b84] flex items-center justify-center">
-                        <span className="text-white text-[14px] font-bold">{ulasan.nama[0]}</span>
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-8 h-8 rounded-full bg-[#1a4b84] flex items-center justify-center text-white font-bold text-xs">
+                        {ulasan.nama[0]}
                       </div>
                       <div>
                         <p className="text-[13px] font-bold text-[#131b2e]">{ulasan.nama}</p>
                         <p className="text-[11px] text-[#737781]">{ulasan.fakultas} • {ulasan.tanggal}</p>
                       </div>
-                      <div className="ml-auto flex items-center gap-0.5">
-                        {[...Array(ulasan.rating)].map((_, j) => (
-                          <span key={j} className="material-symbols-outlined text-[#fea619] text-[14px]">star</span>
-                        ))}
-                      </div>
                     </div>
-                    <p className="text-[13px] text-[#424750] leading-relaxed">{ulasan.komentar}</p>
+                    <p className="text-[13px] text-[#424750]">{ulasan.komentar}</p>
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          {/* RIGHT: Booking Form (Sticky) */}
+          {/* KANAN: Form Pemesanan & Formulir Pendaftaran Penjual */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-2xl shadow-xl p-5 border border-[#e2e7ff] sticky top-20">
-              {/* Price */}
+              {/* Header Tarif */}
               <div className="flex items-end justify-between mb-5 pb-4 border-b border-[#e2e7ff]">
                 <div>
                   <span className="text-[11px] text-[#737781] font-medium uppercase tracking-wide block mb-1">
                     Tarif Sewa
                   </span>
                   <div className="text-[26px] font-bold text-[#131b2e] leading-none">
-                    {formatRupiah(spot.tarifPerHari)}
+                    {formatRupiah(tarif)}
                     <span className="text-[13px] text-[#737781] font-normal"> / hari</span>
                   </div>
                 </div>
@@ -406,27 +581,92 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
                 </div>
               ) : spot.status !== "pemeliharaan" ? (
                 <div className="space-y-4">
+                  
+                  {/* Jobdesk FE 3: Kategori Penjual */}
+                  <div>
+                    <label className="block text-[12px] font-semibold text-[#424750] mb-1.5 uppercase tracking-wide">
+                      Kategori Penjual *
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setKategoriPenjual("Mahasiswa Wirausaha")}
+                        className={`py-2 text-[11px] font-bold rounded-lg border transition-all ${
+                          kategoriPenjual === "Mahasiswa Wirausaha"
+                            ? "bg-[#003466] text-white border-[#003466]"
+                            : "bg-[#f2f3ff] text-[#424750] border-[#e2e7ff]"
+                        }`}
+                      >
+                        Mahasiswa Wirausaha
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setKategoriPenjual("UMKM Umum")}
+                        className={`py-2 text-[11px] font-bold rounded-lg border transition-all ${
+                          kategoriPenjual === "UMKM Umum"
+                            ? "bg-[#003466] text-white border-[#003466]"
+                            : "bg-[#f2f3ff] text-[#424750] border-[#e2e7ff]"
+                        }`}
+                      >
+                        UMKM Umum
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Jobdesk FE 3: Nama Usaha / Brand */}
+                  <div>
+                    <label className="block text-[12px] font-semibold text-[#424750] mb-1.5 uppercase tracking-wide">
+                      Nama Usaha / Brand *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Contoh: Es Teh Kampus / Snack Udayana"
+                      value={namaUsaha}
+                      onChange={(e) => setNamaUsaha(e.target.value)}
+                      className="w-full h-10 px-3 bg-[#f2f3ff] text-[#131b2e] text-[13px] rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-[#003466]/20 transition-all"
+                    />
+                  </div>
+
+                  {/* Tanggal Terisi Khusus Spot Ini */}
+                  {jadwalList.length > 0 && (
+                    <div className="rounded-xl bg-[#ffddb8]/30 p-3 border border-[#ffddb8] text-[11px] text-[#855300]">
+                      <span className="font-bold block mb-1">Tanggal Terisi (Jadwal Operasional Spot Ini):</span>
+                      <ul className="list-disc pl-4 space-y-0.5">
+                        {jadwalList.map((s) => (
+                          <li key={s.id}>
+                            {formatDate(s.startDate)} - {formatDate(s.endDate)} ({s.penjual})
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   {/* Tanggal Mulai */}
                   <div>
                     <label className="block text-[12px] font-semibold text-[#424750] mb-1.5 uppercase tracking-wide">
-                      Tanggal Mulai
+                      Tanggal Mulai *
                     </label>
                     <input
                       type="date"
                       value={startDate}
                       onChange={(e) => setStartDate(e.target.value)}
                       min={today()}
-                      className="w-full h-10 px-3 bg-[#f2f3ff] text-[#131b2e] text-[14px] rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-[#003466]/20 transition-all"
+                      className={`w-full h-10 px-3 text-[14px] rounded-lg outline-none transition-all ${
+                        isConflicted
+                          ? "bg-red-50 text-red-900 border border-red-500"
+                          : "bg-[#f2f3ff] text-[#131b2e] focus:bg-white focus:ring-2 focus:ring-[#003466]/20"
+                      }`}
                     />
                   </div>
 
-                  {/* Durasi */}
+                  {/* Durasi Sewa */}
                   <div>
                     <label className="block text-[12px] font-semibold text-[#424750] mb-1.5 uppercase tracking-wide">
                       Durasi Sewa
                     </label>
                     <div className="flex items-center gap-2">
                       <button
+                        type="button"
                         onClick={() => setSelectedDays((d) => Math.max(d - 1, 1))}
                         className="w-9 h-9 rounded-lg bg-[#eaedff] text-[#131b2e] flex items-center justify-center font-bold hover:bg-[#dae2fd] transition-colors"
                       >
@@ -436,6 +676,7 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
                         {selectedDays} hari
                       </div>
                       <button
+                        type="button"
                         onClick={() => setSelectedDays((d) => Math.min(d + 1, 30))}
                         className="w-9 h-9 rounded-lg bg-[#eaedff] text-[#131b2e] flex items-center justify-center font-bold hover:bg-[#dae2fd] transition-colors"
                       >
@@ -446,6 +687,13 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
                       {formatDate(startDate)} – {formatDate(endDateStr)}
                     </p>
                   </div>
+
+                  {/* Peringatan Tanggal Bentrok */}
+                  {isConflicted && (
+                    <div className="rounded-lg bg-red-50 p-2.5 text-[12px] text-red-600 border border-red-200">
+                      Tanggal ini sudah terisi oleh <strong>{conflictingSchedule?.penjual}</strong>. Silakan pilih tanggal lain.
+                    </div>
+                  )}
 
                   {/* Jenis Usaha */}
                   <div>
@@ -473,10 +721,10 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
                     </label>
                     <div className="grid grid-cols-2 gap-2">
                       {[
+                        { id: "qris", label: "QRIS Barcode" },
                         { id: "transfer-bni", label: "BNI Transfer" },
                         { id: "transfer-bri", label: "BRI Transfer" },
                         { id: "transfer-bca", label: "BCA Transfer" },
-                        { id: "qris", label: "QRIS" },
                       ].map((method) => (
                         <button
                           key={method.id}
@@ -494,24 +742,24 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
                     </div>
                   </div>
 
-                  {/* Catatan */}
+                  {/* Catatan / Spesifikasi Produk */}
                   <div>
                     <label className="block text-[12px] font-semibold text-[#424750] mb-1.5 uppercase tracking-wide">
-                      Catatan Tambahan
+                      Spesifikasi Produk / Catatan
                     </label>
                     <textarea
                       value={catatanTambahan}
                       onChange={(e) => setCatatanTambahan(e.target.value)}
                       rows={2}
-                      placeholder="Deskripsi singkat usaha atau kebutuhan khusus..."
+                      placeholder="Deskripsi singkat produk atau kebutuhan khusus..."
                       className="w-full px-3 py-2 bg-[#f2f3ff] text-[#131b2e] text-[13px] rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-[#003466]/20 transition-all resize-none placeholder:text-[#737781]"
                     />
                   </div>
 
-                  {/* Total */}
+                  {/* Rincian Biaya */}
                   <div className="bg-[#f2f3ff] rounded-xl p-3.5">
                     <div className="flex items-center justify-between text-[13px] mb-1.5">
-                      <span className="text-[#424750]">{formatRupiah(spot.tarifPerHari)} × {selectedDays} hari</span>
+                      <span className="text-[#424750]">{formatRupiah(tarif)} × {selectedDays} hari</span>
                       <span className="font-semibold text-[#131b2e]">{formatRupiah(totalBayar)}</span>
                     </div>
                     <div className="flex items-center justify-between text-[13px] mb-2">
@@ -542,60 +790,29 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
                     </label>
                   </div>
 
-                  {/* Submit Button */}
+                  {/* Tombol Membuka Modal Pembayaran (QRIS / Token) */}
                   <button
-                    onClick={handleBooking}
-                    disabled={isSubmitting || spot.status === "dipesan"}
+                    onClick={handleOpenPayment}
+                    disabled={spot.status === "dipesan" || isConflicted}
                     className={`w-full h-12 rounded-xl text-[14px] font-bold transition-all flex items-center justify-center gap-2 ${
-                      spot.status === "dipesan"
-                        ? "bg-[#eaedff] text-[#424750] cursor-not-allowed"
-                        : "bg-[#003466] text-white hover:bg-[#1a4b84] shadow-md hover:shadow-lg disabled:opacity-70"
+                      spot.status === "dipesan" || isConflicted
+                        ? "bg-[#eaedff] text-[#737781] cursor-not-allowed"
+                        : "bg-[#003466] text-white hover:bg-[#1a4b84] shadow-md hover:shadow-lg"
                     }`}
                   >
-                    {isSubmitting ? (
-                      <>
-                        <span className="material-symbols-outlined text-[18px] animate-spin">refresh</span>
-                        <span>Memproses Booking...</span>
-                      </>
-                    ) : spot.status === "dipesan" ? (
-                      <>
-                        <span className="material-symbols-outlined text-[18px]">calendar_month</span>
-                        <span>Cek Jadwal Tersedia</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="material-symbols-outlined text-[18px]">send</span>
-                        <span>Ajukan Booking</span>
-                      </>
-                    )}
+                    <span className="material-symbols-outlined text-[18px]">payments</span>
+                    <span>Lanjut ke Pembayaran →</span>
                   </button>
-
-                  {spot.status === "dipesan" && (
-                    <p className="text-[12px] text-[#855300] text-center">
-                      Spot ini sedang dipesan. Hubungi admin untuk info jadwal kosong.
-                    </p>
-                  )}
                 </div>
               ) : (
                 <div className="text-center py-8">
                   <span className="material-symbols-outlined text-[48px] text-[#737781] mb-3">build</span>
                   <p className="text-[14px] font-semibold text-[#131b2e] mb-2">Sedang Dalam Pemeliharaan</p>
                   <p className="text-[12px] text-[#737781]">
-                    Spot ini sementara tidak dapat disewa. Silakan cek kembali nanti.
+                    Spot ini sementara tidak dapat disewa.
                   </p>
                 </div>
               )}
-
-              {/* Contact Admin */}
-              <div className="mt-4 pt-4 border-t border-[#e2e7ff] flex items-center gap-2 text-[12px] text-[#424750]">
-                <span className="material-symbols-outlined text-[16px] text-[#003466]">support_agent</span>
-                <span>
-                  Butuh bantuan?{" "}
-                  <a href="#" className="text-[#003466] font-semibold hover:underline">
-                    Hubungi Admin
-                  </a>
-                </span>
-              </div>
             </div>
           </div>
         </div>
