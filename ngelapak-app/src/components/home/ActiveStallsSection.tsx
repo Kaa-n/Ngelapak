@@ -214,14 +214,6 @@ export default function ActiveStallsSection({
           {displayedSpots.slice(0, 6).map((spot) => (
             <div key={spot.id} className="relative group">
               {/* Badge khusus stan sedang beroperasi */}
-              {spot.status === "dipesan" && (
-                <div className="absolute top-3 left-3 z-20 pointer-events-none">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#002113]/85 text-[#6ffbbe] text-[11px] font-bold shadow-md backdrop-blur-xs">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#4edea3] animate-pulse" />
-                    Sedang Beroperasi
-                  </span>
-                </div>
-              )}
 
               {/* Komponen SpotCard standar (Re-used dari katalog) */}
               <SpotCard spot={spot} onViewDetail={onViewDetail} />
