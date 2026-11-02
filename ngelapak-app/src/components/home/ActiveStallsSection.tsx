@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import SpotCard from "@/components/ui-custom/SpotCard";
 import MapComponent from "./MapComponent";
-import { MOCK_SPOTS, type Spot } from "@/lib/mock-data";
+import { MOCK_SPOTS, MOCK_PRODUCTS, type Spot } from "@/lib/mock-data";
 
 export interface ActiveStallsSectionProps {
   /**
@@ -50,7 +50,7 @@ export default function ActiveStallsSection({
 }: ActiveStallsSectionProps) {
   // State filter tab zona aktif di seksi ini
   const [selectedZona, setSelectedZona] = useState<string>("all");
-
+  const [selectedProductSpot, setSelectedProductSpot] = useState<Spot | null>(null);
   // Filter default: ambil spot dengan status 'dipesan' (artinya sedang aktif beroperasi/disewa)
   // atau ambil 6 spot pertama sebagai demonstrasi prototype jika data spesifik belum ada
   // TODO (Tim Backend/Database):
@@ -58,7 +58,7 @@ export default function ActiveStallsSection({
   // berdasarkan tanggal booking aktif hari ini (today()).
   const allSpots = spots && spots.length > 0 ? spots : MOCK_SPOTS;
   const activeSpots = allSpots.filter(
-    (s) => s.status === "dipesan" || s.status === "tersedia"
+    (s) => s.status === "dipesan"
   );
 
   // Filter berdasarkan zona yang dipilih pengguna
@@ -216,7 +216,12 @@ export default function ActiveStallsSection({
               {/* Badge khusus stan sedang beroperasi */}
 
               {/* Komponen SpotCard standar (Re-used dari katalog) */}
-              <SpotCard spot={spot} onViewDetail={onViewDetail} />
+              <SpotCard
+                spot={spot}
+                onViewDetail={onViewDetail}
+                onViewProducts={setSelectedProductSpot}
+                variant="home"
+              />
             </div>
           ))}
         </div>
@@ -257,8 +262,85 @@ export default function ActiveStallsSection({
           onSelectSpot={onViewDetail}
           className="mt-2"
         />
-      </div>
-    </section>
-  );
-}
+        </div>
 
+        {/* MODAL PRODUK */}
+        {selectedProductSpot && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="w-full max-w-2xl max-h-[85vh] overflow-hidden bg-white rounded-2xl shadow-2xl">
+              
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#e2e7ff]">
+                <div>
+                  <p className="text-xs font-semibold text-[#003466] uppercase tracking-wide">
+                    Produk Lapak
+                  </p>
+
+                  <h3 className="text-lg font-bold text-[#131b2e] mt-1">
+                    {selectedProductSpot.nama}
+                  </h3>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedProductSpot(null)}
+                  className="w-9 h-9 rounded-full bg-[#f2f3ff] hover:bg-[#e2e7ff] flex items-center justify-center transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[#424750]">
+                    close
+                  </span>
+                </button>
+              </div>
+
+              {/* Product List */}
+              <div className="p-5 overflow-y-auto max-h-[65vh]">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {MOCK_PRODUCTS
+                    .filter((product) => product.spotId === selectedProductSpot.id)
+                    .map((product) => (
+                      <div
+                        key={product.id}
+                        className="border border-[#e2e7ff] rounded-xl p-4 hover:shadow-md transition-shadow"
+                      >
+                        <div className="w-full h-28 rounded-lg bg-[#eef2f9] flex items-center justify-center mb-3">
+                          <span className="material-symbols-outlined text-[#003466] text-[42px]">
+                            restaurant
+                          </span>
+                        </div>
+
+                        <span className="inline-flex px-2 py-1 rounded-full bg-[#eef2f9] text-[#003466] text-[10px] font-semibold">
+                          {product.kategori}
+                        </span>
+
+                        <h4 className="font-bold text-[#131b2e] mt-2">
+                          {product.nama}
+                        </h4>
+
+                        <p className="text-xs text-[#737781] mt-1 line-clamp-2">
+                          {product.deskripsi}
+                        </p>
+
+                        <p className="text-[#003466] font-bold text-base mt-3">
+                          Rp {product.harga.toLocaleString("id-ID")}
+                        </p>
+                      </div>
+                    ))}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-5 py-4 border-t border-[#e2e7ff] bg-[#faf8ff]">
+                <button
+                  type="button"
+                  onClick={() => setSelectedProductSpot(null)}
+                  className="w-full h-10 rounded-lg bg-[#003466] text-white text-sm font-semibold hover:bg-[#1a4b84] transition-colors"
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        </section>
+        );
+}
