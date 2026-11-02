@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState, useCallback } from "react";
+import HomeView from "../components/views/HomeView";
 import KatalogView from "../components/views/KatalogView";
 import DetailSpotView from "../components/views/DetailSpotView";
 import DasborView from "../components/views/DasborView";
@@ -18,12 +19,26 @@ import type { PageView, ToastMessage } from "../lib/types";
 export type { PageView, ToastMessage };
 
 export default function Home() {
-  return <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-[#003466]" role="status">Memuat Ngelapak...</div>}><DemoHome /></Suspense>;
+  return (
+    <Suspense
+      fallback={
+        <div
+          className="min-h-screen flex items-center justify-center text-[#003466]"
+          role="status"
+        >
+          Memuat Ngelapak...
+        </div>
+      }
+    >
+      <DemoHome />
+    </Suspense>
+  );
 }
 
 function DemoHome() {
   const { user } = useDemo();
-  const [currentView, setCurrentView] = useState<PageView>("katalog");
+  // Default tampilan awal saat aplikasi dibuka: "home" (Halaman Home / Beranda)
+  const [currentView, setCurrentView] = useState<PageView>("home");
   const [selectedSpot, setSelectedSpot] = useState<Spot>(MOCK_SPOTS[0]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -52,14 +67,42 @@ function DemoHome() {
   return (
     <div className="flex flex-col min-h-screen bg-[#faf8ff]">
       {/* Top Navbar */}
-      <Navbar currentView={currentView} onNavigate={navigate} user={user} onLogout={() => { demoLogout(); setCurrentView("katalog"); setToasts([]); }} />
+      <Navbar
+        currentView={currentView}
+        onNavigate={navigate}
+        user={user}
+        onLogout={() => {
+          demoLogout();
+          setCurrentView("home");
+          setToasts([]);
+        }}
+      />
 
       {/* Main Content */}
       <main className="flex-1 w-full pt-16 pb-16 md:pb-0">
-        {currentView === "masuk" && <MasukView onLogin={(id) => { demoLogin(id); setCurrentView("katalog"); }} />}
-        {currentView === "pesanan" && user?.role === "penyewa" && <PesananView onExplore={() => navigate("katalog")} />}
+        {currentView === "home" && (
+          <HomeView
+            onNavigateToKatalog={() => navigate("katalog")}
+            onNavigateToDetail={(spot) => navigate("detail", spot)}
+            onShowToast={showToast}
+          />
+        )}
+        {currentView === "masuk" && (
+          <MasukView
+            onLogin={(id) => {
+              demoLogin(id);
+              setCurrentView("katalog");
+            }}
+          />
+        )}
+        {currentView === "pesanan" && user?.role === "penyewa" && (
+          <PesananView onExplore={() => navigate("katalog")} />
+        )}
         {currentView === "katalog" && (
-          <KatalogView onNavigateToDetail={(spot) => navigate("detail", spot)} onShowToast={showToast} />
+          <KatalogView
+            onNavigateToDetail={(spot) => navigate("detail", spot)}
+            onShowToast={showToast}
+          />
         )}
         {currentView === "detail" && (
           <DetailSpotView
@@ -80,7 +123,11 @@ function DemoHome() {
       </main>
 
       {/* Mobile Bottom Navigation */}
-      <MobileNav currentView={currentView} onNavigate={navigate} role={user?.role} />
+      <MobileNav
+        currentView={currentView}
+        onNavigate={navigate}
+        role={user?.role}
+      />
 
       {/* Toast Notifications */}
       <div className="fixed bottom-20 md:bottom-6 right-4 z-[200] flex flex-col gap-2 items-end">

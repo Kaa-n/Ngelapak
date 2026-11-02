@@ -1,7 +1,7 @@
 // Shared types for Ngelapak prototype
 // Separated from page.tsx to avoid circular imports
 
-export type PageView = "katalog" | "detail" | "dasbor" | "verifikasi" | "pesanan" | "masuk";
+export type PageView = "home" | "katalog" | "detail" | "dasbor" | "verifikasi" | "pesanan" | "masuk";
 
 export type Role = "admin" | "penyewa";
 export interface DemoUser { id: string; nama: string; email: string; role: Role }
@@ -14,6 +14,7 @@ export function canAccess(view: PageView, role?: Role) {
 
 export function navigationFor(role?: Role): { id: PageView; label: string; icon: string }[] {
   return [
+    { id: "home" as const, label: "Beranda", icon: "home" },
     { id: "katalog" as const, label: "Jelajah Lapak", icon: "storefront" },
     ...(role === "admin" ? [
       { id: "dasbor" as const, label: "Kelola Lapak", icon: "dashboard" },
