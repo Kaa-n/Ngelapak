@@ -27,6 +27,16 @@ export interface Spot {
   rating: number;
   totalSewa: number;
   deskripsi: string;
+  jenisUsaha?: string;
+}
+
+export interface Product {
+  id: string;
+  spotId: string;
+  nama: string;
+  kategori: string;
+  harga: number;
+  deskripsi: string;
 }
 
 export interface Booking {
@@ -144,6 +154,7 @@ export const MOCK_SPOTS: Spot[] = [
     rating: 4.9,
     totalSewa: 61,
     deskripsi: "Spot di titik paling ramai Boulevard Kampus Jimbaran, jalur utama mahasiswa menuju gedung kuliah. Memiliki jalur air aktif yang memudahkan usaha kuliner.",
+    jenisUsaha: "Kuliner - Makanan & Minuman",
   },
   {
     id: "spot-004",
@@ -324,6 +335,7 @@ export const MOCK_SPOTS: Spot[] = [
     rating: 4.7,
     totalSewa: 29,
     deskripsi: "Spot di lapangan selatan rektorat dengan pemandangan hijau asri. Suasana nyaman dan teduh, cocok untuk usaha yang membutuhkan suasana santai.",
+    jenisUsaha: "Kuliner - Makanan & Minuman",
   },
 ];
 
@@ -698,3 +710,57 @@ export const ZONA_COUNTS = {
   sc: MOCK_SPOTS.filter(s => s.zona === "sc" && s.status !== "pemeliharaan").length,
   agrokompleks: MOCK_SPOTS.filter(s => s.zona === "agrokompleks" && s.status !== "pemeliharaan").length,
 };
+
+export const MOCK_PRODUCTS: Product[] = [
+  // Produk B-02
+  {
+    id: "product-b02-01",
+    spotId: "spot-003",
+    nama: "Nasi Ayam Sambal Matah",
+    kategori: "Makanan",
+    harga: 18000,
+    deskripsi: "Nasi dengan ayam dan sambal matah khas Bali.",
+  },
+  {
+    id: "product-b02-02",
+    spotId: "spot-003",
+    nama: "Mie Goreng Spesial",
+    kategori: "Makanan",
+    harga: 15000,
+    deskripsi: "Mie goreng dengan telur dan sayuran.",
+  },
+  {
+    id: "product-b02-03",
+    spotId: "spot-003",
+    nama: "Es Kopi Susu",
+    kategori: "Minuman",
+    harga: 12000,
+    deskripsi: "Kopi susu dingin untuk menemani aktivitas kuliah.",
+  },
+
+  // Produk A-16
+  {
+    id: "product-a16-01",
+    spotId: "spot-012",
+    nama: "Nasi Goreng Spesial",
+    kategori: "Makanan",
+    harga: 17000,
+    deskripsi: "Nasi goreng dengan telur dan topping pilihan.",
+  },
+  {
+    id: "product-a16-02",
+    spotId: "spot-012",
+    nama: "Ayam Geprek",
+    kategori: "Makanan",
+    harga: 18000,
+    deskripsi: "Ayam crispy dengan sambal pedas khas.",
+  },
+  {
+    id: "product-a16-03",
+    spotId: "spot-012",
+    nama: "Es Teh Manis",
+    kategori: "Minuman",
+    harga: 5000,
+    deskripsi: "Teh manis dingin yang menyegarkan.",
+  },
+];

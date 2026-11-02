@@ -7,6 +7,8 @@ import { formatRupiah } from "@/lib/mock-data";
 interface SpotCardProps {
   spot: Spot;
   onViewDetail: (spot: Spot) => void;
+  onViewProducts?: (spot: Spot) => void;
+  variant?: "default" | "home";
 }
 
 const STATUS_CONFIG = {
@@ -34,7 +36,12 @@ const ZONA_COLORS = {
   agrokompleks: "text-[#424750]",
 };
 
-export default function SpotCard({ spot, onViewDetail }: SpotCardProps) {
+export default function SpotCard({
+  spot,
+  onViewDetail,
+  onViewProducts,
+  variant = "default",
+}: SpotCardProps) {
   const [imgError, setImgError] = useState(false);
   const status = STATUS_CONFIG[spot.status];
   const zonaColor = ZONA_COLORS[spot.zona];
@@ -46,6 +53,81 @@ export default function SpotCard({ spot, onViewDetail }: SpotCardProps) {
     "from-[#131b2e]/50 to-[#283044]/40",
   ];
   const gradient = gradients[spot.id.charCodeAt(spot.id.length - 1) % gradients.length];
+
+    // Tampilan khusus Beranda
+  if (variant === "home") {
+    return (
+      <div className="bg-white rounded-xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-[#e2e7ff]/60">
+        {/* Image */}
+        <div className="relative h-44 w-full overflow-hidden bg-[#eaedff]">
+          {!imgError ? (
+            <img
+              src={spot.gambar}
+              alt={spot.nama}
+              className="w-full h-full object-cover"
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <div
+              className={`w-full h-full bg-gradient-to-br ${gradient} flex items-center justify-center`}
+            >
+              <span className="material-symbols-outlined text-white/40 text-[64px]">
+                storefront
+              </span>
+            </div>
+          )}
+
+          {/* Overlay */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
+
+          {/* Kode Spot */}
+          <div className="absolute top-3 left-3 flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/90 backdrop-blur-sm shadow-sm">
+            <span className="material-symbols-outlined text-[#003466] text-[14px]">
+              pin_drop
+            </span>
+            <span className="text-[#003466] text-[12px] font-semibold">
+              {spot.kode}
+            </span>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="p-4">
+          {/* Nama Lapak */}
+          <h3 className="text-[17px] font-bold text-[#131b2e] mb-2 leading-snug">
+            {spot.nama}
+          </h3>
+
+          {/* Lokasi */}
+          <div className="flex items-start gap-1.5 text-[12px] text-[#424750] mb-2">
+            <span className="material-symbols-outlined text-[16px] text-[#003466]">
+              location_on
+            </span>
+            <span>{spot.lokasi}</span>
+          </div>
+
+          {/* Deskripsi / Jenis Usaha */}
+          <div className="flex items-start gap-1.5 text-[12px] text-[#424750] mb-4">
+            <span className="material-symbols-outlined text-[16px] text-[#003466]">
+              restaurant
+            </span>
+            <span>{spot.jenisUsaha}</span>
+          </div>
+
+          {/* Button */}
+          <button
+            type="button"
+            className="w-full h-10 rounded-lg bg-[#003466] hover:bg-[#1a4b84] text-white text-[13px] font-semibold transition-colors flex items-center justify-center gap-1.5"
+          >
+            <span>Lihat Produk</span>
+            <span className="material-symbols-outlined text-[16px]">
+              arrow_forward
+            </span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="group bg-white rounded-xl shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col overflow-hidden hover:-translate-y-1 cursor-pointer border border-[#e2e7ff]/60">
