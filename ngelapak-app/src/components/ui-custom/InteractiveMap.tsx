@@ -53,6 +53,39 @@ export interface InteractiveMapProps {
 }
 
 /**
+ * Ikon Google Maps multi-color SVG resmi
+ */
+function GoogleMapsIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 32 32"
+      className={className}
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M16 2C10.48 2 6 6.48 6 12c0 7.5 10 18 10 18s10-10.5 10-18c0-5.52-4.48-10-10-10Z"
+        fill="#EA4335"
+      />
+      <path
+        d="M16 2c-5.52 0-10 4.48-10 10 0 2.5 1 4.9 2.5 6.8L16 12V2Z"
+        fill="#4285F4"
+      />
+      <path
+        d="M8.5 18.8C10.2 21.2 13 25 16 30V24c-3.1 0-5.6-2.1-7.5-5.2Z"
+        fill="#34A853"
+      />
+      <path
+        d="M8.5 18.8 16 12v12c-3.1 0-5.6-2.1-7.5-5.2Z"
+        fill="#FBBC04"
+      />
+      <circle cx="16" cy="12" r="4" fill="#FFFFFF" />
+      <circle cx="16" cy="12" r="2" fill="#4285F4" />
+    </svg>
+  );
+}
+
+/**
  * Helper Sub-Komponen untuk mengontrol perpindahan koordinat peta (flyTo)
  * saat pengguna memilih zona kampus tertentu.
  */
@@ -359,7 +392,7 @@ export default function InteractiveMap({
             return (
               <Marker key={spot.id} position={position} icon={icon}>
                 <Popup className="custom-leaflet-popup">
-                  <div className="p-3.5 min-w-[230px] max-w-[280px]">
+                  <div className="p-3.5 min-w-[240px] max-w-[290px]">
                     {/* Header Popup */}
                     <div className="flex items-center justify-between gap-2 mb-1.5">
                       <span className="text-[10px] font-bold text-[#737781] uppercase tracking-wide">
@@ -404,18 +437,33 @@ export default function InteractiveMap({
                         </span>
                       </div>
 
-                      {onSelectSpot && (
-                        <button
-                          type="button"
-                          onClick={() => onSelectSpot(spot)}
-                          className="px-2.5 py-1.5 rounded-lg bg-[#003466] hover:bg-[#1a4b84] text-white text-[11px] font-semibold transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                      <div className="flex items-center gap-1.5">
+                        {/* Tombol Google Maps Berdasarkan Koordinat Spasial */}
+                        <a
+                          href={`https://www.google.com/maps/search/?api=1&query=${position[0].toFixed(6)},${position[1].toFixed(6)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Buka rute di Google Maps"
+                          aria-label={`Buka lokasi ${spot.nama} di Google Maps`}
+                          className="h-8 w-8 rounded-lg bg-white hover:bg-[#eaedff] active:bg-[#d5e3ff] border border-[#e2e7ff] hover:border-[#4285F4]/50 flex items-center justify-center transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs group shrink-0"
                         >
-                          <span>Lihat Detail</span>
-                          <span className="material-symbols-outlined text-[14px]">
-                            arrow_forward
-                          </span>
-                        </button>
-                      )}
+                          <GoogleMapsIcon className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                        </a>
+
+                        {/* Tombol Lihat Detail */}
+                        {onSelectSpot && (
+                          <button
+                            type="button"
+                            onClick={() => onSelectSpot(spot)}
+                            className="h-8 px-2.5 rounded-lg bg-[#003466] hover:bg-[#1a4b84] active:bg-[#002144] text-white text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1 shadow-xs hover:shadow-sm shrink-0"
+                          >
+                            <span>Lihat Detail</span>
+                            <span className="material-symbols-outlined text-[14px]">
+                              arrow_forward
+                            </span>
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </Popup>

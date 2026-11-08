@@ -1,11 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useSyncExternalStore } from "react";
 import type { Spot } from "@/lib/mock-data";
 import dynamic from "next/dynamic";
 import { formatRupiah, formatDate } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
 import { useDemo, createDemoBooking, today } from "@/lib/demo-store";
+
+const emptySubscribe = () => () => { };
 
 // Dynamic import InteractiveMap buatan rekan tim (mencegah error window is not defined)
 const InteractiveMap = dynamic(
@@ -22,13 +24,21 @@ const InteractiveMap = dynamic(
 
 interface DetailSpotViewProps {
   spot?: Spot;
+  initialTab?: "detail" | "operasional" | "fasilitas" | "ulasan";
   onBack: () => void;
   onLogin: () => void;
   onOrders: () => void;
   onShowToast: (toast: Omit<ToastMessage, "id">) => void;
 }
 
-export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShowToast }: DetailSpotViewProps) {
+export default function DetailSpotView({
+  spot,
+  initialTab = "detail",
+  onBack,
+  onLogin,
+  onOrders,
+  onShowToast,
+}: DetailSpotViewProps) {
   const { user } = useDemo();
 
   // State Form Booking & Pendaftaran Penjual (Jobdesk FE 3)
@@ -41,20 +51,22 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
   const [metodePembayaran, setMetodePembayaran] = useState("qris");
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   // State Alur Pembayaran Interaktif
   const [showPaymentStep, setShowPaymentStep] = useState(false); // Modal Barcode QRIS & Token
   const [bookingSuccess, setBookingSuccess] = useState(false);   // Ringkasan Halaman Sukses
   const [reservationId, setReservationId] = useState("");
-  
-  const [activeTab, setActiveTab] = useState<"detail" | "operasional" | "fasilitas" | "ulasan">("detail");
+
+  const [activeTab, setActiveTab] = useState<"detail" | "operasional" | "fasilitas" | "ulasan">(initialTab);
+  const [prevInitialTab, setPrevInitialTab] = useState(initialTab);
+  if (prevInitialTab !== initialTab) {
+    setPrevInitialTab(initialTab);
+    setActiveTab(initialTab);
+  }
   const [imgError, setImgError] = useState(false);
 
   // Client-side rendering flag untuk InteractiveMap Leaflet
-  const [isMounted, setIsMounted] = useState(false);
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
+  const isMounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
 
   // GUARD CLAUSE: Mencegah error jika spot belum dikirim dari parent component
   if (!spot) {
@@ -79,7 +91,7 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
   const jadwalList = spot.jadwalOperasional || [];
 
   // Perhitungan Tarif & Durasi
-  const tarif = spot.tarifPerHari || (spot as any).hargaPerHari || 160000;
+  const tarif = spot.tarifPerHari || 160000;
   const totalBayar = tarif * selectedDays;
 
   const endDate = new Date((startDate || today()) + "T00:00:00Z");
@@ -151,7 +163,7 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
         jenisUsaha,
         catatan: catatanTambahan,
         metodePembayaran,
-        ...( { namaUsaha, kategoriPenjual } as any )
+        ...({ namaUsaha, kategoriPenjual } as Record<string, unknown>)
       });
 
       setShowPaymentStep(false);
@@ -163,8 +175,8 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
       });
     } catch (error) {
       onShowToast({ type: "error", message: error instanceof Error ? error.message : "Pengajuan gagal disimpan" });
-    } finally { 
-      setIsSubmitting(false); 
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -323,7 +335,7 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
             <div className="relative h-64 md:h-80 w-full rounded-2xl overflow-hidden bg-[#eaedff] shadow-sm">
               {!imgError ? (
                 <img
-                  src={spot.gambar || (spot as any).gambarUrl}
+                  src={spot.gambar}
                   alt={spot.nama}
                   className="w-full h-full object-cover"
                   onError={() => setImgError(true)}
@@ -337,13 +349,12 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
 
               {/* Status Badge */}
               <div className="absolute top-4 left-4">
-                <span className={`px-3 py-1 rounded-full text-[12px] font-bold uppercase tracking-wide shadow-sm ${
-                  spot.status === "tersedia"
+                <span className={`px-3 py-1 rounded-full text-[12px] font-bold uppercase tracking-wide shadow-sm ${spot.status === "tersedia"
                     ? "bg-[#6ffbbe] text-[#002113]"
                     : spot.status === "dipesan"
-                    ? "bg-[#ffddb8] text-[#2a1700]"
-                    : "bg-[#e2e7ff] text-[#424750]"
-                }`}>
+                      ? "bg-[#ffddb8] text-[#2a1700]"
+                      : "bg-[#e2e7ff] text-[#424750]"
+                  }`}>
                   {spot.status === "tersedia" ? "Tersedia" : spot.status === "dipesan" ? "Sedang Dipesan" : "Pemeliharaan"}
                 </span>
               </div>
@@ -354,7 +365,7 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
                   <span className="material-symbols-outlined text-[#fea619] text-[14px]">star</span>
                   <span className="text-white text-[13px] font-semibold">{spot.rating}</span>
                 </div>
-                <span className="text-white/80 text-[12px]">{spot.totalSewa || (spot as any).jumlahSewa || 0} kali disewa</span>
+                <span className="text-white/80 text-[12px]">{spot.totalSewa || 0} kali disewa</span>
               </div>
             </div>
 
@@ -384,12 +395,11 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
                 ].map((tab) => (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id as any)}
-                    className={`px-4 py-2.5 text-[13px] font-semibold border-b-2 transition-all capitalize shrink-0 ${
-                      activeTab === tab.id
+                    onClick={() => setActiveTab(tab.id as "detail" | "operasional" | "fasilitas" | "ulasan")}
+                    className={`px-4 py-2.5 text-[13px] font-semibold border-b-2 transition-all capitalize shrink-0 ${activeTab === tab.id
                         ? "border-[#003466] text-[#003466]"
                         : "border-transparent text-[#424750] hover:text-[#131b2e]"
-                    }`}
+                      }`}
                   >
                     {tab.label}
                   </button>
@@ -425,10 +435,10 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {[
-                    { icon: "aspect_ratio", label: "Ukuran", value: spot.ukuranLabel || (spot as any).ukuran },
-                    { icon: "bolt", label: "Daya Listrik", value: `${spot.daya || (spot as any).dayaListrik || 1300} Watt` },
+                    { icon: "aspect_ratio", label: "Ukuran", value: spot.ukuranLabel || spot.ukuran },
+                    { icon: "bolt", label: "Daya Listrik", value: `${spot.daya || 1300} Watt` },
                     { icon: "payments", label: "Tarif/Hari", value: formatRupiah(tarif) },
-                    { icon: "event_available", label: "Total Sewa", value: `${spot.totalSewa || (spot as any).jumlahSewa || 0}× disewa` },
+                    { icon: "event_available", label: "Total Sewa", value: `${spot.totalSewa || 0}× disewa` },
                   ].map((spec) => (
                     <div key={spec.label} className="bg-[#f2f3ff] rounded-xl p-3.5 flex flex-col gap-1">
                       <span className="material-symbols-outlined text-[#003466] text-[20px]">{spec.icon}</span>
@@ -524,11 +534,11 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
                   { label: "CCTV Keamanan", included: true },
                 ].filter((item, index, arr) => arr.findIndex(i => i.label === item.label) === index)
                   .map((facility) => (
-                  <div key={facility.label} className="flex items-center gap-3 p-3.5 rounded-xl border bg-white border-[#e2e7ff]">
-                    <span className="material-symbols-outlined text-[#003466] text-[18px]">check_circle</span>
-                    <span className="text-[13px] font-medium text-[#131b2e]">{facility.label}</span>
-                  </div>
-                ))}
+                    <div key={facility.label} className="flex items-center gap-3 p-3.5 rounded-xl border bg-white border-[#e2e7ff]">
+                      <span className="material-symbols-outlined text-[#003466] text-[18px]">check_circle</span>
+                      <span className="text-[13px] font-medium text-[#131b2e]">{facility.label}</span>
+                    </div>
+                  ))}
               </div>
             )}
 
@@ -567,9 +577,8 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
                     <span className="text-[13px] text-[#737781] font-normal"> / hari</span>
                   </div>
                 </div>
-                <div className={`px-3 py-1 rounded-full text-[12px] font-bold ${
-                  spot.status === "tersedia" ? "bg-[#6ffbbe] text-[#002113]" : "bg-[#ffddb8] text-[#2a1700]"
-                }`}>
+                <div className={`px-3 py-1 rounded-full text-[12px] font-bold ${spot.status === "tersedia" ? "bg-[#6ffbbe] text-[#002113]" : "bg-[#ffddb8] text-[#2a1700]"
+                  }`}>
                   {spot.status === "tersedia" ? "✓ Tersedia" : "Dipesan"}
                 </div>
               </div>
@@ -581,7 +590,7 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
                 </div>
               ) : spot.status !== "pemeliharaan" ? (
                 <div className="space-y-4">
-                  
+
                   {/* Jobdesk FE 3: Kategori Penjual */}
                   <div>
                     <label className="block text-[12px] font-semibold text-[#424750] mb-1.5 uppercase tracking-wide">
@@ -591,22 +600,20 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
                       <button
                         type="button"
                         onClick={() => setKategoriPenjual("Mahasiswa Wirausaha")}
-                        className={`py-2 text-[11px] font-bold rounded-lg border transition-all ${
-                          kategoriPenjual === "Mahasiswa Wirausaha"
+                        className={`py-2 text-[11px] font-bold rounded-lg border transition-all ${kategoriPenjual === "Mahasiswa Wirausaha"
                             ? "bg-[#003466] text-white border-[#003466]"
                             : "bg-[#f2f3ff] text-[#424750] border-[#e2e7ff]"
-                        }`}
+                          }`}
                       >
                         Mahasiswa Wirausaha
                       </button>
                       <button
                         type="button"
                         onClick={() => setKategoriPenjual("UMKM Umum")}
-                        className={`py-2 text-[11px] font-bold rounded-lg border transition-all ${
-                          kategoriPenjual === "UMKM Umum"
+                        className={`py-2 text-[11px] font-bold rounded-lg border transition-all ${kategoriPenjual === "UMKM Umum"
                             ? "bg-[#003466] text-white border-[#003466]"
                             : "bg-[#f2f3ff] text-[#424750] border-[#e2e7ff]"
-                        }`}
+                          }`}
                       >
                         UMKM Umum
                       </button>
@@ -651,11 +658,10 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
                       value={startDate}
                       onChange={(e) => setStartDate(e.target.value)}
                       min={today()}
-                      className={`w-full h-10 px-3 text-[14px] rounded-lg outline-none transition-all ${
-                        isConflicted
+                      className={`w-full h-10 px-3 text-[14px] rounded-lg outline-none transition-all ${isConflicted
                           ? "bg-red-50 text-red-900 border border-red-500"
                           : "bg-[#f2f3ff] text-[#131b2e] focus:bg-white focus:ring-2 focus:ring-[#003466]/20"
-                      }`}
+                        }`}
                     />
                   </div>
 
@@ -730,11 +736,10 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
                           key={method.id}
                           type="button"
                           onClick={() => setMetodePembayaran(method.id)}
-                          className={`px-3 py-2 rounded-lg text-[12px] font-semibold transition-all border ${
-                            metodePembayaran === method.id
+                          className={`px-3 py-2 rounded-lg text-[12px] font-semibold transition-all border ${metodePembayaran === method.id
                               ? "bg-[#003466] text-white border-[#003466]"
                               : "bg-[#f2f3ff] text-[#424750] border-[#e2e7ff] hover:bg-[#eaedff]"
-                          }`}
+                            }`}
                         >
                           {method.label}
                         </button>
@@ -794,11 +799,10 @@ export default function DetailSpotView({ spot, onBack, onLogin, onOrders, onShow
                   <button
                     onClick={handleOpenPayment}
                     disabled={spot.status === "dipesan" || isConflicted}
-                    className={`w-full h-12 rounded-xl text-[14px] font-bold transition-all flex items-center justify-center gap-2 ${
-                      spot.status === "dipesan" || isConflicted
+                    className={`w-full h-12 rounded-xl text-[14px] font-bold transition-all flex items-center justify-center gap-2 ${spot.status === "dipesan" || isConflicted
                         ? "bg-[#eaedff] text-[#737781] cursor-not-allowed"
                         : "bg-[#003466] text-white hover:bg-[#1a4b84] shadow-md hover:shadow-lg"
-                    }`}
+                      }`}
                   >
                     <span className="material-symbols-outlined text-[18px]">payments</span>
                     <span>Lanjut ke Pembayaran →</span>

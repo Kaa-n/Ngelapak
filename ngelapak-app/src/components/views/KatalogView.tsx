@@ -4,7 +4,6 @@ import { useState, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { KatalogHero } from "@/components/katalog";
 import type { ZonaFilter, UkuranFilter, SortOption } from "@/components/katalog";
-import Footer from "@/components/ui-custom/Footer";
 import { MOCK_SPOTS } from "@/lib/mock-data";
 import type { Spot } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
@@ -213,11 +212,6 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
           </div>
         )}
       </div>
-
-      {/* ========================================================
-          3. FOOTER RESMI KAMPUS
-          ======================================================== */}
-      <Footer />
     </div>
   );
 }
