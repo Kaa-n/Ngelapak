@@ -6,9 +6,13 @@ import { formatRupiah } from "@/lib/mock-data";
 
 interface SpotCardProps {
   spot: Spot;
-  onViewDetail: (spot: Spot) => void;
+  onViewDetail: (spot: Spot, initialTab?: "detail" | "operasional" | "fasilitas" | "ulasan") => void;
   onViewProducts?: (spot: Spot) => void;
   variant?: "default" | "home";
+  badgeText?: string;
+  badgeColor?: { bg: string; text: string };
+  scheduleDate?: string;
+  initialTab?: "detail" | "operasional" | "fasilitas" | "ulasan";
 }
 
 const STATUS_CONFIG = {
@@ -41,6 +45,10 @@ export default function SpotCard({
   onViewDetail,
   onViewProducts,
   variant = "default",
+  badgeText,
+  badgeColor,
+  scheduleDate,
+  initialTab,
 }: SpotCardProps) {
   const [imgError, setImgError] = useState(false);
   const status = STATUS_CONFIG[spot.status];
@@ -54,72 +62,125 @@ export default function SpotCard({
   ];
   const gradient = gradients[spot.id.charCodeAt(spot.id.length - 1) % gradients.length];
 
-    // Tampilan khusus Beranda
+  // Tampilan khusus Beranda
   if (variant === "home") {
     return (
-      <div className="bg-white rounded-xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-[#e2e7ff]/60">
-        {/* Image */}
-        <div className="relative h-44 w-full overflow-hidden bg-[#eaedff]">
-          {!imgError ? (
-            <img
-              src={spot.gambar}
-              alt={spot.nama}
-              className="w-full h-full object-cover"
-              onError={() => setImgError(true)}
-            />
-          ) : (
-            <div
-              className={`w-full h-full bg-gradient-to-br ${gradient} flex items-center justify-center`}
-            >
-              <span className="material-symbols-outlined text-white/40 text-[64px]">
-                storefront
+      <div className="bg-white rounded-xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-[#e2e7ff]/60 flex flex-col justify-between h-full">
+        <div>
+          {/* Image */}
+          <div
+            className="relative h-44 w-full overflow-hidden bg-[#eaedff] cursor-pointer group"
+            onClick={() => onViewDetail(spot, initialTab ?? "operasional")}
+          >
+            {!imgError ? (
+              <img
+                src={spot.gambar}
+                alt={spot.nama}
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                onError={() => setImgError(true)}
+              />
+            ) : (
+              <div
+                className={`w-full h-full bg-gradient-to-br ${gradient} flex items-center justify-center`}
+              >
+                <span className="material-symbols-outlined text-white/40 text-[64px]">
+                  storefront
+                </span>
+              </div>
+            )}
+
+            {/* Overlay */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
+
+            {/* Kode Spot */}
+            <div className="absolute top-3 left-3 flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/90 backdrop-blur-sm shadow-sm">
+              <span className="material-symbols-outlined text-[#003466] text-[14px]">
+                pin_drop
+              </span>
+              <span className="text-[#003466] text-[12px] font-semibold">
+                {spot.kode}
               </span>
             </div>
-          )}
 
-          {/* Overlay */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
+            {/* Badge Status Operasional */}
+            {badgeText && (
+              <span
+                className={`absolute top-3 right-3 px-2.5 py-1 rounded-full ${
+                  badgeColor?.bg ?? "bg-[#e2fced]"
+                } ${
+                  badgeColor?.text ?? "text-[#003c27]"
+                } text-[11px] font-bold tracking-wide shadow-sm flex items-center gap-1.5`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                <span>{badgeText}</span>
+              </span>
+            )}
+          </div>
 
-          {/* Kode Spot */}
-          <div className="absolute top-3 left-3 flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/90 backdrop-blur-sm shadow-sm">
-            <span className="material-symbols-outlined text-[#003466] text-[14px]">
-              pin_drop
-            </span>
-            <span className="text-[#003466] text-[12px] font-semibold">
-              {spot.kode}
-            </span>
+          {/* Content */}
+          <div className="p-4">
+            {/* Nama Lapak */}
+            <h3
+              onClick={() => onViewDetail(spot, initialTab ?? "operasional")}
+              className="text-[17px] font-bold text-[#131b2e] mb-2 leading-snug cursor-pointer hover:text-[#003466] transition-colors"
+            >
+              {spot.nama}
+            </h3>
+
+            {/* Lokasi */}
+            <div className="flex items-start gap-1.5 text-[12px] text-[#424750] mb-2">
+              <span className="material-symbols-outlined text-[16px] text-[#003466] shrink-0 mt-0.5">
+                location_on
+              </span>
+              <span className="line-clamp-1">{spot.lokasi}</span>
+            </div>
+
+            {/* Deskripsi / Jenis Usaha */}
+            <div className="flex items-center justify-between gap-1.5 text-[12px] text-[#424750] mb-3">
+              <div className="flex items-center gap-1.5 overflow-hidden">
+                <span className="material-symbols-outlined text-[16px] text-[#003466] shrink-0">
+                  restaurant
+                </span>
+                <span className="line-clamp-1">{spot.jenisUsaha || "Kuliner & Stan Mahasiswa"}</span>
+              </div>
+              {onViewProducts && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onViewProducts(spot);
+                  }}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#003466] hover:text-[#1a4b84] hover:underline cursor-pointer shrink-0"
+                  title="Lihat dokumen informasi dan deskripsi menu lapak"
+                >
+                  <span className="material-symbols-outlined text-[14px]">
+                    description
+                  </span>
+                  <span>Deskripsi Menu</span>
+                </button>
+              )}
+            </div>
+
+            {/* Informasi Tanggal Operasional */}
+            {scheduleDate && (
+              <div className="flex items-center gap-2 text-[12px] text-[#003466] font-semibold bg-[#eef2f9] px-2.5 py-1.5 rounded-lg mb-3 border border-[#d5e3ff]">
+                <span className="material-symbols-outlined text-[16px] text-[#855300] shrink-0">
+                  calendar_month
+                </span>
+                <span className="line-clamp-1">Jadwal: {scheduleDate}</span>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Content */}
-        <div className="p-4">
-          {/* Nama Lapak */}
-          <h3 className="text-[17px] font-bold text-[#131b2e] mb-2 leading-snug">
-            {spot.nama}
-          </h3>
-
-          {/* Lokasi */}
-          <div className="flex items-start gap-1.5 text-[12px] text-[#424750] mb-2">
-            <span className="material-symbols-outlined text-[16px] text-[#003466]">
-              location_on
-            </span>
-            <span>{spot.lokasi}</span>
-          </div>
-
-          {/* Deskripsi / Jenis Usaha */}
-          <div className="flex items-start gap-1.5 text-[12px] text-[#424750] mb-4">
-            <span className="material-symbols-outlined text-[16px] text-[#003466]">
-              restaurant
-            </span>
-            <span>{spot.jenisUsaha}</span>
-          </div>
-
-          {/* Button */}
+        {/* Button: "Lihat Detail" */}
+        <div className="p-4 pt-0">
           <button
             type="button"
-            className="w-full h-10 rounded-lg bg-[#003466] hover:bg-[#1a4b84] text-white text-[13px] font-semibold transition-colors flex items-center justify-center gap-1.5"
+            onClick={() => onViewDetail(spot, initialTab ?? "operasional")}
+            className="w-full h-10 rounded-lg bg-[#003466] hover:bg-[#1a4b84] active:bg-[#002144] text-white text-[13px] font-semibold transition-all duration-150 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs hover:shadow-md"
           >
-            <span>Lihat Produk</span>
+            <span>Lihat Detail</span>
             <span className="material-symbols-outlined text-[16px]">
               arrow_forward
             </span>

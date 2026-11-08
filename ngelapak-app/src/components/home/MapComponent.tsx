@@ -39,10 +39,11 @@ export default function MapComponent({
   return (
     <div className={`w-full ${className}`}>
       <InteractiveMap
-      spots={spots}
-      defaultStatus={defaultStatus}
-      onSelectSpot={onSelectSpot}
-      className={className}
+        spots={spots}
+        defaultStatus={defaultStatus}
+        onSelectSpot={onSelectSpot}
+        className={className}
+        context={context}
       />
     </div>
   );

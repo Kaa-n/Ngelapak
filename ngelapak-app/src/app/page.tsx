@@ -8,6 +8,7 @@ import DasborView from "../components/views/DasborView";
 import VerifikasiView from "../components/views/VerifikasiView";
 import Navbar from "../components/layout/Navbar";
 import MobileNav from "../components/layout/MobileNav";
+import Footer from "../components/ui-custom/Footer";
 import Toast from "../components/ui-custom/Toast";
 import MasukView from "../components/views/MasukView";
 import PesananView from "../components/views/PesananView";
@@ -40,15 +41,17 @@ function DemoHome() {
   // Default tampilan awal saat aplikasi dibuka: "home" (Halaman Home / Beranda)
   const [currentView, setCurrentView] = useState<PageView>("home");
   const [selectedSpot, setSelectedSpot] = useState<Spot>(MOCK_SPOTS[0]);
+  const [detailInitialTab, setDetailInitialTab] = useState<"detail" | "operasional" | "fasilitas" | "ulasan">("detail");
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  const navigate = useCallback((view: PageView, spot?: Spot) => {
+  const navigate = useCallback((view: PageView, spot?: Spot, initialTab?: "detail" | "operasional" | "fasilitas" | "ulasan") => {
     if (!canAccess(view, user?.role)) {
       setCurrentView(user ? "katalog" : "masuk");
       return;
     }
     setCurrentView(view);
     if (spot) setSelectedSpot(spot);
+    setDetailInitialTab(initialTab ?? "detail");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [user]);
 
@@ -83,7 +86,7 @@ function DemoHome() {
         {currentView === "home" && (
           <HomeView
             onNavigateToKatalog={() => navigate("katalog")}
-            onNavigateToDetail={(spot) => navigate("detail", spot)}
+            onNavigateToDetail={(spot, initialTab) => navigate("detail", spot, initialTab)}
             onShowToast={showToast}
           />
         )}
@@ -100,14 +103,15 @@ function DemoHome() {
         )}
         {currentView === "katalog" && (
           <KatalogView
-            onNavigateToDetail={(spot) => navigate("detail", spot)}
+            onNavigateToDetail={(spot) => navigate("detail", spot, "detail")}
             onShowToast={showToast}
           />
         )}
         {currentView === "detail" && (
           <DetailSpotView
-            key={`${selectedSpot.id}-${user?.id ?? "guest"}`}
+            key={`${selectedSpot.id}-${user?.id ?? "guest"}-${detailInitialTab}`}
             spot={selectedSpot || MOCK_SPOTS[0]}
+            initialTab={detailInitialTab}
             onBack={() => navigate("katalog")}
             onLogin={() => navigate("masuk")}
             onOrders={() => navigate("pesanan")}
@@ -121,6 +125,9 @@ function DemoHome() {
           <VerifikasiView onShowToast={showToast} />
         )}
       </main>
+
+      {/* Global Footer untuk Seluruh Halaman */}
+      <Footer />
 
       {/* Mobile Bottom Navigation */}
       <MobileNav

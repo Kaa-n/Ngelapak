@@ -16,7 +16,7 @@ export interface HomeViewProps {
   /**
    * Callback untuk membuka detail suatu spot tertentu saat kartu lapak diklik.
    */
-  onNavigateToDetail?: (spot: Spot) => void;
+  onNavigateToDetail?: (spot: Spot, initialTab?: "detail" | "operasional" | "fasilitas" | "ulasan") => void;
 
   /**
    * Callback untuk menampilkan notifikasi toast (opsional).
@@ -126,6 +126,7 @@ export default function HomeView({
             4. PANDUAN CARA SEWA CEPAT 
             ======================================================== */}
         <section
+          id="cara-sewa-section"
           aria-labelledby="how-it-works-heading"
           className="bg-white rounded-3xl p-6 sm:p-8 md:p-10 border border-[#e2e7ff] shadow-sm"
         >
