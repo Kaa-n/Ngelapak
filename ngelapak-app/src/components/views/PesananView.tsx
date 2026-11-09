@@ -1,17 +1,51 @@
 "use client";
 
 import { useState } from "react";
-import { useDemo } from "@/lib/demo-store";
+import { cancelDemoBooking, useDemo } from "@/lib/demo-store";
 import { formatDate, formatRupiah } from "@/lib/mock-data";
 import type { Booking } from "@/lib/mock-data";
+import type { ToastMessage } from "@/lib/types";
 
 export default function PesananView({
   onExplore,
+  onShowToast,
 }: {
   onExplore: () => void;
+  onShowToast: (toast: Omit<ToastMessage, "id">) => void;
 }) {
   const { user, bookings } = useDemo();
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
+
+  const canCancel = (booking: Booking) =>
+    booking.status !== "dibatalkan" &&
+    booking.status !== "selesai" &&
+    booking.tanggalMulai >= new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Makassar",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+  const confirmCancellation = () => {
+    if (!cancelTarget) return;
+    try {
+      cancelDemoBooking(cancelTarget.id);
+      setSelectedBooking(null);
+      onShowToast({
+        type: "success",
+        message: "Pesanan berhasil dibatalkan",
+        description: `Pesanan ${cancelTarget.id} tidak lagi memblokir jadwal lapak.`,
+      });
+    } catch (error) {
+      onShowToast({
+        type: "error",
+        message: error instanceof Error ? error.message : "Pembatalan pesanan gagal",
+      });
+    } finally {
+      setCancelTarget(null);
+    }
+  };
 
   if (user?.role !== "penyewa") return null;
 
@@ -181,10 +215,10 @@ export default function PesananView({
 
               <span
                 className={`h-fit text-xs rounded-full px-3 py-1.5 font-semibold border ${getVerificationStyle(
-                  booking.statusVerifikasi,
+                  booking.status === "dibatalkan" ? "ditolak" : booking.statusVerifikasi,
                 )}`}
               >
-                {getVerificationLabel(booking.statusVerifikasi)}
+                {booking.status === "dibatalkan" ? "Dibatalkan" : getVerificationLabel(booking.statusVerifikasi)}
               </span>
             </div>
 
@@ -234,12 +268,22 @@ export default function PesananView({
                 Status: {getBookingStatusLabel(booking.status)}
               </span>
 
-              <button
-                onClick={() => setSelectedBooking(booking)}
-                className="text-sm font-semibold text-[#003466] hover:text-[#0061a8] transition-colors"
-              >
-                Lihat detail →
-              </button>
+              <div className="flex items-center gap-4">
+                {canCancel(booking) && (
+                  <button
+                    onClick={() => setCancelTarget(booking)}
+                    className="text-sm font-semibold text-red-700 hover:text-red-900 transition-colors"
+                  >
+                    Batalkan pesanan
+                  </button>
+                )}
+                <button
+                  onClick={() => setSelectedBooking(booking)}
+                  className="text-sm font-semibold text-[#003466] hover:text-[#0061a8] transition-colors"
+                >
+                  Lihat detail →
+                </button>
+              </div>
             </div>
           </article>
         ))}
@@ -295,12 +339,12 @@ export default function PesananView({
 
                 <span
                   className={`text-xs rounded-full px-3 py-1.5 font-semibold border ${getVerificationStyle(
-                    selectedBooking.statusVerifikasi,
+                    selectedBooking.status === "dibatalkan" ? "ditolak" : selectedBooking.statusVerifikasi,
                   )}`}
                 >
-                  {getVerificationLabel(
-                    selectedBooking.statusVerifikasi,
-                  )}
+                  {selectedBooking.status === "dibatalkan"
+                    ? "Dibatalkan"
+                    : getVerificationLabel(selectedBooking.statusVerifikasi)}
                 </span>
               </div>
 
@@ -439,6 +483,42 @@ export default function PesananView({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {cancelTarget && (
+        <div
+          className="fixed inset-0 z-[110] bg-black/50 flex items-center justify-center p-4"
+          onClick={() => setCancelTarget(null)}
+        >
+          <section
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="cancel-booking-title"
+            className="bg-white w-full max-w-md rounded-2xl shadow-xl p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="cancel-booking-title" className="text-lg font-bold">
+              Batalkan pesanan?
+            </h2>
+            <p className="text-sm text-[#424750] mt-2">
+              Pesanan untuk <strong>{cancelTarget.spotNama}</strong> pada {formatDate(cancelTarget.tanggalMulai)} akan dibatalkan. Lapak dapat dipesan kembali untuk tanggal tersebut.
+            </p>
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setCancelTarget(null)}
+                className="px-4 py-2 rounded-lg border border-[#d5dbea] text-sm font-semibold"
+              >
+                Kembali
+              </button>
+              <button
+                onClick={confirmCancellation}
+                className="px-4 py-2 rounded-lg bg-red-700 hover:bg-red-800 text-white text-sm font-semibold"
+              >
+                Ya, batalkan
+              </button>
+            </div>
+          </section>
         </div>
       )}
     </div>
