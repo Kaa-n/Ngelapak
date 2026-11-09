@@ -1,14 +1,37 @@
 // Shared types for Ngelapak prototype
 // Separated from page.tsx to avoid circular imports
 
-export type PageView = "home" | "katalog" | "detail" | "dasbor" | "verifikasi" | "pesanan" | "masuk";
+export type PageView =
+  | "home"
+  | "katalog"
+  | "detail"
+  | "dasbor"
+  | "verifikasi"
+  | "pesanan"
+  | "masuk"
+  | "edit-profile";
 
 export type Role = "admin" | "penyewa";
-export interface DemoUser { id: string; nama: string; email: string; role: Role }
+export interface DemoUser {
+  id: string;
+  nama: string;
+  email: string;
+  role: Role;
+}
 
 export function canAccess(view: PageView, role?: Role) {
-  if (view === "dasbor" || view === "verifikasi") return role === "admin";
-  if (view === "pesanan") return role === "penyewa";
+  if (view === "dasbor" || view === "verifikasi") {
+    return role === "admin";
+  }
+
+  if (view === "pesanan") {
+    return role === "penyewa";
+  }
+
+  if (view === "edit-profile") {
+    return role !== undefined;
+  }
+
   return true;
 }
 
