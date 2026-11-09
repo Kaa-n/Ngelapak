@@ -99,7 +99,10 @@ function DemoHome() {
           />
         )}
         {currentView === "pesanan" && user?.role === "penyewa" && (
-          <PesananView onExplore={() => navigate("katalog")} />
+          <PesananView
+            onExplore={() => navigate("katalog")}
+            onShowToast={showToast}
+          />
         )}
         {currentView === "katalog" && (
           <KatalogView
