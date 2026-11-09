@@ -821,3 +821,47 @@ export const MOCK_PRODUCTS: Product[] = [
     deskripsi: "Teh manis dingin yang menyegarkan.",
   },
 ];
+
+/**
+ * Menghasilkan teks deskripsi produk default dari data spot dan daftar produknya.
+ * Digunakan sebagai konten awal modal Deskripsi Produk sebelum penyewa mengisinya.
+ */
+export function buildDefaultCaption(spot: Spot): string {
+  const products = MOCK_PRODUCTS.filter((p) => p.spotId === spot.id);
+
+  const lines: string[] = [];
+
+  // Deskripsi utama lapak
+  lines.push(`📍 ${spot.nama} (${spot.kode})`);
+  lines.push(`Lokasi: ${spot.lokasi}`);
+  if (spot.jenisUsaha) lines.push(`Jenis Usaha: ${spot.jenisUsaha}`);
+  lines.push("");
+  lines.push(spot.deskripsi);
+
+  if (products.length > 0) {
+    lines.push("");
+    lines.push("--- MENU & PRODUK ---");
+
+    // Kelompokkan per kategori
+    const byCategory: Record<string, Product[]> = {};
+    for (const p of products) {
+      if (!byCategory[p.kategori]) byCategory[p.kategori] = [];
+      byCategory[p.kategori].push(p);
+    }
+
+    for (const [cat, items] of Object.entries(byCategory)) {
+      lines.push(`\n${cat}:`);
+      for (const item of items) {
+        lines.push(`  • ${item.nama} — Rp ${item.harga.toLocaleString("id-ID")}${item.deskripsi ? `\n    ${item.deskripsi}` : ""}`);
+      }
+    }
+  }
+
+  lines.push("");
+  lines.push("--- INFORMASI TAMBAHAN ---");
+  lines.push(`Fasilitas: ${spot.fasilitas.join(", ")}`);
+  lines.push(`Ukuran: ${spot.ukuranLabel} | Daya: ${spot.daya}W`);
+  lines.push(`Tarif: Rp ${spot.tarifPerHari.toLocaleString("id-ID")}/hari`);
+
+  return lines.join("\n");
+}

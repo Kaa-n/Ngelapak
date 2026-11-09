@@ -348,14 +348,14 @@ export function createDemoBooking(input: {
 
   // Ambil profil penyewa berdasarkan email akun yang sedang login.
   const fixture =
-  MOCK_BOOKINGS.find(
-    (booking) => booking.ownerId === user.id,
-  ) ??
-  MOCK_BOOKINGS.find(
-    (booking) =>
-      booking.penyewa.email.toLowerCase() ===
-      DEMO_USERS.find((item) => item.id === user.id)?.email.toLowerCase(),
-  );
+    MOCK_BOOKINGS.find(
+      (booking) => booking.ownerId === user.id,
+    ) ??
+    MOCK_BOOKINGS.find(
+      (booking) =>
+        booking.penyewa.email.toLowerCase() ===
+        DEMO_USERS.find((item) => item.id === user.id)?.email.toLowerCase(),
+    );
 
   if (!fixture) {
     throw new Error(
@@ -402,7 +402,7 @@ export function canCancelBooking(booking: Booking, now = Date.now()) {
 
 export function cancelDemoBooking(
   id: string,
-  input: {
+  input?: {
     nama: string;
     nim: string;
     telepon: string;
@@ -424,22 +424,23 @@ export function cancelDemoBooking(
     throw new Error("Pembatalan hanya tersedia dalam 1x24 jam sebelum admin memverifikasi.");
   }
 
-  const nama = input.nama.trim();
-  const nim = input.nim.trim();
-  const telepon = input.telepon.trim();
-  const bank = input.bank.trim();
-  const nomorRekening = input.nomorRekening.trim();
-  const namaRekening = input.namaRekening.trim();
-  const alasan = input.alasan.trim();
+  if (input !== undefined) {
+    const nama = input.nama.trim();
+    const nim = input.nim.trim();
+    const telepon = input.telepon.trim();
+    const bank = input.bank.trim();
+    const nomorRekening = input.nomorRekening.trim();
+    const namaRekening = input.namaRekening.trim();
+    const alasan = input.alasan.trim();
 
-  if (!nama || !nim || !telepon || !bank || !nomorRekening || !namaRekening || !alasan) {
-    throw new Error("Lengkapi identitas, rekening, dan alasan pembatalan.");
-  }
+    if (!nama || !nim || !telepon || !bank || !nomorRekening || !namaRekening || !alasan) {
+      throw new Error("Lengkapi identitas, rekening, dan alasan pembatalan.");
+    }
 
-  save(
-    bookings.map((item) =>
-      item.id === id
-        ? {
+    save(
+      bookings.map((item) =>
+        item.id === id
+          ? {
             ...item,
             status: "dibatalkan",
             pembatalan: {
@@ -453,40 +454,17 @@ export function cancelDemoBooking(
               diajukanPada: new Date().toISOString(),
             },
           }
-        : item,
-    ),
-  );
+          : item,
+      ),
+    );
+  } else {
+    save(bookings.map((item) =>
+      item.id === id ? { ...item, status: "dibatalkan" } : item,
+    ));
+  }
 }
 
-// ============================================================
-// CANCEL BOOKING
-// ============================================================
 
-export function cancelDemoBooking(id: string) {
-  const user = requireRole("penyewa");
-  const bookings = parseBookings(read(BOOKINGS));
-  const booking = bookings.find((item) => item.id === id);
-
-  const belongsToUser = booking && (booking.ownerId
-    ? booking.ownerId === user.id
-    : booking.penyewa.email.toLowerCase() === user.email.toLowerCase());
-
-  if (!booking || !belongsToUser) {
-    throw new Error("Pesanan tidak ditemukan atau bukan milik Anda.");
-  }
-
-  if (
-    booking.status === "dibatalkan" ||
-    booking.status === "selesai" ||
-    booking.tanggalMulai < today()
-  ) {
-    throw new Error("Pesanan ini sudah tidak dapat dibatalkan.");
-  }
-
-  save(bookings.map((item) =>
-    item.id === id ? { ...item, status: "dibatalkan" } : item,
-  ));
-}
 
 // ============================================================
 // VERIFY BOOKING
@@ -519,13 +497,13 @@ export function verifyDemoBooking(
     bookings.map((booking) =>
       booking.id === id
         ? {
-            ...booking,
-            statusVerifikasi: status,
-            status:
-              status === "disetujui"
-                ? "aktif"
-                : "dibatalkan",
-          }
+          ...booking,
+          statusVerifikasi: status,
+          status:
+            status === "disetujui"
+              ? "aktif"
+              : "dibatalkan",
+        }
         : booking,
     ),
   );

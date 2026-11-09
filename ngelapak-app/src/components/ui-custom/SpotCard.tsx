@@ -119,13 +119,21 @@ export default function SpotCard({
 
           {/* Content */}
           <div className="p-4">
-            {/* Nama Lapak */}
+            {/* Nama Lapak — hyperlink ke Lihat Detail */}
             <h3
               onClick={() => onViewDetail(spot, initialTab ?? "operasional")}
-              className="text-[17px] font-bold text-[#131b2e] mb-2 leading-snug cursor-pointer hover:text-[#003466] transition-colors"
+              className="text-[17px] font-bold text-[#131b2e] mb-1 leading-snug cursor-pointer hover:text-[#003466] hover:underline transition-colors group-hover/card:text-[#003466]"
             >
               {spot.nama}
             </h3>
+            <button
+              type="button"
+              onClick={() => onViewDetail(spot, initialTab ?? "operasional")}
+              className="inline-flex items-center gap-0.5 text-[11px] text-[#003466] font-semibold hover:underline mb-2 cursor-pointer"
+            >
+              <span>Lihat Detail</span>
+              <span className="material-symbols-outlined text-[13px]">arrow_forward</span>
+            </button>
 
             {/* Lokasi */}
             <div className="flex items-start gap-1.5 text-[12px] text-[#424750] mb-2">
@@ -136,29 +144,11 @@ export default function SpotCard({
             </div>
 
             {/* Deskripsi / Jenis Usaha */}
-            <div className="flex items-center justify-between gap-1.5 text-[12px] text-[#424750] mb-3">
-              <div className="flex items-center gap-1.5 overflow-hidden">
-                <span className="material-symbols-outlined text-[16px] text-[#003466] shrink-0">
-                  restaurant
-                </span>
-                <span className="line-clamp-1">{spot.jenisUsaha || "Kuliner & Stan Mahasiswa"}</span>
-              </div>
-              {onViewProducts && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onViewDetail(spot, initialTab ?? "operasional");
-                  }}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#003466] hover:text-[#1a4b84] hover:underline cursor-pointer shrink-0"
-                  title="Lihat detail lapak"
-                >
-                  <span className="material-symbols-outlined text-[14px]">
-                    arrow_forward
-                  </span>
-                  <span>Lihat Detail</span>
-                </button>
-              )}
+            <div className="flex items-center gap-1.5 text-[12px] text-[#424750] mb-3">
+              <span className="material-symbols-outlined text-[16px] text-[#003466] shrink-0">
+                restaurant
+              </span>
+              <span className="line-clamp-1">{spot.jenisUsaha || "Kuliner & Stan Mahasiswa"}</span>
             </div>
 
             {/* Informasi Tanggal Operasional */}
@@ -174,20 +164,26 @@ export default function SpotCard({
         </div>
 
         <div className="p-4 pt-0">
-          <button
-            type="button"
-            onClick={() =>
-              onViewProducts
-                ? onViewProducts(spot)
-                : onViewDetail(spot, initialTab ?? "operasional")
-            }
-            className="w-full h-10 rounded-lg bg-[#003466] hover:bg-[#1a4b84] active:bg-[#002144] text-white text-[13px] font-semibold transition-all duration-150 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs hover:shadow-md"
-          >
-            <span>{onViewProducts ? "Deskripsi Produk" : "Lihat Detail"}</span>
-            <span className="material-symbols-outlined text-[16px]">
-              {onViewProducts ? "description" : "arrow_forward"}
-            </span>
-          </button>
+          {/* Tombol CTA: Deskripsi Produk (jika tersedia) atau fallback Lihat Detail */}
+          {onViewProducts ? (
+            <button
+              type="button"
+              onClick={() => onViewProducts(spot)}
+              className="w-full h-10 rounded-lg bg-[#003466] hover:bg-[#1a4b84] active:bg-[#002144] text-white text-[13px] font-semibold transition-all duration-150 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs hover:shadow-md"
+            >
+              <span className="material-symbols-outlined text-[16px]">description</span>
+              <span>Deskripsi Produk</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onViewDetail(spot, initialTab ?? "operasional")}
+              className="w-full h-10 rounded-lg bg-[#003466] hover:bg-[#1a4b84] active:bg-[#002144] text-white text-[13px] font-semibold transition-all duration-150 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs hover:shadow-md"
+            >
+              <span>Lihat Detail</span>
+              <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+            </button>
+          )}
         </div>
       </div>
     );
