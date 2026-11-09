@@ -67,7 +67,7 @@ export default function PesananView({
       case "menunggu":
         return "Menunggu verifikasi";
       case "disetujui":
-        return "Disetujui";
+        return "Berhasil";
       case "ditolak":
         return "Ditolak";
       default:
@@ -159,7 +159,7 @@ export default function PesananView({
         </div>
 
         <div className="bg-white border border-[#e2e7ff] rounded-xl p-4">
-          <p className="text-xs text-[#737781]">Disetujui</p>
+          <p className="text-xs text-[#737781]">Berhasil</p>
           <p className="text-2xl font-bold text-green-600 mt-1">
             {bookings.filter((b) => b.statusVerifikasi === "disetujui").length}
           </p>

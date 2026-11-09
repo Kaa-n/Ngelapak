@@ -15,6 +15,7 @@ const SESSION = "ngelapak-demo-session-v1";
 const BOOKINGS = "ngelapak-demo-bookings-v1";
 const EVENT = "ngelapak-demo-change";
 const PROFILES = "ngelapak-demo-profiles-v1";
+const PRODUCTS = "ngelapak-demo-produk-v1";
 
 type ProfileOverrides = Record<
   string,
@@ -227,6 +228,39 @@ export function updateDemoProfile(input: {
   window.dispatchEvent(new Event(EVENT));
 }
 
+function readProductMap(): Record<string, string> {
+  try {
+    const data = JSON.parse(read(PRODUCTS));
+    return data && typeof data === "object" ? data : {};
+  } catch {
+    return {};
+  }
+}
+
+export function readProductCaption(spotId: string) {
+  const text = readProductMap()[spotId];
+  return typeof text === "string" ? text : "";
+}
+
+export function saveProductCaption(spotId: string, text: string) {
+  const user = currentUser();
+
+  if (user?.role !== "penyewa") {
+    throw new Error("Hanya penyewa yang dapat mengubah deskripsi produk.");
+  }
+
+  const captions = readProductMap();
+  captions[spotId] = text.trim();
+
+  try {
+    localStorage.setItem(PRODUCTS, JSON.stringify(captions));
+  } catch {
+    throw new Error("Deskripsi produk gagal disimpan di browser.");
+  }
+
+  window.dispatchEvent(new Event(EVENT));
+}
+
 // ============================================================
 // LOGOUT
 // ============================================================
@@ -355,6 +389,75 @@ export function createDemoBooking(input: {
   return booking.id;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export function canCancelBooking(booking: Booking, now = Date.now()) {
+  if (booking.status === "dibatalkan" || booking.statusVerifikasi !== "menunggu") {
+    return false;
+  }
+
+  const created = new Date(booking.createdAt).getTime();
+  return Number.isFinite(created) && now - created < DAY_MS;
+}
+
+export function cancelDemoBooking(
+  id: string,
+  input: {
+    nama: string;
+    nim: string;
+    telepon: string;
+    bank: string;
+    nomorRekening: string;
+    namaRekening: string;
+    alasan: string;
+  },
+) {
+  const user = requireRole("penyewa");
+  const bookings = parseBookings(read(BOOKINGS));
+  const booking = bookings.find((item) => item.id === id);
+
+  if (!booking || booking.ownerId !== user.id) {
+    throw new Error("Pesanan ini bukan milik Anda.");
+  }
+
+  if (!canCancelBooking(booking)) {
+    throw new Error("Pembatalan hanya tersedia dalam 1x24 jam sebelum admin memverifikasi.");
+  }
+
+  const nama = input.nama.trim();
+  const nim = input.nim.trim();
+  const telepon = input.telepon.trim();
+  const bank = input.bank.trim();
+  const nomorRekening = input.nomorRekening.trim();
+  const namaRekening = input.namaRekening.trim();
+  const alasan = input.alasan.trim();
+
+  if (!nama || !nim || !telepon || !bank || !nomorRekening || !namaRekening || !alasan) {
+    throw new Error("Lengkapi identitas, rekening, dan alasan pembatalan.");
+  }
+
+  save(
+    bookings.map((item) =>
+      item.id === id
+        ? {
+            ...item,
+            status: "dibatalkan",
+            pembatalan: {
+              nama,
+              nim,
+              telepon,
+              bank,
+              nomorRekening,
+              namaRekening,
+              alasan,
+              diajukanPada: new Date().toISOString(),
+            },
+          }
+        : item,
+    ),
+  );
+}
+
 // ============================================================
 // CANCEL BOOKING
 // ============================================================
@@ -403,6 +506,7 @@ export function verifyDemoBooking(
 
   if (
     !booking ||
+    booking.status === "dibatalkan" ||
     booking.statusVerifikasi !== "menunggu" ||
     status === "menunggu"
   ) {

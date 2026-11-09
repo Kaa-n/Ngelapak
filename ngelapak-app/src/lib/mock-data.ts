@@ -77,6 +77,16 @@ export interface Booking {
   catatan?: string;
   jenisUsaha: string;
   createdAt: string;
+  pembatalan?: {
+    nama: string;
+    nim: string;
+    telepon: string;
+    bank: string;
+    nomorRekening: string;
+    namaRekening: string;
+    alasan: string;
+    diajukanPada: string;
+  };
 }
 
 export interface SpotManagement {

@@ -148,15 +148,15 @@ export default function SpotCard({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onViewProducts(spot);
+                    onViewDetail(spot, initialTab ?? "operasional");
                   }}
                   className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#003466] hover:text-[#1a4b84] hover:underline cursor-pointer shrink-0"
-                  title="Lihat dokumen informasi dan deskripsi menu lapak"
+                  title="Lihat detail lapak"
                 >
                   <span className="material-symbols-outlined text-[14px]">
-                    description
+                    arrow_forward
                   </span>
-                  <span>Deskripsi Menu</span>
+                  <span>Lihat Detail</span>
                 </button>
               )}
             </div>
@@ -173,16 +173,19 @@ export default function SpotCard({
           </div>
         </div>
 
-        {/* Button: "Lihat Detail" */}
         <div className="p-4 pt-0">
           <button
             type="button"
-            onClick={() => onViewDetail(spot, initialTab ?? "operasional")}
+            onClick={() =>
+              onViewProducts
+                ? onViewProducts(spot)
+                : onViewDetail(spot, initialTab ?? "operasional")
+            }
             className="w-full h-10 rounded-lg bg-[#003466] hover:bg-[#1a4b84] active:bg-[#002144] text-white text-[13px] font-semibold transition-all duration-150 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs hover:shadow-md"
           >
-            <span>Lihat Detail</span>
+            <span>{onViewProducts ? "Deskripsi Produk" : "Lihat Detail"}</span>
             <span className="material-symbols-outlined text-[16px]">
-              arrow_forward
+              {onViewProducts ? "description" : "arrow_forward"}
             </span>
           </button>
         </div>

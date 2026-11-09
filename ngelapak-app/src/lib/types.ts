@@ -8,6 +8,7 @@ export type PageView =
   | "dasbor"
   | "verifikasi"
   | "pesanan"
+  | "detail-pesanan"
   | "masuk"
   | "edit-profile";
 
@@ -24,7 +25,7 @@ export function canAccess(view: PageView, role?: Role) {
     return role === "admin";
   }
 
-  if (view === "pesanan") {
+  if (view === "pesanan" || view === "detail-pesanan") {
     return role === "penyewa";
   }
 

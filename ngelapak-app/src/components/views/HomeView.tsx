@@ -172,8 +172,8 @@ export default function HomeView({
               {
                 step: "04",
                 icon: "verified",
-                title: "Verifikasi & Langsung Buka",
-                desc: "Admin memverifikasi izin 1×24 jam dan e-izin stan siap dipakai di lokasi.",
+                title: "Verifikasi Admin",
+                desc: "Pembayaran tercatat. Selama 1x24 jam dan belum diverifikasi admin, pembatalan bisa diajukan di detail pesanan.",
               },
             ].map((step, idx) => (
               <div

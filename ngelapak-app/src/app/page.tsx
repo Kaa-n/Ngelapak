@@ -13,6 +13,7 @@ import Toast from "../components/ui-custom/Toast";
 import MasukView from "../components/views/MasukView";
 import PesananView from "../components/views/PesananView";
 import EditProfileView from "../components/views/EditProfileView";
+import DetailPesananView from "../components/views/DetailPesananView";
 import { useDemo, demoLogin, demoLogout } from "../lib/demo-store";
 import { canAccess } from "../lib/types";
 import { MOCK_SPOTS, type Spot } from "../lib/mock-data";
@@ -43,6 +44,7 @@ function DemoHome() {
   const [currentView, setCurrentView] = useState<PageView>("home");
   const [selectedSpot, setSelectedSpot] = useState<Spot>(MOCK_SPOTS[0]);
   const [detailInitialTab, setDetailInitialTab] = useState<"detail" | "operasional" | "fasilitas" | "ulasan">("detail");
+  const [orderId, setOrderId] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const navigate = useCallback((view: PageView, spot?: Spot, initialTab?: "detail" | "operasional" | "fasilitas" | "ulasan") => {
@@ -105,6 +107,12 @@ function DemoHome() {
             onShowToast={showToast}
           />
         )}
+        {currentView === "detail-pesanan" && user?.role === "penyewa" && orderId && (
+          <DetailPesananView
+            bookingId={orderId}
+            onBack={() => navigate("katalog")}
+          />
+        )}
         {currentView === "edit-profile" && user && (
           <EditProfileView
             user={user}
@@ -125,7 +133,10 @@ function DemoHome() {
             initialTab={detailInitialTab}
             onBack={() => navigate("katalog")}
             onLogin={() => navigate("masuk")}
-            onOrders={() => navigate("pesanan")}
+            onOrderDetail={(id) => {
+              setOrderId(id);
+              navigate("detail-pesanan");
+            }}
             onShowToast={showToast}
           />
         )}
