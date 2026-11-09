@@ -12,6 +12,7 @@ import Footer from "../components/ui-custom/Footer";
 import Toast from "../components/ui-custom/Toast";
 import MasukView from "../components/views/MasukView";
 import PesananView from "../components/views/PesananView";
+import EditProfileView from "../components/views/EditProfileView";
 import { useDemo, demoLogin, demoLogout } from "../lib/demo-store";
 import { canAccess } from "../lib/types";
 import { MOCK_SPOTS, type Spot } from "../lib/mock-data";
@@ -100,6 +101,13 @@ function DemoHome() {
         )}
         {currentView === "pesanan" && user?.role === "penyewa" && (
           <PesananView onExplore={() => navigate("katalog")} />
+        )}
+        {currentView === "edit-profile" && user && (
+          <EditProfileView
+            user={user}
+            onBack={() => navigate("home")}
+            onShowToast={showToast}
+          />
         )}
         {currentView === "katalog" && (
           <KatalogView

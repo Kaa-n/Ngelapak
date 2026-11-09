@@ -14,6 +14,30 @@ import type { DemoUser, Role } from "./types";
 const SESSION = "ngelapak-demo-session-v1";
 const BOOKINGS = "ngelapak-demo-bookings-v1";
 const EVENT = "ngelapak-demo-change";
+const PROFILES = "ngelapak-demo-profiles-v1";
+
+type ProfileOverrides = Record<
+  string,
+  { nama: string; email: string }
+>;
+
+function getProfileOverrides(): ProfileOverrides {
+  try {
+    const data = JSON.parse(read(PROFILES));
+    return data && typeof data === "object" ? data : {};
+  } catch {
+    return {};
+  }
+}
+
+export function getDemoUsers(): DemoUser[] {
+  const profiles = getProfileOverrides();
+
+  return DEMO_USERS.map((user) => ({
+    ...user,
+    ...profiles[user.id],
+  }));
+}
 
 // Re-export agar komponen yang mengimpor DEMO_USERS dari demo-store
 // tetap dapat berjalan tanpa perlu mengubah import-nya.
@@ -52,7 +76,7 @@ function parseBookings(raw: string): Booking[] {
 }
 
 function currentUser() {
-  return DEMO_USERS.find(
+  return getDemoUsers().find(
     (user) => user.id === read(SESSION, true),
   ) ?? null;
 }
@@ -125,7 +149,7 @@ export function useDemo() {
     () => "",
   );
 
-  const user = DEMO_USERS.find(
+  const user = getDemoUsers().find(
     (user) => user.id === userId,
   ) ?? null;
 
@@ -142,11 +166,64 @@ export function useDemo() {
 // ============================================================
 
 export function demoLogin(id: string) {
-  if (!DEMO_USERS.some((user) => user.id === id)) {
+  if (!getDemoUsers().some((user) => user.id === id)) {
     throw new Error("Akun demo tidak dikenal.");
   }
 
   sessionStorage.setItem(SESSION, id);
+  window.dispatchEvent(new Event(EVENT));
+}
+
+// ============================================================
+// UPDATE PROFILE
+// ============================================================
+
+export function updateDemoProfile(input: {
+  nama: string;
+  email: string;
+}) {
+  const user = currentUser();
+
+  if (!user) {
+    throw new Error("Silakan masuk terlebih dahulu.");
+  }
+
+  const nama = input.nama.trim();
+  const email = input.email.trim().toLowerCase();
+
+  if (!nama || !email) {
+    throw new Error("Nama dan email wajib diisi.");
+  }
+
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  if (!emailPattern.test(email)) {
+    throw new Error("Format email tidak valid.");
+  }
+
+  const duplicate = getDemoUsers().some(
+    (item) =>
+      item.id !== user.id &&
+      item.email.toLowerCase() === email,
+  );
+
+  if (duplicate) {
+    throw new Error("Email sudah digunakan oleh akun lain.");
+  }
+
+  const profiles = getProfileOverrides();
+
+  profiles[user.id] = {
+    nama,
+    email,
+  };
+
+  try {
+    localStorage.setItem(PROFILES, JSON.stringify(profiles));
+  } catch {
+    throw new Error("Profil gagal disimpan di browser.");
+  }
+
   window.dispatchEvent(new Event(EVENT));
 }
 
@@ -236,10 +313,14 @@ export function createDemoBooking(input: {
   }
 
   // Ambil profil penyewa berdasarkan email akun yang sedang login.
-  const fixture = MOCK_BOOKINGS.find(
+  const fixture =
+  MOCK_BOOKINGS.find(
+    (booking) => booking.ownerId === user.id,
+  ) ??
+  MOCK_BOOKINGS.find(
     (booking) =>
       booking.penyewa.email.toLowerCase() ===
-      user.email.toLowerCase(),
+      DEMO_USERS.find((item) => item.id === user.id)?.email.toLowerCase(),
   );
 
   if (!fixture) {
@@ -257,7 +338,11 @@ export function createDemoBooking(input: {
 
     spotNama: spot.nama,
     spotKode: spot.kode,
-    penyewa: { ...fixture.penyewa },
+    penyewa: {
+      ...fixture.penyewa,
+      nama: user.nama,
+      email: user.email,
+    },
     tanggalSelesai: end,
     totalBayar: spot.tarifPerHari * input.jumlahHari,
     status: "menunggu",
