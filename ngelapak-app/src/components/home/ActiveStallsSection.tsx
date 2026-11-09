@@ -9,6 +9,7 @@ import {
   ZONA_LABELS,
   type Spot,
   type JadwalOperasionalItem,
+  buildDefaultCaption,
 } from "@/lib/mock-data";
 import { readProductCaption, saveProductCaption, useDemo } from "@/lib/demo-store";
 
@@ -198,12 +199,16 @@ export default function ActiveStallsSection({
   const [selectedProductSpot, setSelectedProductSpot] = useState<Spot | null>(null);
   const [captionDraft, setCaptionDraft] = useState("");
   const [captionNote, setCaptionNote] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
   const { user } = useDemo();
 
   function openProduct(spot: Spot) {
     setSelectedProductSpot(spot);
-    setCaptionDraft(readProductCaption(spot.id));
+    const saved = readProductCaption(spot.id);
+    // Jika belum pernah diisi, gunakan caption default dari data lapak
+    setCaptionDraft(saved || buildDefaultCaption(spot));
     setCaptionNote("");
+    setIsEditing(false);
   }
 
   function saveCaption() {
@@ -212,9 +217,18 @@ export default function ActiveStallsSection({
       saveProductCaption(selectedProductSpot.id, captionDraft);
       setCaptionDraft(readProductCaption(selectedProductSpot.id));
       setCaptionNote("Deskripsi tersimpan.");
+      setIsEditing(false);
     } catch (error) {
       setCaptionNote(error instanceof Error ? error.message : "Deskripsi gagal disimpan.");
     }
+  }
+
+  function cancelEdit() {
+    if (!selectedProductSpot) return;
+    const saved = readProductCaption(selectedProductSpot.id);
+    setCaptionDraft(saved || buildDefaultCaption(selectedProductSpot));
+    setCaptionNote("");
+    setIsEditing(false);
   }
 
   const allSpots = spots && spots.length > 0 ? spots : MOCK_SPOTS;
@@ -749,33 +763,61 @@ export default function ActiveStallsSection({
                   </div>
 
                   <div>
-                    <h5 className="text-xs font-bold uppercase tracking-wider text-[#003466] mb-2">
-                      Deskripsi Produk
-                    </h5>
-                    {user?.role === "penyewa" ? (
+                    <div className="flex items-center justify-between mb-2">
+                      <h5 className="text-xs font-bold uppercase tracking-wider text-[#003466]">
+                        Deskripsi Produk
+                      </h5>
+                      {user?.role === "penyewa" && !isEditing && (
+                        <button
+                          type="button"
+                          onClick={() => setIsEditing(true)}
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#003466] hover:text-[#1a4b84] hover:underline cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">edit</span>
+                          <span>Edit</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {isEditing && user?.role === "penyewa" ? (
                       <div className="space-y-3">
                         <textarea
                           value={captionDraft}
                           onChange={(event) => setCaptionDraft(event.target.value)}
-                          rows={8}
+                          rows={12}
                           placeholder="Tulis deskripsi produk di sini."
-                          className="w-full px-3 py-2 bg-[#f2f3ff] text-[#131b2e] text-sm rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-[#003466]/20 resize-y"
+                          className="w-full px-3 py-2 bg-[#f2f3ff] text-[#131b2e] text-sm rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-[#003466]/20 resize-y font-mono leading-relaxed"
                         />
-                        <button
-                          type="button"
-                          onClick={saveCaption}
-                          className="h-10 px-4 rounded-lg bg-[#003466] text-white text-sm font-semibold hover:bg-[#1a4b84]"
-                        >
-                          Simpan
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={saveCaption}
+                            className="h-10 px-5 rounded-lg bg-[#003466] text-white text-sm font-semibold hover:bg-[#1a4b84] cursor-pointer flex items-center gap-1.5"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">save</span>
+                            Simpan
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelEdit}
+                            className="h-10 px-4 rounded-lg bg-[#eaedff] text-[#424750] text-sm font-semibold hover:bg-[#dae2fd] cursor-pointer"
+                          >
+                            Batal
+                          </button>
+                        </div>
                         {captionNote && (
                           <p className="text-xs text-[#424750]">{captionNote}</p>
                         )}
                       </div>
                     ) : (
-                      <p className="text-sm text-[#424750] leading-relaxed whitespace-pre-wrap">
-                        {captionDraft.trim() || "Belum ada deskripsi produk."}
-                      </p>
+                      <div className="bg-[#f8f9ff] rounded-xl px-4 py-4 border border-[#e2e7ff] min-h-[200px]">
+                        <pre className="text-sm text-[#131b2e] leading-relaxed whitespace-pre-wrap font-sans">
+                          {captionDraft.trim() || "Belum ada deskripsi produk."}
+                        </pre>
+                        {captionNote && (
+                          <p className="text-xs text-[#4edea3] mt-3 font-semibold">{captionNote}</p>
+                        )}
+                      </div>
                     )}
                   </div>
 
