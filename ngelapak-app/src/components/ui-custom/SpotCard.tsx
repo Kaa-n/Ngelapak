@@ -148,15 +148,15 @@ export default function SpotCard({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onViewDetail(spot, initialTab ?? "operasional");
+                    onViewProducts(spot);
                   }}
                   className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#003466] hover:text-[#1a4b84] hover:underline cursor-pointer shrink-0"
-                  title="Lihat detail lapak"
+                  title="Lihat deskripsi produk"
                 >
                   <span className="material-symbols-outlined text-[14px]">
-                    arrow_forward
+                    description
                   </span>
-                  <span>Lihat Detail</span>
+                  <span>Deskripsi Produk</span>
                 </button>
               )}
             </div>
@@ -173,21 +173,32 @@ export default function SpotCard({
           </div>
         </div>
 
-        <div className="p-4 pt-0">
+        <div className="p-4 pt-0 flex flex-col gap-2">
+          {/* Tombol Utama: Lihat Detail */}
           <button
             type="button"
-            onClick={() =>
-              onViewProducts
-                ? onViewProducts(spot)
-                : onViewDetail(spot, initialTab ?? "operasional")
-            }
+            onClick={() => onViewDetail(spot, initialTab ?? "operasional")}
             className="w-full h-10 rounded-lg bg-[#003466] hover:bg-[#1a4b84] active:bg-[#002144] text-white text-[13px] font-semibold transition-all duration-150 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs hover:shadow-md"
           >
-            <span>{onViewProducts ? "Deskripsi Produk" : "Lihat Detail"}</span>
+            <span>Lihat Detail</span>
             <span className="material-symbols-outlined text-[16px]">
-              {onViewProducts ? "description" : "arrow_forward"}
+              arrow_forward
             </span>
           </button>
+
+          {/* Tombol Sekunder: Deskripsi Produk */}
+          {onViewProducts && (
+            <button
+              type="button"
+              onClick={() => onViewProducts(spot)}
+              className="w-full h-9 rounded-lg bg-[#eaedff] hover:bg-[#dae2fd] text-[#003466] text-[12px] font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer border border-[#c8d8ff]"
+            >
+              <span className="material-symbols-outlined text-[15px]">
+                description
+              </span>
+              <span>Deskripsi Produk</span>
+            </button>
+          )}
         </div>
       </div>
     );
