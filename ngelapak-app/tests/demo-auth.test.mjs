@@ -45,6 +45,9 @@ test("tenant bookings persist, isolate identities, prevent overlaps, and accept 
   const id = store.createDemoBooking(input);
   const read = () => JSON.parse(localStorage.getItem("ngelapak-demo-bookings-v1"));
   assert.equal(read()[0].id, id);
+  assert.equal(read()[0].status, "menunggu");
+  assert.equal(read()[0].statusVerifikasi, "menunggu");
+  assert.equal(store.canCancelBooking(read()[0]), true);
   assert.equal(read()[0].totalBayar, fixtures.MOCK_SPOTS[0].tarifPerHari * 2);
   assert.equal(read()[0].penyewa.email, store.DEMO_USERS[1].email);
   assert.equal(store.visibleBookings(store.DEMO_USERS[2], read()).some(b => b.id === id), false);
@@ -56,14 +59,50 @@ test("tenant bookings persist, isolate identities, prevent overlaps, and accept 
   store.demoLogin("admin");
   store.verifyDemoBooking(id, "ditolak");
   assert.equal(read()[0].statusVerifikasi, "ditolak");
+  assert.equal(read()[0].status, "dibatalkan");
   assert.throws(() => store.verifyDemoBooking(id, "disetujui"), /tidak lagi/);
   store.demoLogin("bayu");
   const replacement = store.createDemoBooking(input);
-  store.demoLogin("admin");
-  store.verifyDemoBooking(replacement, "disetujui");
-  assert.equal(read()[0].status, "aktif");
+  assert.equal(read()[0].id, replacement);
+  assert.equal(read()[0].status, "menunggu");
+  assert.equal(read()[0].statusVerifikasi, "menunggu");
   store.demoLogout();
   assert.throws(() => store.verifyDemoBooking(replacement, "ditolak"), /akses/);
+});
+
+test("tenant can cancel within 24 hours before admin verification", () => {
+  const { store, localStorage } = setup();
+  store.demoLogin("ayu");
+  const input = { spotId: "spot-001", tanggalMulai: store.today(), jumlahHari: 1, jenisUsaha: "Kopi", catatan: "", metodePembayaran: "QRIS" };
+  const id = store.createDemoBooking(input);
+  const read = () => JSON.parse(localStorage.getItem("ngelapak-demo-bookings-v1"));
+  const form = { nama: "Ayu", nim: "2105551001", telepon: "081234", bank: "BRI", nomorRekening: "1234567890", namaRekening: "Ayu", alasan: "Jadwal bentrok kuliah" };
+  store.demoLogin("bayu");
+  assert.throws(() => store.cancelDemoBooking(id, form), /milik/);
+  store.demoLogin("ayu");
+  assert.throws(() => store.cancelDemoBooking(id, { ...form, nama: " " }), /Lengkapi/);
+  store.cancelDemoBooking(id, form);
+  assert.equal(read()[0].status, "dibatalkan");
+  assert.equal(read()[0].pembatalan.nomorRekening, "1234567890");
+  assert.equal(store.canCancelBooking(read()[0]), false);
+  store.demoLogin("admin");
+  assert.throws(() => store.verifyDemoBooking(id, "disetujui"), /tidak lagi/);
+  store.demoLogin("ayu");
+  const again = store.createDemoBooking({ ...input, spotId: "spot-002" });
+  const rows = read();
+  rows.find((item) => item.id === again).createdAt = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+  localStorage.setItem("ngelapak-demo-bookings-v1", JSON.stringify(rows));
+  assert.equal(store.canCancelBooking(read().find((item) => item.id === again)), false);
+  assert.throws(() => store.cancelDemoBooking(again, form), /1x24/);
+});
+
+test("product caption is one text saved by the tenant", () => {
+  const { store } = setup();
+  assert.equal(store.readProductCaption("spot-003"), "");
+  assert.throws(() => store.saveProductCaption("spot-003", "Kopi susu"), /penyewa/);
+  store.demoLogin("ayu");
+  store.saveProductCaption("spot-003", "  Kopi susu  ");
+  assert.equal(store.readProductCaption("spot-003"), "Kopi susu");
 });
 
 test("invalid dates, durations and unavailable spots fail without creating transactions", () => {

@@ -6,11 +6,11 @@ import LokasiDropdown, { LokasiItem } from "@/components/ui-custom/LokasiDropdow
 import MapComponent from "./MapComponent";
 import {
   MOCK_SPOTS,
-  MOCK_PRODUCTS,
   ZONA_LABELS,
   type Spot,
   type JadwalOperasionalItem,
 } from "@/lib/mock-data";
+import { readProductCaption, saveProductCaption, useDemo } from "@/lib/demo-store";
 
 export interface ActiveStallsSectionProps {
   /**
@@ -195,8 +195,27 @@ export default function ActiveStallsSection({
   const [customUpcomingLokasi, setCustomUpcomingLokasi] = useState<string | null>(null);
   const [upcomingPage, setUpcomingPage] = useState<number>(1);
 
-  // Modal rincian produk lapak
   const [selectedProductSpot, setSelectedProductSpot] = useState<Spot | null>(null);
+  const [captionDraft, setCaptionDraft] = useState("");
+  const [captionNote, setCaptionNote] = useState("");
+  const { user } = useDemo();
+
+  function openProduct(spot: Spot) {
+    setSelectedProductSpot(spot);
+    setCaptionDraft(readProductCaption(spot.id));
+    setCaptionNote("");
+  }
+
+  function saveCaption() {
+    if (!selectedProductSpot) return;
+    try {
+      saveProductCaption(selectedProductSpot.id, captionDraft);
+      setCaptionDraft(readProductCaption(selectedProductSpot.id));
+      setCaptionNote("Deskripsi tersimpan.");
+    } catch (error) {
+      setCaptionNote(error instanceof Error ? error.message : "Deskripsi gagal disimpan.");
+    }
+  }
 
   const allSpots = spots && spots.length > 0 ? spots : MOCK_SPOTS;
 
@@ -457,7 +476,7 @@ export default function ActiveStallsSection({
                 <SpotCard
                   spot={spot}
                   onViewDetail={onViewDetail}
-                  onViewProducts={setSelectedProductSpot}
+                  onViewProducts={openProduct}
                   variant="home"
                   initialTab="operasional"
                   badgeText="Buka Hari Ini"
@@ -600,7 +619,7 @@ export default function ActiveStallsSection({
                   <SpotCard
                     spot={spot}
                     onViewDetail={onViewDetail}
-                    onViewProducts={setSelectedProductSpot}
+                    onViewProducts={openProduct}
                     variant="home"
                     initialTab="operasional"
                     scheduleDate={formatJadwalRange(
@@ -669,13 +688,9 @@ export default function ActiveStallsSection({
           ) || selectedProductSpot.jadwalOperasional?.[0];
         const penjualNama = activeJadwal?.penjual || selectedProductSpot.nama;
         const kategoriPenjual = activeJadwal?.kategori || "Wirausaha Kampus";
-        const products = MOCK_PRODUCTS.filter(
-          (product) => product.spotId === selectedProductSpot.id
-        );
-
         return (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className="w-full max-w-2xl max-h-[88vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-[#e2e7ff] overflow-hidden">
+            <div className="w-full max-w-6xl max-h-[90vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-[#e2e7ff] overflow-hidden">
               {/* Header Modal */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-[#e2e7ff] bg-[#faf8ff]">
                 <div className="flex items-center gap-3">
@@ -686,7 +701,7 @@ export default function ActiveStallsSection({
                   </div>
                   <div>
                     <span className="text-[10px] font-bold text-[#003466] uppercase tracking-wider block">
-                      Dokumen Informasi &amp; Menu Stan
+                      Deskripsi Produk
                     </span>
                     <h3 className="text-base sm:text-lg font-bold text-[#131b2e] leading-snug">
                       {penjualNama} ({selectedProductSpot.kode})
@@ -706,10 +721,14 @@ export default function ActiveStallsSection({
                 </button>
               </div>
 
-              {/* Isi Lembar Dokumen Teks (Document Paper Layout) */}
-              <div className="p-5 sm:p-6 overflow-y-auto space-y-6 text-[#131b2e] bg-[#faf8ff]/50">
-                {/* Lembar Dokumen Kertas */}
-                <div className="bg-white rounded-xl p-5 sm:p-7 border border-[#e2e7ff] shadow-xs space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4 sm:p-5 overflow-y-auto bg-[#faf8ff]/50">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-[#003466] mb-2">
+                    Peta lokasi
+                  </p>
+                  <MapComponent spots={[selectedProductSpot]} defaultStatus="all" />
+                </div>
+                <div className="bg-white rounded-xl p-5 sm:p-7 border border-[#e2e7ff] shadow-xs space-y-6 h-fit">
                   {/* Kop Dokumen */}
                   <div className="pb-4 border-b border-[#e2e7ff]">
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
@@ -729,115 +748,37 @@ export default function ActiveStallsSection({
                     </p>
                   </div>
 
-                  {/* 1. Deskripsi Usaha dari Pemilik Lapak */}
                   <div>
-                    <h5 className="text-xs font-bold uppercase tracking-wider text-[#003466] flex items-center gap-1.5 mb-2">
-                      <span className="material-symbols-outlined text-[16px]">info</span>
-                      Tentang Stan &amp; Sambutan Pemilik
+                    <h5 className="text-xs font-bold uppercase tracking-wider text-[#003466] mb-2">
+                      Deskripsi Produk
                     </h5>
-                    <div className="bg-[#f2f3ff] rounded-xl p-4 text-[13px] text-[#424750] leading-relaxed border border-[#e2e7ff]">
-                      <p>
-                        {selectedProductSpot.deskripsi ||
-                          `Selamat datang di stan ${penjualNama}! Kami hadir di ${selectedProductSpot.lokasi} menyajikan aneka sajian kuliner dan minuman segar berkualitas dengan harga ramah kantong civitas akademika Universitas Udayana. Semua produk dipersiapkan setiap hari dengan standar higienis dan porsi memuaskan.`}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* 2. Daftar Menu & Rincian Harga (Teks Dokumen Menu) */}
-                  <div>
-                    <h5 className="text-xs font-bold uppercase tracking-wider text-[#003466] flex items-center gap-1.5 mb-3">
-                      <span className="material-symbols-outlined text-[16px]">restaurant_menu</span>
-                      Daftar Menu &amp; Rincian Harga
-                    </h5>
-
-                    {products.length > 0 ? (
-                      <div className="divide-y divide-[#e2e7ff] border border-[#e2e7ff] rounded-xl overflow-hidden">
-                        {products.map((item, idx) => (
-                          <div
-                            key={item.id}
-                            className="p-3.5 sm:p-4 bg-white hover:bg-[#faf8ff] transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-2"
-                          >
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold text-[#737781] font-mono">
-                                  {(idx + 1).toString().padStart(2, "0")}.
-                                </span>
-                                <span className="text-[13px] font-bold text-[#131b2e]">
-                                  {item.nama}
-                                </span>
-                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#eaedff] text-[#003466] font-semibold">
-                                  {item.kategori}
-                                </span>
-                              </div>
-                              <p className="text-xs text-[#737781] pl-6">
-                                {item.deskripsi}
-                              </p>
-                            </div>
-
-                            <span className="text-sm font-bold text-[#003466] sm:text-right shrink-0 pl-6 sm:pl-0">
-                              Rp {item.harga.toLocaleString("id-ID")}
-                            </span>
-                          </div>
-                        ))}
+                    {user?.role === "penyewa" ? (
+                      <div className="space-y-3">
+                        <textarea
+                          value={captionDraft}
+                          onChange={(event) => setCaptionDraft(event.target.value)}
+                          rows={8}
+                          placeholder="Tulis deskripsi produk di sini."
+                          className="w-full px-3 py-2 bg-[#f2f3ff] text-[#131b2e] text-sm rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-[#003466]/20 resize-y"
+                        />
+                        <button
+                          type="button"
+                          onClick={saveCaption}
+                          className="h-10 px-4 rounded-lg bg-[#003466] text-white text-sm font-semibold hover:bg-[#1a4b84]"
+                        >
+                          Simpan
+                        </button>
+                        {captionNote && (
+                          <p className="text-xs text-[#424750]">{captionNote}</p>
+                        )}
                       </div>
                     ) : (
-                      <div className="p-4 rounded-xl border border-[#e2e7ff] bg-white text-xs text-[#424750] space-y-2">
-                        <div className="flex justify-between items-center py-1 border-b border-[#f2f3ff]">
-                          <span className="font-semibold">• Menu Reguler Harian Stan</span>
-                          <span className="font-bold text-[#003466]">Mulai Rp 15.000</span>
-                        </div>
-                        <div className="flex justify-between items-center py-1 border-b border-[#f2f3ff]">
-                          <span className="font-semibold">• Aneka Minuman Dingin &amp; Hangat</span>
-                          <span className="font-bold text-[#003466]">Mulai Rp 5.000</span>
-                        </div>
-                        <p className="text-[11px] text-[#737781] italic pt-1">
-                          * Silakan langsung kunjungi stan di lokasi untuk melihat varian menu harian selengkapnya.
-                        </p>
-                      </div>
+                      <p className="text-sm text-[#424750] leading-relaxed whitespace-pre-wrap">
+                        {captionDraft.trim() || "Belum ada deskripsi produk."}
+                      </p>
                     )}
                   </div>
 
-                  {/* 3. Catatan Operasional & Layanan Pemilik */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                    <div className="p-3.5 rounded-xl bg-[#fff6ea] border border-[#ffddb8] space-y-1">
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-[#855300]">
-                        <span className="material-symbols-outlined text-[16px]">schedule</span>
-                        Jam Operasional Stan
-                      </div>
-                      <p className="text-xs text-[#424750]">
-                        Buka pukul <strong>08.30 – 17.00 WITA</strong> (Senin s/d Jumat selama kegiatan perkuliahan).
-                      </p>
-                    </div>
-
-                    <div className="p-3.5 rounded-xl bg-[#eef2f9] border border-[#d5e3ff] space-y-1">
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-[#003466]">
-                        <span className="material-symbols-outlined text-[16px]">payments</span>
-                        Metode Pembayaran
-                      </div>
-                      <p className="text-xs text-[#424750]">
-                        Menerima <strong>QRIS</strong> (BCA, Mandiri, GoPay, OVO, ShopeePay) &amp; Uang Tunai.
-                      </p>
-                    </div>
-
-                    <div className="p-3.5 rounded-xl bg-[#f2f3ff] border border-[#e2e7ff] space-y-1 sm:col-span-2">
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-[#003466]">
-                        <span className="material-symbols-outlined text-[16px]">moped</span>
-                        Pesan Antar &amp; Kontak Pemesanan
-                      </div>
-                      <p className="text-xs text-[#424750]">
-                        Melayani pemesanan langsung di stan dan pesan antar (delivery) ke gedung fakultas sekitar. Untuk pemesanan dalam jumlah banyak, silakan hubungi kontak stan di <strong>0812-3456-7890 (WhatsApp)</strong>.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Footer Dokumen */}
-                  <div className="pt-3 border-t border-[#e2e7ff] flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-[#737781]">
-                    <span>Dokumen Resmi Informasi Stan Ngelapak</span>
-                    <span className="inline-flex items-center gap-1 text-[#005639] font-medium">
-                      <span className="material-symbols-outlined text-[13px]">verified</span>
-                      Izin Resmi Biro Pengelolaan Aset Universitas Udayana
-                    </span>
-                  </div>
                 </div>
               </div>
 
@@ -848,7 +789,7 @@ export default function ActiveStallsSection({
                   onClick={() => setSelectedProductSpot(null)}
                   className="h-10 px-6 rounded-lg bg-[#003466] text-white text-sm font-semibold hover:bg-[#1a4b84] transition-colors cursor-pointer shadow-xs"
                 >
-                  Tutup Dokumen
+                  Tutup
                 </button>
               </div>
             </div>

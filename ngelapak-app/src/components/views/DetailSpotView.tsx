@@ -7,6 +7,8 @@ import { formatRupiah, formatDate } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
 import { useDemo, createDemoBooking, today } from "@/lib/demo-store";
 
+const CONTACT_PERSON = "0812-0000-0000";
+
 const emptySubscribe = () => () => { };
 
 // Dynamic import InteractiveMap buatan rekan tim (mencegah error window is not defined)
@@ -27,7 +29,7 @@ interface DetailSpotViewProps {
   initialTab?: "detail" | "operasional" | "fasilitas" | "ulasan";
   onBack: () => void;
   onLogin: () => void;
-  onOrders: () => void;
+  onOrderDetail: (bookingId: string) => void;
   onShowToast: (toast: Omit<ToastMessage, "id">) => void;
 }
 
@@ -36,7 +38,7 @@ export default function DetailSpotView({
   initialTab = "detail",
   onBack,
   onLogin,
-  onOrders,
+  onOrderDetail,
   onShowToast,
 }: DetailSpotViewProps) {
   const { user } = useDemo();
@@ -50,6 +52,7 @@ export default function DetailSpotView({
   const [catatanTambahan, setCatatanTambahan] = useState("");
   const [metodePembayaran, setMetodePembayaran] = useState("qris");
   const [agreeTerms, setAgreeTerms] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // State Alur Pembayaran Interaktif
@@ -156,7 +159,7 @@ export default function DetailSpotView({
   const handleConfirmPayment = () => {
     setIsSubmitting(true);
     try {
-      createDemoBooking({
+      const id = createDemoBooking({
         spotId: spot.id,
         tanggalMulai: startDate,
         jumlahHari: selectedDays,
@@ -166,12 +169,13 @@ export default function DetailSpotView({
         ...({ namaUsaha, kategoriPenjual } as Record<string, unknown>)
       });
 
+      setReservationId(id);
       setShowPaymentStep(false);
       setBookingSuccess(true);
       onShowToast({
         type: "success",
-        message: "Pembayaran terverifikasi & Booking berhasil diajukan!",
-        description: `Token: ${reservationId}`,
+        message: "Pembayaran berhasil",
+        description: "Pesanan menunggu verifikasi admin. Pembatalan bisa diajukan 1x24 jam di detail pesanan.",
       });
     } catch (error) {
       onShowToast({ type: "error", message: error instanceof Error ? error.message : "Pengajuan gagal disimpan" });
@@ -265,12 +269,12 @@ export default function DetailSpotView({
         <div className="w-20 h-20 rounded-full bg-[#6ffbbe]/20 flex items-center justify-center mb-6">
           <span className="material-symbols-outlined text-[#003c27] text-[48px]">check_circle</span>
         </div>
-        <h2 className="text-[24px] font-bold text-[#131b2e] mb-3">Booking Berhasil Diajukan!</h2>
+        <h2 className="text-[24px] font-bold text-[#131b2e] mb-3">Pembayaran Berhasil</h2>
         <p className="text-[14px] text-[#424750] mb-2 leading-relaxed max-w-sm">
-          Pengajuan sewa Spot <strong>{spot.nama}</strong> untuk <strong>{namaUsaha}</strong> ({kategoriPenjual}) selama <strong>{selectedDays} hari</strong> telah dikirim.
+          Pembayaran sewa Spot <strong>{spot.nama}</strong> untuk <strong>{namaUsaha}</strong> ({kategoriPenjual}) selama <strong>{selectedDays} hari</strong> sudah tercatat.
         </p>
         <p className="text-[13px] text-[#737781] mb-8">
-          Total: <strong className="text-[#003466]">{formatRupiah(totalBayar)}</strong> · Pengajuan menunggu pemeriksaan admin.
+          Total: <strong className="text-[#003466]">{formatRupiah(totalBayar)}</strong>. Admin belum memverifikasi. Pembatalan tersedia 1x24 jam di detail pesanan.
         </p>
 
         <div className="w-full bg-[#f2f3ff] rounded-xl p-4 mb-6 text-left space-y-2.5">
@@ -298,10 +302,10 @@ export default function DetailSpotView({
             Kembali ke Katalog
           </button>
           <button
-            onClick={onOrders}
+            onClick={() => onOrderDetail(reservationId)}
             className="flex-1 h-11 rounded-xl bg-[#003466] text-white text-[14px] font-semibold hover:bg-[#1a4b84] transition-colors"
           >
-            Lihat Pesanan Saya
+            Detail Pesanan
           </button>
         </div>
       </div>
@@ -778,21 +782,36 @@ export default function DetailSpotView({
                   </div>
 
                   {/* Terms */}
-                  <div className="flex items-start gap-2">
-                    <input
-                      type="checkbox"
-                      id="terms"
-                      checked={agreeTerms}
-                      onChange={(e) => setAgreeTerms(e.target.checked)}
-                      className="mt-0.5 w-4 h-4 rounded accent-[#003466] cursor-pointer"
-                    />
-                    <label htmlFor="terms" className="text-[12px] text-[#424750] cursor-pointer leading-relaxed">
-                      Saya menyetujui{" "}
-                      <a href="#" className="text-[#003466] font-semibold hover:underline">
-                        Syarat & Ketentuan
-                      </a>{" "}
-                      penggunaan lapak kampus Udayana
-                    </label>
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        id="terms"
+                        checked={agreeTerms}
+                        onChange={(e) => setAgreeTerms(e.target.checked)}
+                        className="mt-0.5 w-4 h-4 rounded accent-[#003466] cursor-pointer"
+                      />
+                      <label htmlFor="terms" className="text-[12px] text-[#424750] cursor-pointer leading-relaxed">
+                        Saya menyetujui{" "}
+                        <button
+                          type="button"
+                          onClick={() => setShowTerms((open) => !open)}
+                          className="text-[#003466] font-semibold hover:underline"
+                        >
+                          Syarat & Ketentuan
+                        </button>{" "}
+                        penggunaan lapak kampus Udayana
+                      </label>
+                    </div>
+                    {showTerms && (
+                      <ul className="text-[12px] text-[#424750] leading-relaxed list-disc pl-5 space-y-1.5 bg-[#f2f3ff] rounded-xl p-3">
+                        <li>Setelah pembayaran tercatat, pesanan menunggu verifikasi admin.</li>
+                        <li>Panduan datang, cara mengenali lapak, dan kontak ada di detail pesanan. Berkas PDF-nya menyusul.</li>
+                        <li>Pembatalan bisa diajukan di detail pesanan selama 1x24 jam dan selama admin belum memverifikasi. Isi identitas, rekening, dan alasan. Lewat itu, hubungi contact person di {CONTACT_PERSON}.</li>
+                        <li>Jangan bagikan ID pesanan. Tunjukkan ID itu jika petugas lokasi bertanya.</li>
+                        <li>Usaha yang dijalankan sesuai data saat memesan. Kerusakan fasilitas menjadi tanggung jawab penyewa.</li>
+                      </ul>
+                    )}
                   </div>
 
                   {/* Tombol Membuka Modal Pembayaran (QRIS / Token) */}

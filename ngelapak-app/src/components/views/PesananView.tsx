@@ -33,7 +33,7 @@ export default function PesananView({
       case "menunggu":
         return "Menunggu verifikasi";
       case "disetujui":
-        return "Disetujui";
+        return "Berhasil";
       case "ditolak":
         return "Ditolak";
       default:
@@ -125,7 +125,7 @@ export default function PesananView({
         </div>
 
         <div className="bg-white border border-[#e2e7ff] rounded-xl p-4">
-          <p className="text-xs text-[#737781]">Disetujui</p>
+          <p className="text-xs text-[#737781]">Berhasil</p>
           <p className="text-2xl font-bold text-green-600 mt-1">
             {bookings.filter((b) => b.statusVerifikasi === "disetujui").length}
           </p>
@@ -180,11 +180,15 @@ export default function PesananView({
               </div>
 
               <span
-                className={`h-fit text-xs rounded-full px-3 py-1.5 font-semibold border ${getVerificationStyle(
-                  booking.statusVerifikasi,
-                )}`}
+                className={`h-fit text-xs rounded-full px-3 py-1.5 font-semibold border ${
+                  booking.status === "dibatalkan"
+                    ? "bg-red-50 text-red-800 border-red-200"
+                    : getVerificationStyle(booking.statusVerifikasi)
+                }`}
               >
-                {getVerificationLabel(booking.statusVerifikasi)}
+                {booking.status === "dibatalkan"
+                  ? "Dibatalkan"
+                  : getVerificationLabel(booking.statusVerifikasi)}
               </span>
             </div>
 
