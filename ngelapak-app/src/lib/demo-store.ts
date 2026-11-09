@@ -459,6 +459,36 @@ export function cancelDemoBooking(
 }
 
 // ============================================================
+// CANCEL BOOKING
+// ============================================================
+
+export function cancelDemoBooking(id: string) {
+  const user = requireRole("penyewa");
+  const bookings = parseBookings(read(BOOKINGS));
+  const booking = bookings.find((item) => item.id === id);
+
+  const belongsToUser = booking && (booking.ownerId
+    ? booking.ownerId === user.id
+    : booking.penyewa.email.toLowerCase() === user.email.toLowerCase());
+
+  if (!booking || !belongsToUser) {
+    throw new Error("Pesanan tidak ditemukan atau bukan milik Anda.");
+  }
+
+  if (
+    booking.status === "dibatalkan" ||
+    booking.status === "selesai" ||
+    booking.tanggalMulai < today()
+  ) {
+    throw new Error("Pesanan ini sudah tidak dapat dibatalkan.");
+  }
+
+  save(bookings.map((item) =>
+    item.id === id ? { ...item, status: "dibatalkan" } : item,
+  ));
+}
+
+// ============================================================
 // VERIFY BOOKING
 // ============================================================
 
