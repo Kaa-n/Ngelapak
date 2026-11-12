@@ -1,48 +1,55 @@
+
 "use client";
 
 import { useState } from "react";
 import { DEMO_USERS } from "@/lib/demo-store";
+import { signInWithEmail, type SupabaseProfile } from "@/lib/supabase/auth";
+
+interface MasukViewProps {
+  onLoginDemo: (id: string) => void;
+  onLoginSupabase: (profile: SupabaseProfile) => void;
+  onNavigateToRegister: () => void;
+}
 
 export default function MasukView({
-  onLogin,
-}: {
-  onLogin: (id: string) => void;
-}) {
+  onLoginDemo,
+  onLoginSupabase,
+  onNavigateToRegister,
+}: MasukViewProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
+    setLoading(true);
 
-    const normalizedEmail = email.trim().toLowerCase();
-
-    const user = DEMO_USERS.find(
-      (demoUser) => demoUser.email.toLowerCase() === normalizedEmail,
-    );
-
-    if (!user || password !== "ngelapak123") {
-      setError("Email atau password yang Anda masukkan salah.");
-      return;
+    try {
+      const profile = await signInWithEmail(email, password);
+      onLoginSupabase(profile);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Terjadi kesalahan saat masuk."
+      );
+    } finally {
+      setLoading(false);
     }
-
-    onLogin(user.id);
   };
 
   const handleDemoLogin = (id: string) => {
     setError("");
-    onLogin(id);
+    onLoginDemo(id);
   };
 
   return (
     <div className="min-h-[calc(100vh-128px)] flex items-center justify-center px-4 py-10 pb-24">
       <div className="w-full max-w-md">
-        {/* LOGIN CARD */}
         <div className="bg-white border border-[#e2e7ff] rounded-2xl shadow-sm p-6 sm:p-8">
-
-          {/* HEADER */}
           <div className="text-center mb-7">
             <div className="w-14 h-14 bg-[#003466] rounded-2xl flex items-center justify-center mx-auto mb-4">
               <span className="material-symbols-outlined text-white text-3xl">
@@ -63,13 +70,9 @@ export default function MasukView({
             </p>
           </div>
 
-          {/* LOGIN FORM */}
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-semibold mb-2"
-              >
+              <label htmlFor="email" className="block text-sm font-semibold mb-2">
                 Email
               </label>
 
@@ -86,10 +89,7 @@ export default function MasukView({
             </div>
 
             <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-semibold mb-2"
-              >
+              <label htmlFor="password" className="block text-sm font-semibold mb-2">
                 Password
               </label>
 
@@ -118,7 +118,6 @@ export default function MasukView({
               </div>
             </div>
 
-            {/* ERROR MESSAGE */}
             {error && (
               <div
                 role="alert"
@@ -130,30 +129,37 @@ export default function MasukView({
 
             <button
               type="submit"
-              className="w-full bg-[#003466] hover:bg-[#1a4b84] text-white rounded-xl py-3 font-semibold text-sm transition-colors"
+              disabled={loading}
+              className="w-full bg-[#003466] hover:bg-[#1a4b84] disabled:opacity-60 text-white rounded-xl py-3 font-semibold text-sm transition-colors"
             >
-              Masuk
+              {loading ? "Memproses..." : "Masuk"}
             </button>
           </form>
 
-          {/* DIVIDER */}
+          <p className="text-center text-sm text-[#737781] mt-5">
+            Belum memiliki akun?{" "}
+            <button
+              type="button"
+              onClick={onNavigateToRegister}
+              className="font-bold text-[#003466] hover:underline"
+            >
+              Daftar sekarang
+            </button>
+          </p>
+
           <div className="flex items-center gap-3 my-6">
             <div className="flex-1 border-t border-[#e2e7ff]" />
-            <span className="text-xs text-[#737781] font-medium">
-              ATAU
-            </span>
+            <span className="text-xs text-[#737781] font-medium">ATAU</span>
             <div className="flex-1 border-t border-[#e2e7ff]" />
           </div>
 
-          {/* DEMO ACCOUNTS */}
           <div>
             <div className="mb-4">
               <h2 className="font-bold text-base">
                 Masuk dengan Akun Demo
               </h2>
-
               <p className="text-xs text-[#737781] mt-1">
-                Pilih akun berikut untuk mencoba fitur sesuai peran.
+                Pilih akun untuk mencoba fitur sesuai peran.
               </p>
             </div>
 
@@ -175,9 +181,7 @@ export default function MasukView({
 
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="font-bold text-sm">
-                            {user.nama}
-                          </p>
+                          <p className="font-bold text-sm">{user.nama}</p>
 
                           <span
                             className={`text-[10px] font-semibold px-2 py-1 rounded-full ${
@@ -199,7 +203,8 @@ export default function MasukView({
                           onClick={() => handleDemoLogin(user.id)}
                           className="mt-3 text-xs font-bold text-[#003466] hover:text-[#1a4b84] transition-colors"
                         >
-                          Masuk sebagai {isAdmin ? "Admin" : user.id === "ayu" ? "Ayu" : "Bayu"} →
+                          Masuk sebagai{" "}
+                          {isAdmin ? "Admin" : user.id === "ayu" ? "Ayu" : "Bayu"} →
                         </button>
                       </div>
                     </div>
@@ -209,15 +214,10 @@ export default function MasukView({
             </div>
           </div>
 
-          {/* DEMO INFORMATION */}
           <div className="mt-6 bg-[#f5f7fb] rounded-xl p-3">
             <p className="text-xs text-[#737781] text-center leading-relaxed">
-              Mode demonstrasi Ngelapak. Semua akun demo menggunakan
-              password yang sama:{" "}
-              <span className="font-bold text-[#003466]">
-                ngelapak123
-              </span>
-              . Data transaksi disimpan pada browser.
+              Akun demo digunakan untuk mencoba fitur Ngelapak.
+              Data demonstrasi disimpan pada browser.
             </p>
           </div>
         </div>
