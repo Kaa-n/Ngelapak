@@ -10,6 +10,7 @@ export type PageView =
   | "pesanan"
   | "detail-pesanan"
   | "masuk"
+  | "daftar"
   | "edit-profile";
 
 export type Role = "admin" | "penyewa";

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useCallback } from "react";
+import { Suspense, useState, useCallback, useEffect } from "react";
 import HomeView from "../components/views/HomeView";
 import KatalogView from "../components/views/KatalogView";
 import DetailSpotView from "../components/views/DetailSpotView";
@@ -18,6 +18,12 @@ import { useDemo, demoLogin, demoLogout } from "../lib/demo-store";
 import { canAccess } from "../lib/types";
 import { MOCK_SPOTS, type Spot } from "../lib/mock-data";
 import type { PageView, ToastMessage } from "../lib/types";
+import DaftarView from "../components/views/DaftarView";
+import {
+  getCurrentSupabaseProfile,
+  signOutSupabase,
+  type SupabaseProfile,
+} from "../lib/supabase/auth";
 
 export type { PageView, ToastMessage };
 
@@ -39,7 +45,37 @@ export default function Home() {
 }
 
 function DemoHome() {
-  const { user } = useDemo();
+  const [supabaseProfile, setSupabaseProfile] =
+    useState<SupabaseProfile | null>(null);
+
+  const { user: demoUser } = useDemo();
+  const user = demoUser ?? supabaseProfile;
+  // Memulihkan sesi Supabase ketika halaman dibuka atau di-refresh.
+  useEffect(() => {
+    let isMounted = true;
+
+    async function restoreSession() {
+      try {
+        const profile = await getCurrentSupabaseProfile();
+
+        if (isMounted) {
+          setSupabaseProfile(profile);
+        }
+      } catch (error) {
+        console.error("Gagal memulihkan sesi Supabase:", error);
+
+        if (isMounted) {
+          setSupabaseProfile(null);
+        }
+      }
+    }
+
+    restoreSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
   // Default tampilan awal saat aplikasi dibuka: "home" (Halaman Home / Beranda)
   const [currentView, setCurrentView] = useState<PageView>("home");
   const [selectedSpot, setSelectedSpot] = useState<Spot>(MOCK_SPOTS[0]);
@@ -77,12 +113,26 @@ function DemoHome() {
         currentView={currentView}
         onNavigate={navigate}
         user={user}
-        onLogout={() => {
-          demoLogout();
-          setCurrentView("home");
-          setToasts([]);
-        }}
-      />
+        onLogout={async () => {
+        try {
+          if (demoUser) {
+            demoLogout();
+        } else {
+          await signOutSupabase();
+          setSupabaseProfile(null);
+        }
+
+        setCurrentView("home");
+        setToasts([]);
+      } catch (error) {
+        console.error("Gagal keluar:", error);
+        showToast({
+          type: "error",
+          message: "Gagal keluar dari akun.",
+        });
+      }
+    }}
+  />
 
       {/* Main Content */}
       <main className="flex-1 w-full pt-16 pb-16 md:pb-0">
@@ -93,14 +143,38 @@ function DemoHome() {
             onShowToast={showToast}
           />
         )}
+        
         {currentView === "masuk" && (
           <MasukView
-            onLogin={(id) => {
+            onLoginDemo={async (id) => {
+            try {
+              await signOutSupabase();
+              setSupabaseProfile(null);
               demoLogin(id);
               setCurrentView("katalog");
-            }}
-          />
-        )}
+            } catch (error) {
+              console.error("Gagal beralih ke akun demo:", error);
+              showToast({
+                type: "error",
+                message: "Gagal masuk menggunakan akun demo.",
+              });
+            }   
+          }}
+          onLoginSupabase={(profile) => {
+            demoLogout();
+            setSupabaseProfile(profile);
+            setCurrentView("katalog");
+          }}
+          onNavigateToRegister={() => navigate("daftar")}
+        />
+      )}
+
+        {currentView === "daftar" && (
+          <DaftarView
+          onNavigateToLogin={() => navigate("masuk")}
+        />
+      )}
+
         {currentView === "pesanan" && user?.role === "penyewa" && (
           <PesananView
             onExplore={() => navigate("katalog")}
