@@ -1,11 +1,8 @@
+"use client";
+
+import { use, useEffect, useState } from "react";
 import { MOCK_BOOKINGS } from "@/lib/mock-data";
 import Link from "next/link";
-
-export function generateStaticParams() {
-  return MOCK_BOOKINGS.map((booking) => ({
-    ticketId: booking.id,
-  }));
-}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -140,15 +137,44 @@ function PermitNotActive({
   );
 }
 
-// ─── Main page ───────────────────────────────────────────────────────────────
+// ─── Helper component ────────────────────────────────────────────────────────
 
-export default async function ValidasiTicketPage({
+function InfoRow({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3 py-2 border-b border-gray-100 last:border-0">
+      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap flex-shrink-0">
+        {label}
+      </span>
+      <span
+        className={`text-sm text-[#003466] text-right leading-snug ${mono ? "font-mono font-bold" : "font-medium"}`}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+// ─── Main page (Client Component to support dynamic time inspection) ──────────
+
+export default function ValidasiTicketPage({
   params,
 }: {
   params: Promise<{ ticketId: string }>;
 }) {
-  const { ticketId } = await params;
-  const now = new Date();
+  const { ticketId } = use(params);
+  const [now, setNow] = useState<Date | null>(null);
+
+  useEffect(() => {
+    setNow(new Date());
+  }, []);
 
   // 1. Lookup booking
   const booking = MOCK_BOOKINGS.find((b) => b.id === ticketId);
@@ -172,8 +198,9 @@ export default async function ValidasiTicketPage({
     return <PermitNotActive ticketId={ticketId} reason={reason} />;
   }
 
-  // 4. Valid – compute activity status
-  const todayStr = now.toISOString().slice(0, 10);
+  // 4. Valid – compute activity status (based on client date when mounted)
+  const currentDate = now ?? new Date(booking.tanggalMulai);
+  const todayStr = currentDate.toISOString().slice(0, 10);
   const isActive =
     booking.tanggalMulai <= todayStr && todayStr <= booking.tanggalSelesai;
   const isUpcoming = booking.tanggalMulai > todayStr;
@@ -200,7 +227,7 @@ export default async function ValidasiTicketPage({
     );
   }
 
-  const checkedAt = formatDateTime(now);
+  const checkedAt = now ? formatDateTime(now) : "Memuat waktu pemeriksaan...";
 
   return (
     <PageShell>
@@ -285,30 +312,5 @@ export default async function ValidasiTicketPage({
       {/* Back link */}
       <BackLink />
     </PageShell>
-  );
-}
-
-// ─── Helper component ────────────────────────────────────────────────────────
-
-function InfoRow({
-  label,
-  value,
-  mono = false,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-3 py-2 border-b border-gray-100 last:border-0">
-      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap flex-shrink-0">
-        {label}
-      </span>
-      <span
-        className={`text-sm text-[#003466] text-right leading-snug ${mono ? "font-mono font-bold" : "font-medium"}`}
-      >
-        {value}
-      </span>
-    </div>
   );
 }
