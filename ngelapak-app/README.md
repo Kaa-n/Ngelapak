@@ -1,8 +1,8 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-## Demo role admin dan penyewa
+## Panel admin dan Supabase
 
-Pilih **Masuk demo** untuk masuk sebagai admin, Ayu, atau Bayu. Demo tidak meminta kata sandi dan tidak menghubungi Supabase. Dependensi Supabase sudah ada, tetapi integrasi autentikasi/database belum tersedia.
+Isi `NEXT_PUBLIC_SUPABASE_URL` dan `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` di `.env.local`. Untuk proyek Supabase baru, jalankan migrasi `001` sampai `006` secara berurutan. Untuk proyek tim yang sudah punya tabel, bandingkan skema aktual dengan [audit](AUDIT-TAHAP-1.md), lalu terapkan migrasi `002` sampai `006` setelah diuji di proyek pengembangan. Migrasi `002` mengganti RPC pemesanan lama dengan `submit_booking_with_payment`. Rilis perubahan database dan aplikasi secara terkoordinasi.
 
 | Akses | Tamu | Penyewa | Admin |
 | --- | --- | --- | --- |
@@ -11,11 +11,13 @@ Pilih **Masuk demo** untuk masuk sebagai admin, Ayu, atau Bayu. Demo tidak memin
 | Pesanan Saya | Tidak | Milik sendiri | Tidak |
 | Kelola Lapak dan Verifikasi | Tidak | Tidak | Ya |
 
-Untuk mencoba alur lengkap: masuk sebagai Ayu, buka lapak tersedia, isi jadwal dan jenis usaha, setujui ketentuan, lalu ajukan booking. Buka Pesanan Saya. Keluar dan masuk sebagai admin untuk menyetujui atau menolak di Verifikasi. Masuk kembali sebagai Ayu untuk melihat hasilnya; akun Bayu tidak melihat pesanan Ayu.
+Tambahkan URL aplikasi dan `/auth/callback` ke konfigurasi redirect Supabase Auth untuk konfirmasi email. Gunakan akun yang sudah diberikan role `admin` oleh pengelola database untuk mengakses `/admin`. Pendaftaran umum membuat akun penyewa.
 
-Sesi disimpan di `sessionStorage` per tab; pemesanan dan hasil verifikasi di `localStorage` agar tetap ada setelah refresh atau pergantian akun. Menu desktop dan seluler mengikuti role. Pembuatan dan verifikasi pemesanan juga memeriksa role pada fungsi demo. Jadwal lampau, durasi di luar 1–30 hari, lapak tidak tersedia, dan tanggal bertabrakan ditolak.
+Untuk mencoba verifikasi, buat pesanan dengan akun penyewa dan unggah bukti transfer uji. Masuk dengan akun admin, buka **Verifikasi Pembayaran**, dan setujui atau tolak. Buat pesanan lain untuk mencoba pengajuan pembatalan sebelum verifikasi. Selama pengajuan menunggu, tanggal tetap ditahan. Persetujuan dengan bukti refund melepas tanggal. Penolakan menyimpan catatan yang terlihat di detail pesanan penyewa.
 
-Semua data dan role masih dapat diubah melalui browser. Ini simulasi UI dan alur akses, **bukan autentikasi atau otorisasi produksi**. Tidak ada pembayaran sungguhan, unggah bukti, email, atau sinkronisasi antarperangkat. Data lapak, statistik dasbor, dan pengajuan lapak tetap menggunakan mock bawaan. Untuk mengulang demo, hapus key `ngelapak-demo-bookings-v1` dari Local Storage dan `ngelapak-demo-session-v1` dari Session Storage melalui DevTools.
+Pembayaran dan transfer refund dilakukan di luar aplikasi. Panel admin menyimpan bukti serta statusnya. Total pendapatan dasbor adalah pendapatan bruto dari pembayaran yang terverifikasi. Tren memakai tanggal verifikasi, sehingga pembayaran lama tanpa tanggal verifikasi hanya masuk ke total. Okupansi dihitung untuk hari ini di WITA.
+
+**Masuk dengan Akun Demo** menyediakan Ayu dan Bayu untuk mencoba alur penyewa di browser. Pesanan demo tersimpan di `localStorage`.
 
 Pemeriksaan: `npm test`, `npx tsc --noEmit`, `npm run lint`, dan `npm run build`.
 

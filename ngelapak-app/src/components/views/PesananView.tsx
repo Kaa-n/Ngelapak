@@ -276,7 +276,7 @@ const TABS: { key: FilterTab; label: string }[] = [
     const { bookings: demoBookings } = useDemo();
 
     const [supabaseBookings, setSupabaseBookings] = useState<Booking[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState("");
 
     const isDemoUser = user?.id === "ayu" || user?.id === "bayu";
@@ -444,7 +444,16 @@ const TABS: { key: FilterTab; label: string }[] = [
       )}
 
       {/* ── EMPTY STATE ── */}
-      {bookings.length === 0 && (
+      {!isDemoUser && loading && <p role="status" className="mb-4 text-sm">Memuat pesanan…</p>}
+      {!isDemoUser && loadError && (
+        <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm">
+          {loadError}
+          <button type="button" className="ml-2 underline" onClick={() => setReloadVersion((value) => value + 1)}>
+            Coba lagi
+          </button>
+        </div>
+      )}
+      {bookings.length === 0 && (isDemoUser || (!loading && !loadError)) && (
         <div className="bg-white rounded-2xl border border-[#e2e7ff] p-12 text-center">
           <div className="w-16 h-16 rounded-full bg-[#eef0ff] flex items-center justify-center mx-auto mb-4">
             <span className="material-symbols-outlined text-4xl text-[#003466]">

@@ -37,7 +37,7 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
   const [currentPage, setCurrentPage] = useState(1);
   const [dateStart, setDateStart] = useState(today);
   const [dateEnd, setDateEnd] = useState(today);
-  const [isFiltering, setIsFiltering] = useState(false);
+  const [period, setPeriod] = useState(() => ({ start: today(), end: today() }));
   const [customLokasi, setCustomLokasi] = useState<string | null>(null);
   const [spots, setSpots] = useState<Spot[]>([]);
   const [isLoadingSpots, setIsLoadingSpots] = useState(true);
@@ -51,13 +51,14 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
         setIsLoadingSpots(true);
         setSpotError(null);
 
-        const data = await getSupabaseSpots();
+        const data = await getSupabaseSpots(period);
 
         if (isMounted) {
-        setSpots(data);
+          setSpots(data);
         }
       } catch (error) {
         if (isMounted) {
+          setSpots([]);
           setSpotError(
             error instanceof Error
               ? error.message
@@ -68,7 +69,7 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
         if (isMounted) {
           setIsLoadingSpots(false);
         }
-    } 
+      }
     }
 
     loadSpots();
@@ -76,7 +77,7 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [period]);
   
 
   const toggleChip = useCallback((chipId: string) => {
@@ -159,16 +160,13 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
   );
 
   const handleApplyFilter = () => {
-    setIsFiltering(true);
+    const duration = (Date.parse(dateEnd) - Date.parse(dateStart)) / 86_400_000 + 1;
+    if (!Number.isFinite(duration) || duration < 1 || duration > 30) {
+      onShowToast({ type: "error", message: "Pilih rentang sewa antara 1 dan 30 hari." });
+      return;
+    }
     setCurrentPage(1);
-    setTimeout(() => {
-      setIsFiltering(false);
-      onShowToast({
-        type: "success",
-        message: "Filter diterapkan",
-        description: `Menampilkan ${filteredAndSorted.length} spot`,
-      });
-    }, 600);
+    setPeriod({ start: dateStart, end: dateEnd });
   };
 
   const handleReset = () => {
@@ -179,8 +177,10 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
     setActiveChips(new Set());
     setCustomLokasi(null);
     setCurrentPage(1);
-    setDateStart("2025-10-25");
-    setDateEnd("2025-10-27");
+    const now = today();
+    setDateStart(now);
+    setDateEnd(now);
+    setPeriod({ start: now, end: now });
   };
 
   const availableSpotsCount = useMemo(
@@ -195,6 +195,7 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
             1. KATALOG HERO (KESATUAN UTAMA: Banner, Filter Card,
                Zone Tabs, Spot Grid, & Paginasi di dalam Card)
             ======================================================== */}
+        {spotError && <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700" role="alert">{spotError}</p>}
         <KatalogHero
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
@@ -209,7 +210,7 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
           activeChips={activeChips}
           toggleChip={toggleChip}
           onResetChips={handleResetChips}
-          isFiltering={isFiltering}
+          isFiltering={isLoadingSpots}
           onApplyFilter={handleApplyFilter}
           onReset={handleReset}
           onResetPage={() => setCurrentPage(1)}
@@ -230,7 +231,7 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
         {/* ========================================================
             2. PETA SPASIAL KAMPUS (FULL WIDTH)
             ======================================================== */}
-        {!isFiltering && filteredAndSorted.length > 0 && (
+        {!isLoadingSpots && filteredAndSorted.length > 0 && (
           <div id="peta-spasial" className="mt-8 pt-8 border-t border-[#e2e7ff] mb-10">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
               <div>

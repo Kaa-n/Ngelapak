@@ -132,6 +132,10 @@ export type Database = {
     Functions: {
       is_admin: { Args: Record<never, never>; Returns: boolean };
       get_admin_rental_metrics: { Args: Record<never, never>; Returns: Json };
+      get_unavailable_lapak_ids: {
+        Args: { p_start: string; p_end: string };
+        Returns: { spot_id: string }[];
+      };
       get_reserved_lapak_dates: {
         Args: { p_spot_id: string };
         Returns: { tanggal_mulai: string; tanggal_selesai: string }[];

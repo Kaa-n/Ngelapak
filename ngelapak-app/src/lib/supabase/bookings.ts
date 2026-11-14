@@ -1,6 +1,6 @@
-
 import { createClient } from "@/lib/supabase/client";
 import { getUploadPath, proofMimeTypes } from "@/lib/supabase/storage";
+import type { Booking, BookingStatus, TransactionStatus } from "@/lib/mock-data";
 import type { Database } from "@/types/database";
 
 interface CreateBookingInput {
@@ -52,84 +52,75 @@ export async function createSupabaseBooking(
     throw new Error("ID pemesanan tidak diterima dari server.");
   }
 
-  return data as string;
+  return data;
 }
 
+type SupabaseBookingRow = Database["public"]["Tables"]["bookings"]["Row"];
 
-    import type {
-    Booking,
-    BookingStatus,
-    TransactionStatus,
-    } from "@/lib/mock-data";
+function mapSupabaseBooking(row: SupabaseBookingRow): Booking {
+  const status: BookingStatus =
+    row.status === "aktif" ||
+    row.status === "selesai" ||
+    row.status === "dibatalkan"
+      ? row.status
+      : "menunggu";
 
-    type SupabaseBookingRow = Database["public"]["Tables"]["bookings"]["Row"];
+  const statusVerifikasi: TransactionStatus =
+    row.status_verifikasi === "disetujui" ||
+    row.status_verifikasi === "ditolak"
+      ? row.status_verifikasi
+      : "menunggu";
 
-    function mapSupabaseBooking(row: SupabaseBookingRow): Booking {
-    const status: BookingStatus =
-        row.status === "aktif" ||
-        row.status === "selesai" ||
-        row.status === "dibatalkan"
-        ? row.status
-        : "menunggu";
+  return {
+    id: row.id,
+    ownerId: row.owner_id ?? undefined,
+    spotId: row.spot_id ?? "",
+    spotNama: row.spot_nama ?? "",
+    spotKode: row.spot_kode ?? "",
 
-    const statusVerifikasi: TransactionStatus =
-        row.status_verifikasi === "disetujui" ||
-        row.status_verifikasi === "ditolak"
-        ? row.status_verifikasi
-        : "menunggu";
+    penyewa: {
+      nama: row.penyewa_nama ?? "",
+      nim: row.penyewa_nim ?? "",
+      fakultas: row.penyewa_fakultas ?? "",
+      telepon: row.penyewa_telepon ?? "",
+      email: row.penyewa_email ?? "",
+      avatar: row.penyewa_avatar ?? "",
+    },
 
-    return {
-        id: row.id,
-        ownerId: row.owner_id ?? undefined,
-        spotId: row.spot_id ?? "",
-        spotNama: row.spot_nama ?? "",
-        spotKode: row.spot_kode ?? "",
+    tanggalMulai: row.tanggal_mulai,
+    tanggalSelesai: row.tanggal_selesai,
+    jumlahHari: Number(row.jumlah_hari),
+    totalBayar: Number(row.total_bayar),
+    metodePembayaran: row.metode_pembayaran ?? "",
+    status,
+    statusVerifikasi,
+    buktiBayar: row.bukti_bayar ?? undefined,
+    catatan: row.catatan ?? undefined,
+    jenisUsaha: row.jenis_usaha ?? "",
+    createdAt: row.created_at,
+  };
+}
 
-        penyewa: {
-        nama: row.penyewa_nama ?? "",
-        nim: row.penyewa_nim ?? "",
-        fakultas: row.penyewa_fakultas ?? "",
-        telepon: row.penyewa_telepon ?? "",
-        email: row.penyewa_email ?? "",
-        avatar: row.penyewa_avatar ?? "",
-        },
+/**
+ * Mengambil daftar booking dari Supabase.
+ * Hasil query mengikuti RLS:
+ * - Penyewa hanya mendapatkan booking miliknya.
+ * - Admin mendapatkan seluruh booking.
+ */
+export async function getSupabaseBookings(): Promise<Booking[]> {
+  const supabase = createClient();
 
-        tanggalMulai: row.tanggal_mulai,
-        tanggalSelesai: row.tanggal_selesai,
-        jumlahHari: Number(row.jumlah_hari),
-        totalBayar: Number(row.total_bayar),
-        metodePembayaran: row.metode_pembayaran ?? "",
-        status,
-        statusVerifikasi,
-        buktiBayar: row.bukti_bayar ?? undefined,
-        catatan: row.catatan ?? undefined,
-        jenisUsaha: row.jenis_usaha ?? "",
-        createdAt: row.created_at,
-    };
-    }
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("*")
+    .order("created_at", { ascending: false });
 
-    /**
-     * Mengambil daftar booking dari Supabase.
-     * Hasil query mengikuti RLS:
-     * - Penyewa hanya mendapatkan booking miliknya.
-     * - Admin mendapatkan seluruh booking.
-     */
-    export async function getSupabaseBookings(): Promise<Booking[]> {
-    const supabase = createClient();
+  if (error) {
+    throw new Error(error.message);
+  }
 
-    const { data, error } = await supabase
-        .from("bookings")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-    if (error) {
-        throw new Error(error.message);
-    }
-
-    return (data ?? []).map((row) =>
-        mapSupabaseBooking(row)
-    );
-    }
+  return (data ?? []).map(mapSupabaseBooking);
+}
 
 export async function getSupabaseBookingDetail(id: string) {
   const supabase = createClient();

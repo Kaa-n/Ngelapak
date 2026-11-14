@@ -64,7 +64,8 @@ export default function DetailSpotView({
     if (!spotId || demoAccount || !/^[\da-f-]{36}$/i.test(spotId)) return;
     let active = true;
     async function loadDates() {
-      const { data } = await createClient().rpc("get_reserved_lapak_dates", { p_spot_id: spotId! });
+      if (!spotId) return;
+      const { data } = await createClient().rpc("get_reserved_lapak_dates", { p_spot_id: spotId });
       if (active && data) setReservedDates(data.map((row) => ({
         startDate: row.tanggal_mulai, endDate: row.tanggal_selesai,
       })));
@@ -654,7 +655,7 @@ export default function DetailSpotView({
                 </div>
                 <div className={`px-3 py-1 rounded-full text-[12px] font-bold ${spot.status === "tersedia" ? "bg-[#6ffbbe] text-[#002113]" : "bg-[#ffddb8] text-[#2a1700]"
                   }`}>
-                  {spot.status === "tersedia" ? "✓ Tersedia" : "Dipesan"}
+                  {{ tersedia: "✓ Tersedia", dipesan: "Dipesan", pemeliharaan: "Pemeliharaan" }[spot.status]}
                 </div>
               </div>
 
