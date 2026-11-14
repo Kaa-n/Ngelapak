@@ -108,8 +108,8 @@ export default function KatalogGrid({
                 type="button"
                 onClick={() => onPageChange(i + 1)}
                 className={`h-9 w-9 flex items-center justify-center rounded-lg text-[13px] font-semibold transition-colors ${currentPage === i + 1
-                    ? "bg-[#003466] text-white shadow-sm"
-                    : "bg-white text-[#424750] hover:bg-[#eaedff] border border-[#e2e7ff]"
+                  ? "bg-[#003466] text-white shadow-sm"
+                  : "bg-white text-[#424750] hover:bg-[#eaedff] border border-[#e2e7ff]"
                   }`}
               >
                 {i + 1}
@@ -121,7 +121,7 @@ export default function KatalogGrid({
               disabled={currentPage === totalPages}
               className="h-9 px-3 flex items-center justify-center gap-1 rounded-lg bg-white text-[#131b2e] text-[13px] font-semibold hover:bg-[#eaedff] transition-colors border border-[#e2e7ff] disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <span>Berikutny</span>
+              <span>Berikutnya</span>
               <span className="material-symbols-outlined text-[16px]">chevron_right</span>
             </button>
           </div>
