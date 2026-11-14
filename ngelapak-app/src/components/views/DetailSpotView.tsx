@@ -4,8 +4,10 @@ import React, { useState, useSyncExternalStore } from "react";
 import type { Spot } from "@/lib/mock-data";
 import dynamic from "next/dynamic";
 import { formatRupiah, formatDate } from "@/lib/mock-data";
-import type { ToastMessage } from "@/lib/types";
-import { useDemo, createDemoBooking, today } from "@/lib/demo-store";
+import type { ToastMessage, DemoUser } from "@/lib/types";
+import type { SupabaseProfile } from "@/lib/supabase/auth";
+import { createSupabaseBooking } from "@/lib/supabase/bookings";
+import { createDemoBooking, today } from "@/lib/demo-store";
 
 const CONTACT_PERSON = "0812-0000-0000";
 
@@ -26,6 +28,7 @@ const InteractiveMap = dynamic(
 
 interface DetailSpotViewProps {
   spot?: Spot;
+  user: DemoUser | SupabaseProfile | null;
   initialTab?: "detail" | "operasional" | "fasilitas" | "ulasan";
   onBack: () => void;
   onLogin: () => void;
@@ -35,14 +38,13 @@ interface DetailSpotViewProps {
 
 export default function DetailSpotView({
   spot,
+  user,
   initialTab = "detail",
   onBack,
   onLogin,
   onOrderDetail,
   onShowToast,
 }: DetailSpotViewProps) {
-  const { user } = useDemo();
-
   // State Form Booking & Pendaftaran Penjual (Jobdesk FE 3)
   const [selectedDays, setSelectedDays] = useState(1);
   const [startDate, setStartDate] = useState(() => today());
@@ -156,33 +158,73 @@ export default function DetailSpotView({
   };
 
   // LANGKAH 2: Konfirmasi Pembayaran Selesai -> Diteruskan ke Halaman Ringkasan Sukses
-  const handleConfirmPayment = () => {
-    setIsSubmitting(true);
-    try {
-      const id = createDemoBooking({
-        spotId: spot.id,
-        tanggalMulai: startDate,
-        jumlahHari: selectedDays,
-        jenisUsaha,
-        catatan: catatanTambahan,
-        metodePembayaran,
-        ...({ namaUsaha, kategoriPenjual } as Record<string, unknown>)
+  
+  const handleConfirmPayment = async () => {
+    if (!user || user.role !== "penyewa") {
+      onShowToast({
+        type: "error",
+        message: "Akun tidak memiliki akses untuk melakukan pemesanan.",
       });
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      let id: string;
+
+      // Akun demo tetap menggunakan penyimpanan localStorage.
+      if (user.id === "ayu" || user.id === "bayu") {
+        id = createDemoBooking({
+          spotId: spot.id,
+          tanggalMulai: startDate,
+          jumlahHari: selectedDays,
+          jenisUsaha,
+          catatan: catatanTambahan,
+          metodePembayaran,
+          ...({ namaUsaha, kategoriPenjual } as Record<string, unknown>),
+        });
+      } else {
+        // Akun Supabase menyimpan pemesanan ke database.
+        id = await createSupabaseBooking({
+          spotKode: spot.kode,
+          tanggalMulai: startDate,
+          jumlahHari: selectedDays,
+          totalBayar,
+          metodePembayaran,
+          jenisUsaha,
+          namaUsaha,
+          kategoriPenjual,
+          catatan: catatanTambahan,
+        });
+      }
 
       setReservationId(id);
       setShowPaymentStep(false);
       setBookingSuccess(true);
+
       onShowToast({
         type: "success",
-        message: "Pembayaran berhasil",
-        description: "Pesanan menunggu verifikasi admin. Pembatalan bisa diajukan 1x24 jam di detail pesanan.",
+        message: "Pengajuan pemesanan berhasil",
+        description:
+          "Pesanan berhasil dicatat dan sedang menunggu verifikasi admin.",
       });
     } catch (error) {
-      onShowToast({ type: "error", message: error instanceof Error ? error.message : "Pengajuan gagal disimpan" });
+      console.error("Gagal menyimpan pemesanan:", error);
+
+      onShowToast({
+        type: "error",
+        message: "Pengajuan gagal disimpan",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Terjadi kesalahan saat menyimpan pemesanan.",
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
+
 
   // TAHAP 1: MODAL PEMBAYARAN INTERAKTIF (BARCODE & TOKEN TRANSAKSI)
   if (showPaymentStep) {

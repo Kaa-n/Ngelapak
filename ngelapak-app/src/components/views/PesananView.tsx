@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { canCancelBooking, useDemo } from "@/lib/demo-store";
 import { formatDate, formatRupiah } from "@/lib/mock-data";
 import type { Booking } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
+import type { SupabaseProfile } from "@/lib/supabase/auth";
+import { getSupabaseBookings } from "@/lib/supabase/bookings";
 import DetailPesananView from "./DetailPesananView";
 
 // ============================================================
@@ -262,18 +264,66 @@ const TABS: { key: FilterTab; label: string }[] = [
 // MAIN VIEW
 // ============================================================
 
-export default function PesananView({
-  onExplore,
-  onShowToast,
-}: {
-  onExplore: () => void;
-  onShowToast: (toast: Omit<ToastMessage, "id">) => void;
-}) {
-  const { user, bookings } = useDemo();
-  const [activeTab, setActiveTab] = useState<FilterTab>("semua");
-  const [detailId, setDetailId] = useState<string | null>(null);
+  export default function PesananView({
+    user,
+    onExplore,
+    onShowToast,
+  }: {
+    user: ReturnType<typeof useDemo>["user"] | SupabaseProfile | null;
+    onExplore: () => void;
+    onShowToast: (toast: Omit<ToastMessage, "id">) => void;
+  }) {
+    const { bookings: demoBookings } = useDemo();
 
-  if (user?.role !== "penyewa") return null;
+    const [supabaseBookings, setSupabaseBookings] = useState<Booking[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [loadError, setLoadError] = useState("");
+
+    const isDemoUser = user?.id === "ayu" || user?.id === "bayu";
+
+    useEffect(() => {
+      if (!user || user.role !== "penyewa" || isDemoUser) return;
+
+      let mounted = true;
+
+      async function loadBookings() {
+        setLoading(true);
+        setLoadError("");
+
+        try {
+          const data = await getSupabaseBookings();
+
+          if (mounted) {
+            setSupabaseBookings(data);
+          }
+        } catch (error) {
+          if (mounted) {
+            setLoadError(
+              error instanceof Error
+                ? error.message
+                : "Gagal mengambil data pesanan."
+            );
+          }
+        } finally {
+          if (mounted) {
+            setLoading(false);
+          }
+        }
+      }
+
+      loadBookings();
+
+      return () => {
+        mounted = false;
+      };
+    }, [user?.id, user?.role, isDemoUser]);
+
+    const bookings = isDemoUser ? demoBookings : supabaseBookings;
+
+    const [activeTab, setActiveTab] = useState<FilterTab>("semua");
+    const [detailId, setDetailId] = useState<string | null>(null);
+
+    if (user?.role !== "penyewa") return null;
 
   // If viewing detail, render DetailPesananView
   if (detailId) {

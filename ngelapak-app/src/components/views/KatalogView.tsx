@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { KatalogHero } from "@/components/katalog";
 import type { ZonaFilter, UkuranFilter, SortOption } from "@/components/katalog";
-import { MOCK_SPOTS } from "@/lib/mock-data";
 import type { Spot } from "@/lib/mock-data";
+import { getSupabaseSpots } from "@/lib/supabase/spots";
 import type { ToastMessage } from "@/lib/types";
 import { today } from "@/lib/demo-store";
 
@@ -39,6 +39,45 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
   const [dateEnd, setDateEnd] = useState(today);
   const [isFiltering, setIsFiltering] = useState(false);
   const [customLokasi, setCustomLokasi] = useState<string | null>(null);
+  const [spots, setSpots] = useState<Spot[]>([]);
+  const [isLoadingSpots, setIsLoadingSpots] = useState(true);
+  const [spotError, setSpotError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadSpots() {
+      try {
+        setIsLoadingSpots(true);
+        setSpotError(null);
+
+        const data = await getSupabaseSpots();
+
+        if (isMounted) {
+        setSpots(data);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setSpotError(
+            error instanceof Error
+              ? error.message
+              : "Gagal mengambil data spot."
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingSpots(false);
+        }
+    } 
+    }
+
+    loadSpots();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+  
 
   const toggleChip = useCallback((chipId: string) => {
     setActiveChips((prev) => {
@@ -54,12 +93,12 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
   }, []);
 
   const filteredAndSorted = useMemo(() => {
-    let spots = [...MOCK_SPOTS];
+    let filteredSpots = [...spots];
 
-    // Search query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      spots = spots.filter(
+
+      filteredSpots = filteredSpots.filter(
         (s) =>
           s.nama.toLowerCase().includes(q) ||
           s.kode.toLowerCase().includes(q) ||
@@ -69,35 +108,49 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
       );
     }
 
-    // Zona filter
     if (zonaFilter !== "all") {
-      spots = spots.filter((s) => s.zona === zonaFilter);
+      filteredSpots = filteredSpots.filter(
+        (s) => s.zona === zonaFilter
+      );
     }
 
-    // Ukuran filter
     if (ukuranFilter !== "all") {
-      spots = spots.filter((s) => s.ukuran === ukuranFilter);
+      filteredSpots = filteredSpots.filter(
+        (s) => s.ukuran === ukuranFilter
+      );
     }
 
-    // Sort
     switch (sortBy) {
       case "harga-asc":
-        spots.sort((a, b) => a.tarifPerHari - b.tarifPerHari);
+        filteredSpots.sort(
+          (a, b) => a.tarifPerHari - b.tarifPerHari
+        );
         break;
+
       case "harga-desc":
-        spots.sort((a, b) => b.tarifPerHari - a.tarifPerHari);
+        filteredSpots.sort(
+          (a, b) => b.tarifPerHari - a.tarifPerHari
+        );
         break;
+
       case "terbaru":
-        spots.sort((a, b) => parseInt(b.id.split("-")[1]) - parseInt(a.id.split("-")[1]));
+        filteredSpots.sort((a, b) =>
+          b.kode.localeCompare(a.kode, undefined, {
+            numeric: true,
+          })
+        );
         break;
+
       case "populer":
       default:
-        spots.sort((a, b) => b.totalSewa - a.totalSewa);
+        filteredSpots.sort(
+          (a, b) => b.totalSewa - a.totalSewa
+        );
         break;
     }
 
-    return spots;
-  }, [searchQuery, zonaFilter, ukuranFilter, sortBy]);
+    return filteredSpots;
+  }, [spots, searchQuery, zonaFilter, ukuranFilter, sortBy]);
 
   const totalPages = Math.ceil(filteredAndSorted.length / ITEMS_PER_PAGE);
   const paginatedSpots = filteredAndSorted.slice(
@@ -202,7 +255,7 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
 
             {/* FULL WIDTH INTERACTIVE MAP */}
             <InteractiveMap
-              spots={MOCK_SPOTS}
+              spots={spots}
               defaultStatus="tersedia"
               defaultZone={zonaFilter}
               context="katalog"

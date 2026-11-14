@@ -177,6 +177,7 @@ function DemoHome() {
 
         {currentView === "pesanan" && user?.role === "penyewa" && (
           <PesananView
+            user={user}
             onExplore={() => navigate("katalog")}
             onShowToast={showToast}
           />
@@ -204,6 +205,7 @@ function DemoHome() {
           <DetailSpotView
             key={`${selectedSpot.id}-${user?.id ?? "guest"}-${detailInitialTab}`}
             spot={selectedSpot || MOCK_SPOTS[0]}
+            user={user}
             initialTab={detailInitialTab}
             onBack={() => navigate("katalog")}
             onLogin={() => navigate("masuk")}
