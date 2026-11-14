@@ -1,6 +1,8 @@
 import { MOCK_BOOKINGS } from "@/lib/mock-data";
 import Link from "next/link";
 
+export const dynamic = "force-dynamic";
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function formatDate(dateStr: string): string {
