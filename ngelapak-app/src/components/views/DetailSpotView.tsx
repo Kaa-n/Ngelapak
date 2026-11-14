@@ -9,8 +9,6 @@ import type { SupabaseProfile } from "@/lib/supabase/auth";
 import { createSupabaseBooking } from "@/lib/supabase/bookings";
 import { createDemoBooking, today } from "@/lib/demo-store";
 
-const CONTACT_PERSON = "0812-0000-0000";
-
 const emptySubscribe = () => () => { };
 
 // Dynamic import InteractiveMap buatan rekan tim (mencegah error window is not defined)
@@ -831,31 +829,367 @@ export default function DetailSpotView({
                         id="terms"
                         checked={agreeTerms}
                         onChange={(e) => setAgreeTerms(e.target.checked)}
-                        className="mt-0.5 w-4 h-4 rounded accent-[#003466] cursor-pointer"
+                        className="mt-0.5 w-4 h-4 rounded accent-[#003466] cursor-pointer shrink-0"
                       />
-                      <label htmlFor="terms" className="text-[12px] text-[#424750] cursor-pointer leading-relaxed">
-                        Saya menyetujui{" "}
+
+                      <div className="text-[12px] text-[#424750] leading-relaxed">
+                        <label htmlFor="terms">
+                          Saya telah membaca dan menyetujui{" "}
+                        </label>
                         <button
                           type="button"
-                          onClick={() => setShowTerms((open) => !open)}
+                          onClick={() => setShowTerms(true)}
                           className="text-[#003466] font-semibold hover:underline"
                         >
                           Syarat & Ketentuan
-                        </button>{" "}
-                        penggunaan lapak kampus Udayana
-                      </label>
+                        </button>
+                        {" "}penggunaan lapak di lingkungan Universitas Udayana.
+                      </div>
                     </div>
-                    {showTerms && (
-                      <ul className="text-[12px] text-[#424750] leading-relaxed list-disc pl-5 space-y-1.5 bg-[#f2f3ff] rounded-xl p-3">
-                        <li>Setelah pembayaran tercatat, pesanan menunggu verifikasi admin.</li>
-                        <li>Panduan datang, cara mengenali lapak, dan kontak ada di detail pesanan. Berkas PDF-nya menyusul.</li>
-                        <li>Pembatalan bisa diajukan di detail pesanan selama 1x24 jam dan selama admin belum memverifikasi. Isi identitas, rekening, dan alasan. Lewat itu, hubungi contact person di {CONTACT_PERSON}.</li>
-                        <li>Jangan bagikan ID pesanan. Tunjukkan ID itu jika petugas lokasi bertanya.</li>
-                        <li>Usaha yang dijalankan sesuai data saat memesan. Kerusakan fasilitas menjadi tanggung jawab penyewa.</li>
-                      </ul>
-                    )}
                   </div>
 
+                  {/* Modal Syarat & Ketentuan */}
+                  {showTerms && (
+                    <div
+                      className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5"
+                      onClick={() => setShowTerms(false)}
+                    >
+                      <div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="terms-title"
+                        onClick={(e) => e.stopPropagation()}
+                        className="bg-white w-full max-w-xl max-h-[78vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200"
+                      >
+                        {/* Header Modal */}
+                        <div className="px-5 sm:px-6 py-4 border-b border-[#e2e7ff] flex items-start justify-between gap-4">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="material-symbols-outlined text-[#003466]">
+                                description
+                              </span>
+                              <span className="text-[11px] font-bold tracking-wider uppercase text-[#855300]">
+                                Ketentuan Layanan Ngelapak
+                              </span>
+                            </div>
+
+                            <h2
+                              id="terms-title"
+                              className="text-xl sm:text-2xl font-bold text-[#003466]"
+                            >
+                              Syarat & Ketentuan
+                            </h2>
+
+                            <p className="text-xs text-[#737781] mt-1">
+                              Ketentuan penggunaan dan penyewaan lapak di lingkungan
+                              Universitas Udayana.
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setShowTerms(false)}
+                            aria-label="Tutup syarat dan ketentuan"
+                            className="w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-[#737781] hover:bg-[#f2f3ff] hover:text-[#003466] transition-colors"
+                          >
+                            <span className="material-symbols-outlined">close</span>
+                          </button>
+                        </div>
+
+                        {/* Isi Modal */}
+                        <div className="px-5 sm:px-6 py-4 overflow-y-auto text-[12px] sm:text-[13px] text-[#424750] leading-relaxed space-y-5">
+
+                          <div className="bg-[#f2f3ff] border border-[#e2e7ff] rounded-xl p-4">
+                            <p className="font-semibold text-[#003466] mb-1">
+                              Pendahuluan
+                            </p>
+                            <p>
+                              Syarat dan Ketentuan ini mengatur penggunaan platform Ngelapak
+                              sebagai sarana pengajuan dan pengelolaan penyewaan lapak usaha
+                              di lingkungan Universitas Udayana. Dengan menggunakan layanan
+                              dan mengajukan pemesanan melalui Ngelapak, pengguna dianggap
+                              telah membaca, memahami, dan bersedia mematuhi ketentuan yang
+                              berlaku.
+                            </p>
+                          </div>
+
+                          <section>
+                            <h3 className="font-bold text-[#131b2e] text-sm mb-2">
+                              Pasal 1 - Ketentuan Umum
+                            </h3>
+                            <div className="space-y-2">
+                              <p>
+                                1. Ngelapak merupakan platform yang memfasilitasi proses
+                                pencarian informasi, pengajuan pemesanan, dan pengelolaan
+                                penggunaan lapak usaha di lingkungan Universitas Udayana.
+                              </p>
+                              <p>
+                                2. Pengguna adalah setiap individu atau pihak yang mengakses
+                                dan menggunakan layanan Ngelapak, termasuk calon penyewa
+                                dan pengelola lapak.
+                              </p>
+                              <p>
+                                3. Penyewa adalah pengguna yang mengajukan permohonan
+                                penggunaan lapak untuk kegiatan usaha atau kegiatan lain
+                                yang diperbolehkan.
+                              </p>
+                              <p>
+                                4. Pengelola adalah pihak yang memiliki kewenangan untuk
+                                mengelola ketersediaan lapak, memeriksa pengajuan, dan
+                                melakukan verifikasi sesuai ketentuan yang berlaku.
+                              </p>
+                            </div>
+                          </section>
+
+                          <section>
+                            <h3 className="font-bold text-[#131b2e] text-sm mb-2">
+                              Pasal 2 - Pendaftaran dan Keakuratan Informasi
+                            </h3>
+                            <div className="space-y-2">
+                              <p>
+                                1. Pengguna wajib menggunakan akun yang terdaftar dan
+                                memberikan informasi identitas serta informasi usaha
+                                secara benar, lengkap, dan dapat dipertanggungjawabkan.
+                              </p>
+                              <p>
+                                2. Informasi mengenai nama usaha, kategori penjual, jenis
+                                usaha, dan kebutuhan penggunaan lapak harus sesuai dengan
+                                kegiatan yang akan dilaksanakan.
+                              </p>
+                              <p>
+                                3. Pengguna bertanggung jawab atas keakuratan dan
+                                keabsahan informasi maupun dokumen yang disampaikan
+                                melalui platform.
+                              </p>
+                              <p>
+                                4. Pengelola berhak meminta klarifikasi apabila terdapat
+                                informasi yang tidak lengkap, tidak sesuai, atau
+                                memerlukan pemeriksaan lebih lanjut.
+                              </p>
+                            </div>
+                          </section>
+
+                          <section>
+                            <h3 className="font-bold text-[#131b2e] text-sm mb-2">
+                              Pasal 3 - Pengajuan dan Penggunaan Lapak
+                            </h3>
+                            <div className="space-y-2">
+                              <p>
+                                1. Pengajuan pemesanan dilakukan dengan memilih lapak,
+                                menentukan tanggal dan durasi penggunaan, serta
+                                melengkapi informasi yang dipersyaratkan dalam formulir
+                                pemesanan.
+                              </p>
+                              <p>
+                                2. Pengajuan pemesanan belum merupakan persetujuan final
+                                atas penggunaan lapak dan tetap mengikuti proses
+                                pemeriksaan serta verifikasi oleh pengelola.
+                              </p>
+                              <p>
+                                3. Penyewa hanya diperkenankan menggunakan lapak sesuai
+                                lokasi, periode, jenis kegiatan, dan informasi usaha
+                                yang diajukan serta disetujui.
+                              </p>
+                              <p>
+                                4. Perubahan jadwal, jenis kegiatan, atau informasi
+                                pemesanan harus dikomunikasikan kepada pengelola dan
+                                memperoleh persetujuan apabila diperlukan.
+                              </p>
+                            </div>
+                          </section>
+
+                          <section>
+                            <h3 className="font-bold text-[#131b2e] text-sm mb-2">
+                              Pasal 4 - Tarif dan Pembayaran
+                            </h3>
+                            <div className="space-y-2">
+                              <p>
+                                1. Tarif penggunaan lapak mengikuti informasi harga
+                                yang ditampilkan pada halaman detail lapak ketika
+                                pengajuan pemesanan dilakukan.
+                              </p>
+                              <p>
+                                2. Total biaya dihitung berdasarkan tarif penggunaan
+                                dan durasi sewa yang dipilih oleh penyewa, dengan
+                                memperhatikan biaya tambahan apabila ditetapkan
+                                oleh pengelola.
+                              </p>
+                              <p>
+                                3. Penyewa wajib melakukan pembayaran melalui metode
+                                pembayaran yang disediakan pada platform dan
+                                memastikan informasi transaksi yang digunakan benar.
+                              </p>
+                              <p>
+                                4. Bukti atau informasi pembayaran dapat digunakan
+                                sebagai dasar pemeriksaan oleh pengelola. Status
+                                pemesanan mengikuti hasil verifikasi pembayaran
+                                dan pengajuan.
+                              </p>
+                            </div>
+                          </section>
+
+                          <section>
+                            <h3 className="font-bold text-[#131b2e] text-sm mb-2">
+                              Pasal 5 - Hak dan Kewajiban Penyewa
+                            </h3>
+                            <div className="space-y-2">
+                              <p>
+                                1. Penyewa berhak menggunakan lapak sesuai periode
+                                dan peruntukan yang telah memperoleh persetujuan.
+                              </p>
+                              <p>
+                                2. Penyewa wajib menjaga kebersihan, ketertiban,
+                                keamanan, serta kondisi fasilitas selama masa
+                                penggunaan lapak.
+                              </p>
+                              <p>
+                                3. Penyewa wajib mematuhi peraturan kampus, ketentuan
+                                keselamatan, serta arahan pengelola yang berkaitan
+                                dengan kegiatan di lokasi.
+                              </p>
+                              <p>
+                                4. Penyewa dilarang mengalihkan penggunaan lapak
+                                kepada pihak lain tanpa persetujuan pengelola.
+                              </p>
+                              <p>
+                                5. Penyewa bertanggung jawab atas kerusakan atau
+                                kerugian yang timbul akibat kelalaian maupun
+                                tindakan penyewa dan pihak yang berada di bawah
+                                tanggung jawabnya.
+                              </p>
+                            </div>
+                          </section>
+
+                          <section>
+                            <h3 className="font-bold text-[#131b2e] text-sm mb-2">
+                              Pasal 6 - Pembatalan dan Perubahan Pemesanan
+                            </h3>
+                            <div className="space-y-2">
+                              <p>
+                                1. Permohonan pembatalan atau perubahan pemesanan
+                                disampaikan melalui mekanisme yang tersedia pada
+                                platform atau melalui pengelola.
+                              </p>
+                              <p>
+                                2. Setiap permohonan akan ditinjau berdasarkan
+                                status pemesanan, waktu pengajuan, dan ketentuan
+                                operasional yang berlaku.
+                              </p>
+                              <p>
+                                3. Pengembalian dana, apabila memenuhi persyaratan,
+                                dilaksanakan berdasarkan kebijakan pembatalan
+                                dan pengembalian dana yang ditetapkan oleh pengelola.
+                              </p>
+                              <p>
+                                4. Penyewa wajib memastikan kembali tanggal, durasi,
+                                dan informasi pemesanan sebelum menyelesaikan
+                                pengajuan.
+                              </p>
+                            </div>
+                          </section>
+
+                          <section>
+                            <h3 className="font-bold text-[#131b2e] text-sm mb-2">
+                              Pasal 7 - Larangan dan Penegakan Ketentuan
+                            </h3>
+                            <div className="space-y-2">
+                              <p>
+                                1. Penyewa dilarang menggunakan lapak untuk kegiatan
+                                yang bertentangan dengan hukum, peraturan kampus,
+                                norma kesusilaan, atau ketertiban lingkungan.
+                              </p>
+                              <p>
+                                2. Penyewa dilarang memberikan informasi palsu,
+                                menyalahgunakan akun, atau melakukan tindakan yang
+                                mengganggu operasional platform maupun kegiatan
+                                di lingkungan kampus.
+                              </p>
+                              <p>
+                                3. Pengelola dapat melakukan pemeriksaan dan
+                                mengambil tindakan sesuai kewenangannya apabila
+                                ditemukan dugaan pelanggaran terhadap ketentuan
+                                penggunaan lapak.
+                              </p>
+                            </div>
+                          </section>
+
+                          <section>
+                            <h3 className="font-bold text-[#131b2e] text-sm mb-2">
+                              Pasal 8 - Data dan Informasi Pengguna
+                            </h3>
+                            <div className="space-y-2">
+                              <p>
+                                1. Informasi yang diberikan pengguna digunakan
+                                untuk mendukung proses pendaftaran, pemesanan,
+                                verifikasi, dan pengelolaan layanan Ngelapak.
+                              </p>
+                              <p>
+                                2. Pengguna bertanggung jawab untuk menjaga
+                                kerahasiaan informasi akun dan tidak membagikan
+                                kredensial maupun informasi transaksi kepada
+                                pihak yang tidak berwenang.
+                              </p>
+                              <p>
+                                3. Pengelolaan data pengguna dilaksanakan dengan
+                                memperhatikan ketentuan perlindungan data pribadi
+                                dan kebijakan yang berlaku.
+                              </p>
+                            </div>
+                          </section>
+
+                          <section>
+                            <h3 className="font-bold text-[#131b2e] text-sm mb-2">
+                              Pasal 9 - Penutup
+                            </h3>
+                            <div className="space-y-2">
+                              <p>
+                                1. Dengan mencentang pernyataan persetujuan pada
+                                halaman pemesanan, pengguna menyatakan telah membaca,
+                                memahami, dan menyetujui Syarat & Ketentuan ini.
+                              </p>
+                              <p>
+                                2. Hal-hal yang belum diatur dalam dokumen ini
+                                akan mengikuti kebijakan dan ketentuan resmi
+                                Universitas Udayana serta keputusan pengelola
+                                yang berwenang.
+                              </p>
+                              <p>
+                                3. Apabila terdapat perubahan ketentuan, pengguna
+                                diharapkan membaca versi terbaru sebelum melakukan
+                                pengajuan pemesanan berikutnya.
+                              </p>
+                            </div>
+                          </section>
+
+                          <div className="bg-[#f2f3ff] rounded-xl p-4 border border-[#e2e7ff]">
+                            <p className="text-xs text-[#424750]">
+                              <strong className="text-[#003466]">Pernyataan Persetujuan</strong>
+                              <br />
+                              Dengan melanjutkan proses pemesanan dan mencentang
+                              persetujuan, penyewa menyatakan telah memahami serta
+                              bersedia mematuhi ketentuan penggunaan lapak yang
+                              berlaku di lingkungan Universitas Udayana.
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Footer Modal */}
+                        <div className="px-5 sm:px-6 py-3 border-t border-[#e2e7ff] bg-white flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
+                          <p className="text-[11px] text-[#737781]">
+                            Mohon baca seluruh ketentuan sebelum menyetujui.
+                          </p>
+
+                          <button
+                            type="button"
+                            onClick={() => setShowTerms(false)}
+                            className="w-full sm:w-auto px-7 h-11 rounded-xl bg-[#003466] text-white text-[13px] font-bold hover:bg-[#1a4b84] transition-colors shadow-sm"
+                          >
+                            Saya Mengerti
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {/* Tombol Membuka Modal Pembayaran (QRIS / Token) */}
                   <button
                     onClick={handleOpenPayment}
