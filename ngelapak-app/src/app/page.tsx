@@ -164,7 +164,9 @@ function DemoHome() {
         )}
         {currentView === "detail-pesanan" && user?.role === "penyewa" && orderId && (
           <DetailPesananView
+            key={orderId}
             bookingId={orderId}
+            useSupabase={!!supabaseProfile}
             onBack={() => navigate("katalog")}
           />
         )}

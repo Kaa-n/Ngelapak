@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { canCancelBooking, cancelDemoBooking, useDemo } from "@/lib/demo-store";
 import { formatDate, formatRupiah, type Booking } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
 import { printKuitansi } from "@/lib/pdf/generateKuitansi";
 import { printSPPLA } from "@/lib/pdf/generateSPPLA";
+import { getSupabaseBookingDetail, requestSupabaseCancellation } from "@/lib/supabase/bookings";
+import { createClient } from "@/lib/supabase/client";
 
 // ============================================================
 // TYPES
@@ -30,7 +32,7 @@ function getStatusInfo(booking: Booking): {
   cls: string;
   icon: string;
 } {
-  if (booking.status === "dibatalkan")
+  if (booking.status === "dibatalkan" && booking.statusVerifikasi !== "ditolak")
     return {
       label: "Dibatalkan",
       cls: "bg-red-50 text-red-700 border-red-200",
@@ -215,10 +217,12 @@ function SectionCard({
 
 function CancellationForm({
   booking,
+  submitCancellation,
   onSuccess,
   onCancel,
 }: {
   booking: Booking;
+  submitCancellation: (input: CancelForm) => Promise<string>;
   onSuccess: (msg: string) => void;
   onCancel: () => void;
 }) {
@@ -238,13 +242,12 @@ function CancellationForm({
     setForm((f) => ({ ...f, [field]: value }));
   }
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
-      cancelDemoBooking(booking.id, form);
-      onSuccess("Pembatalan berhasil diajukan. Pesanan telah dibatalkan.");
+      onSuccess(await submitCancellation(form));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Pembatalan gagal disimpan.");
     } finally {
@@ -339,17 +342,45 @@ function CancellationForm({
 
 export default function DetailPesananView({
   bookingId,
+  useSupabase = false,
   onBack,
   onShowToast,
 }: {
   bookingId: string;
+  useSupabase?: boolean;
   onBack: () => void;
   onShowToast?: (toast: Omit<ToastMessage, "id">) => void;
 }) {
   const { bookings } = useDemo();
-  const booking = bookings.find((b) => b.id === bookingId) ?? null;
+  const [detail, setDetail] = useState<Awaited<ReturnType<typeof getSupabaseBookingDetail>>>();
+  const [loadError, setLoadError] = useState("");
+  const [version, setVersion] = useState(0);
+  const [proofError, setProofError] = useState("");
+  const booking = useSupabase ? detail?.booking : bookings.find((b) => b.id === bookingId);
+  const cancellation = useSupabase ? detail?.cancellation : null;
   const [showCancelForm, setShowCancelForm] = useState(false);
   const [cancelNote, setCancelNote] = useState("");
+
+  useEffect(() => {
+    if (!useSupabase) return;
+    let active = true;
+    getSupabaseBookingDetail(bookingId).then((result) => {
+      if (active) setDetail(result);
+    }).catch((error: Error) => {
+      if (active) setLoadError(error.message);
+    });
+    return () => { active = false; };
+  }, [bookingId, useSupabase, version]);
+
+  if (useSupabase && loadError) return (
+    <div className="mx-auto max-w-lg p-6">
+      <p role="alert" className="text-red-700">{loadError}</p>
+      <button onClick={() => { setLoadError(""); setVersion((value) => value + 1); }} className="mt-3 underline">
+        Coba lagi
+      </button>
+    </div>
+  );
+  if (useSupabase && detail === undefined) return <p role="status" className="p-6">Memuat pesanan…</p>;
 
   if (!booking) {
     return (
@@ -381,15 +412,40 @@ export default function DetailPesananView({
 
   const currentBooking = booking;
   const statusInfo = getStatusInfo(currentBooking);
-  const bolehBatal = canCancelBooking(currentBooking);
-  const isApproved = currentBooking.statusVerifikasi === "disetujui";
+  const bolehBatal = canCancelBooking(currentBooking) && (!cancellation || cancellation.status === "ditolak");
+  const isApproved = currentBooking.statusVerifikasi === "disetujui" && currentBooking.status !== "dibatalkan";
+
+  async function submitCancellation(form: CancelForm) {
+    if (!useSupabase) {
+      cancelDemoBooking(bookingId, form);
+      return "Pembatalan berhasil diajukan. Pesanan telah dibatalkan.";
+    }
+    await requestSupabaseCancellation({
+      p_booking_id: bookingId, p_nama: form.nama, p_nim: form.nim, p_telepon: form.telepon,
+      p_bank: form.bank, p_nomor_rekening: form.nomorRekening,
+      p_nama_rekening: form.namaRekening, p_alasan: form.alasan,
+    });
+    setDetail(undefined);
+    setVersion((value) => value + 1);
+    return "Pengajuan pembatalan menunggu keputusan admin.";
+  }
+
+  async function showRefundProof(path: string) {
+    setProofError("");
+    const { data } = await createClient().storage.from("refund-proofs").createSignedUrl(path, 120);
+    if (!data) {
+      setProofError("Bukti refund gagal dimuat. Coba lagi.");
+      return;
+    }
+    window.location.assign(data.signedUrl);
+  }
 
   function handleCancelSuccess(msg: string) {
     setShowCancelForm(false);
     setCancelNote(msg);
     onShowToast?.({
       type: "success",
-      message: "Pesanan dibatalkan",
+      message: useSupabase ? "Pembatalan diajukan" : "Pesanan dibatalkan",
       description: msg,
     });
   }
@@ -500,7 +556,7 @@ export default function DetailPesananView({
           value={formatDateTime(booking.createdAt)}
         />
         {booking.buktiBayar && (
-          <DetailRow label="Bukti Bayar" value={booking.buktiBayar} />
+          <DetailRow label="Bukti Bayar" value={useSupabase ? "Tercatat" : booking.buktiBayar} />
         )}
         <div className="mt-3 pt-3 border-t border-[#f0f2fa] flex items-center justify-between">
           <span className="text-xs text-[#737781]">Status Verifikasi</span>
@@ -521,6 +577,22 @@ export default function DetailPesananView({
           </span>
         </div>
       </SectionCard>
+
+      {cancellation && (
+        <SectionCard title="Pengajuan pembatalan" icon="cancel">
+          <DetailRow label="Status" value={cancellation.status} />
+          <DetailRow label="Alasan" value={cancellation.alasan ?? "—"} />
+          {cancellation.admin_catatan && <DetailRow label="Catatan admin" value={cancellation.admin_catatan} />}
+          {cancellation.status === "menunggu" && <p className="mt-3 text-sm">Jadwal tetap ditahan sampai admin memproses pengajuan.</p>}
+          {cancellation.bukti_refund && cancellation.status === "disetujui" && (
+            <button type="button" className="mt-3 text-sm font-semibold text-[#003466] underline"
+              onClick={() => showRefundProof(cancellation.bukti_refund!)}>
+              Buka bukti refund
+            </button>
+          )}
+          {proofError && <p role="alert" className="mt-2 text-sm text-red-700">{proofError}</p>}
+        </SectionCard>
+      )}
 
       {/* ── Pembatalan Info (if already cancelled) ── */}
       {booking.pembatalan && (
@@ -564,6 +636,7 @@ export default function DetailPesananView({
       {bolehBatal && showCancelForm && (
         <CancellationForm
           booking={booking}
+          submitCancellation={submitCancellation}
           onSuccess={handleCancelSuccess}
           onCancel={() => setShowCancelForm(false)}
         />

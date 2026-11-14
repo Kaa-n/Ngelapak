@@ -1,6 +1,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { getUploadPath, proofMimeTypes } from "@/lib/supabase/storage";
+import type { Database } from "@/types/database";
 
 interface CreateBookingInput {
   spotKode: string;
@@ -61,32 +62,7 @@ export async function createSupabaseBooking(
     TransactionStatus,
     } from "@/lib/mock-data";
 
-    interface SupabaseBookingRow {
-    id: string;
-    owner_id: string;
-    spot_id: string;
-    spot_nama: string;
-    spot_kode: string;
-    penyewa_nama: string;
-    penyewa_nim: string | null;
-    penyewa_fakultas: string | null;
-    penyewa_telepon: string | null;
-    penyewa_email: string;
-    penyewa_avatar?: string | null;
-    tanggal_mulai: string;
-    tanggal_selesai: string;
-    jumlah_hari: number;
-    total_bayar: number;
-    metode_pembayaran: string;
-    status: string;
-    status_verifikasi: string;
-    bukti_bayar: string | null;
-    catatan: string | null;
-    jenis_usaha: string;
-    nama_usaha?: string | null;
-    kategori_penjual?: string | null;
-    created_at: string;
-    }
+    type SupabaseBookingRow = Database["public"]["Tables"]["bookings"]["Row"];
 
     function mapSupabaseBooking(row: SupabaseBookingRow): Booking {
     const status: BookingStatus =
@@ -104,17 +80,17 @@ export async function createSupabaseBooking(
 
     return {
         id: row.id,
-        ownerId: row.owner_id,
-        spotId: row.spot_id,
-        spotNama: row.spot_nama,
-        spotKode: row.spot_kode,
+        ownerId: row.owner_id ?? undefined,
+        spotId: row.spot_id ?? "",
+        spotNama: row.spot_nama ?? "",
+        spotKode: row.spot_kode ?? "",
 
         penyewa: {
-        nama: row.penyewa_nama,
+        nama: row.penyewa_nama ?? "",
         nim: row.penyewa_nim ?? "",
         fakultas: row.penyewa_fakultas ?? "",
         telepon: row.penyewa_telepon ?? "",
-        email: row.penyewa_email,
+        email: row.penyewa_email ?? "",
         avatar: row.penyewa_avatar ?? "",
         },
 
@@ -122,12 +98,12 @@ export async function createSupabaseBooking(
         tanggalSelesai: row.tanggal_selesai,
         jumlahHari: Number(row.jumlah_hari),
         totalBayar: Number(row.total_bayar),
-        metodePembayaran: row.metode_pembayaran,
+        metodePembayaran: row.metode_pembayaran ?? "",
         status,
         statusVerifikasi,
         buktiBayar: row.bukti_bayar ?? undefined,
         catatan: row.catatan ?? undefined,
-        jenisUsaha: row.jenis_usaha,
+        jenisUsaha: row.jenis_usaha ?? "",
         createdAt: row.created_at,
     };
     }
@@ -151,6 +127,23 @@ export async function createSupabaseBooking(
     }
 
     return (data ?? []).map((row) =>
-        mapSupabaseBooking(row as SupabaseBookingRow)
+        mapSupabaseBooking(row)
     );
     }
+
+export async function getSupabaseBookingDetail(id: string) {
+  const supabase = createClient();
+  const { data: row, error } = await supabase.from("bookings").select().eq("id", id).maybeSingle();
+  if (error) throw new Error("Detail pesanan gagal dimuat.");
+  if (!row) return null;
+  const { data: cancellation, error: requestError } = await supabase
+    .from("cancellations").select().eq("booking_id", id)
+    .order("diajukan_pada", { ascending: false }).order("id", { ascending: false }).limit(1).maybeSingle();
+  if (requestError) throw new Error("Status pembatalan gagal dimuat.");
+  return { booking: mapSupabaseBooking(row), cancellation };
+}
+
+export async function requestSupabaseCancellation(input: Database["public"]["Functions"]["cancel_booking_as_tenant"]["Args"]) {
+  const { error } = await createClient().rpc("cancel_booking_as_tenant", input);
+  if (error) throw new Error(error.message);
+}

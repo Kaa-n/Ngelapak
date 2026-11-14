@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, useSyncExternalStore } from "react";
+import React, { useEffect, useState, useSyncExternalStore } from "react";
 import type { Spot } from "@/lib/mock-data";
 import dynamic from "next/dynamic";
 import { formatRupiah, formatDate } from "@/lib/mock-data";
 import type { ToastMessage, DemoUser } from "@/lib/types";
 import type { SupabaseProfile } from "@/lib/supabase/auth";
 import { createSupabaseBooking } from "@/lib/supabase/bookings";
+import { createClient } from "@/lib/supabase/client";
 import { createDemoBooking, today } from "@/lib/demo-store";
 
 const emptySubscribe = () => () => { };
@@ -55,6 +56,22 @@ export default function DetailSpotView({
   const [showTerms, setShowTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentProof, setPaymentProof] = useState<File | null>(null);
+  const [reservedDates, setReservedDates] = useState<{ startDate: string; endDate: string }[]>([]);
+  const demoAccount = user?.id === "ayu" || user?.id === "bayu";
+  const spotId = spot?.id;
+
+  useEffect(() => {
+    if (!spotId || demoAccount || !/^[\da-f-]{36}$/i.test(spotId)) return;
+    let active = true;
+    async function loadDates() {
+      const { data } = await createClient().rpc("get_reserved_lapak_dates", { p_spot_id: spotId! });
+      if (active && data) setReservedDates(data.map((row) => ({
+        startDate: row.tanggal_mulai, endDate: row.tanggal_selesai,
+      })));
+    }
+    void loadDates().catch(() => undefined);
+    return () => { active = false; };
+  }, [spotId, demoAccount]);
 
   // State Alur Pembayaran Interaktif
   const [showPaymentStep, setShowPaymentStep] = useState(false); // Modal Barcode QRIS & Token
@@ -107,7 +124,8 @@ export default function DetailSpotView({
     try {
       const sTime = new Date(startInput).getTime();
       const eTime = sTime + (days - 1) * 86400000;
-      return jadwalList.find((sched) => {
+      const schedule = demoAccount ? jadwalList : reservedDates;
+      return schedule.find((sched) => {
         const start = new Date(sched.startDate).getTime();
         const end = new Date(sched.endDate).getTime();
         return sTime <= end && eTime >= start;
@@ -142,7 +160,7 @@ export default function DetailSpotView({
       return;
     }
     if (isConflicted) {
-      onShowToast({ type: "error", message: "Tanggal tidak tersedia", description: `Bertabrakan dengan jadwal '${conflictingSchedule?.penjual}'` });
+      onShowToast({ type: "error", message: "Tanggal tidak tersedia", description: "Pilih tanggal sewa lain." });
       return;
     }
     if (!agreeTerms) {
@@ -692,13 +710,13 @@ export default function DetailSpotView({
                   </div>
 
                   {/* Tanggal Terisi Khusus Spot Ini */}
-                  {jadwalList.length > 0 && (
+                  {(demoAccount ? jadwalList : reservedDates).length > 0 && (
                     <div className="rounded-xl bg-[#ffddb8]/30 p-3 border border-[#ffddb8] text-[11px] text-[#855300]">
                       <span className="font-bold block mb-1">Tanggal Terisi (Jadwal Operasional Spot Ini):</span>
                       <ul className="list-disc pl-4 space-y-0.5">
-                        {jadwalList.map((s) => (
-                          <li key={s.id}>
-                            {formatDate(s.startDate)} - {formatDate(s.endDate)} ({s.penjual})
+                        {(demoAccount ? jadwalList : reservedDates).map((s) => (
+                          <li key={s.startDate + s.endDate}>
+                            {formatDate(s.startDate)} - {formatDate(s.endDate)}
                           </li>
                         ))}
                       </ul>
@@ -754,7 +772,7 @@ export default function DetailSpotView({
                   {/* Peringatan Tanggal Bentrok */}
                   {isConflicted && (
                     <div className="rounded-lg bg-red-50 p-2.5 text-[12px] text-red-600 border border-red-200">
-                      Tanggal ini sudah terisi oleh <strong>{conflictingSchedule?.penjual}</strong>. Silakan pilih tanggal lain.
+                      Tanggal ini sudah terisi. Silakan pilih tanggal lain.
                     </div>
                   )}
 

@@ -16,9 +16,9 @@ import DetailPesananView from "./DetailPesananView";
 type FilterTab = "semua" | "menunggu" | "disetujui" | "ditolak" | "dibatalkan";
 
 function getEffectiveStatus(booking: Booking): FilterTab {
+  if (booking.statusVerifikasi === "ditolak") return "ditolak";
   if (booking.status === "dibatalkan") return "dibatalkan";
   if (booking.statusVerifikasi === "disetujui") return "disetujui";
-  if (booking.statusVerifikasi === "ditolak") return "ditolak";
   return "menunggu";
 }
 
@@ -27,7 +27,7 @@ function getStatusBadge(booking: Booking): {
   cls: string;
   icon: string;
 } {
-  if (booking.status === "dibatalkan")
+  if (booking.status === "dibatalkan" && booking.statusVerifikasi !== "ditolak")
     return {
       label: "Dibatalkan",
       cls: "bg-red-50 text-red-700 border-red-200",
@@ -281,6 +281,7 @@ const TABS: { key: FilterTab; label: string }[] = [
 
     const isDemoUser = user?.id === "ayu" || user?.id === "bayu";
 
+    const [reloadVersion, setReloadVersion] = useState(0);
     useEffect(() => {
       if (!user || user.role !== "penyewa" || isDemoUser) return;
 
@@ -316,7 +317,7 @@ const TABS: { key: FilterTab; label: string }[] = [
       return () => {
         mounted = false;
       };
-    }, [user?.id, user?.role, isDemoUser]);
+    }, [user, isDemoUser, reloadVersion]);
 
     const bookings = isDemoUser ? demoBookings : supabaseBookings;
 
@@ -329,8 +330,13 @@ const TABS: { key: FilterTab; label: string }[] = [
   if (detailId) {
     return (
       <DetailPesananView
+        key={detailId}
         bookingId={detailId}
-        onBack={() => setDetailId(null)}
+        useSupabase={!isDemoUser}
+        onBack={() => {
+          setDetailId(null);
+          setReloadVersion((value) => value + 1);
+        }}
         onShowToast={onShowToast}
       />
     );

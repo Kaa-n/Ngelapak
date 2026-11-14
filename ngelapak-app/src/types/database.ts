@@ -131,7 +131,15 @@ export type Database = {
     Views: Record<never, never>;
     Functions: {
       is_admin: { Args: Record<never, never>; Returns: boolean };
+      get_reserved_lapak_dates: {
+        Args: { p_spot_id: string };
+        Returns: { tanggal_mulai: string; tanggal_selesai: string }[];
+      };
       review_booking_payment: { Args: { p_booking_id: string; p_approve: boolean }; Returns: undefined };
+      review_booking_cancellation: {
+        Args: { p_cancellation_id: string; p_approve: boolean; p_proof: string | null; p_note: string | null };
+        Returns: undefined;
+      };
       submit_booking_with_payment: {
         Args: {
           p_spot_kode: string;
