@@ -6,7 +6,7 @@ import { DEMO_USERS } from "@/lib/demo-store";
 import { signInWithEmail, type SupabaseProfile } from "@/lib/supabase/auth";
 
 interface MasukViewProps {
-  onLoginDemo: (id: string) => void;
+  onLoginDemo: (id: string) => Promise<void> | void;
   onLoginSupabase: (profile: SupabaseProfile) => void;
   onNavigateToRegister: () => void;
 }
@@ -41,9 +41,13 @@ export default function MasukView({
     }
   };
 
-  const handleDemoLogin = (id: string) => {
+  const handleDemoLogin = async (id: string) => {
     setError("");
-    onLoginDemo(id);
+    try {
+      await onLoginDemo(id);
+    } catch {
+      setError("Gagal masuk menggunakan akun demo.");
+    }
   };
 
   return (
@@ -164,7 +168,7 @@ export default function MasukView({
             </div>
 
             <div className="space-y-3">
-              {DEMO_USERS.map((user) => {
+              {DEMO_USERS.filter((user) => user.role === "penyewa").map((user) => {
                 const isAdmin = user.role === "admin";
 
                 return (
@@ -223,7 +227,7 @@ export default function MasukView({
         </div>
 
         <p className="text-center text-xs text-[#737781] mt-5">
-          © {new Date().getFullYear()} Ngelapak · Universitas Udayana
+          Ngelapak · Universitas Udayana
         </p>
       </div>
     </div>

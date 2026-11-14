@@ -4,21 +4,18 @@ import { Suspense, useState, useCallback, useEffect } from "react";
 import HomeView from "../components/views/HomeView";
 import KatalogView from "../components/views/KatalogView";
 import DetailSpotView from "../components/views/DetailSpotView";
-import DasborView from "../components/views/DasborView";
-import VerifikasiView from "../components/views/VerifikasiView";
+import { useRouter } from "next/navigation";
 import Navbar from "../components/layout/Navbar";
 import MobileNav from "../components/layout/MobileNav";
 import Footer from "../components/ui-custom/Footer";
 import Toast from "../components/ui-custom/Toast";
-import MasukView from "../components/views/MasukView";
 import PesananView from "../components/views/PesananView";
 import EditProfileView from "../components/views/EditProfileView";
 import DetailPesananView from "../components/views/DetailPesananView";
-import { useDemo, demoLogin, demoLogout } from "../lib/demo-store";
+import { useDemo, demoLogout } from "../lib/demo-store";
 import { canAccess } from "../lib/types";
 import { MOCK_SPOTS, type Spot } from "../lib/mock-data";
 import type { PageView, ToastMessage } from "../lib/types";
-import DaftarView from "../components/views/DaftarView";
 import {
   getCurrentSupabaseProfile,
   signOutSupabase,
@@ -46,6 +43,7 @@ export default function Home() {
 }
 
 function DemoHome() {
+  const router = useRouter();
   const [supabaseProfile, setSupabaseProfile] =
     useState<SupabaseProfile | null>(null);
 
@@ -53,7 +51,7 @@ function DemoHome() {
     setSupabaseProfile(updatedProfile);
   }
   const { user: demoUser } = useDemo();
-  const user = demoUser ?? supabaseProfile;
+  const user = supabaseProfile ?? (demoUser?.role === "penyewa" ? demoUser : null);
   // Memulihkan sesi Supabase ketika halaman dibuka atau di-refresh.
   useEffect(() => {
     let isMounted = true;
@@ -88,15 +86,24 @@ function DemoHome() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const navigate = useCallback((view: PageView, spot?: Spot, initialTab?: "detail" | "operasional" | "fasilitas" | "ulasan") => {
+    if (view === "masuk" || view === "daftar") {
+      router.push(view === "masuk" ? "/masuk" : "/daftar");
+      return;
+    }
     if (!canAccess(view, user?.role)) {
-      setCurrentView(user ? "katalog" : "masuk");
+      if (user) setCurrentView("katalog");
+      else router.push("/masuk");
+      return;
+    }
+    if (view === "dasbor" || view === "verifikasi") {
+      router.push(view === "dasbor" ? "/admin" : "/admin/verifikasi");
       return;
     }
     setCurrentView(view);
     if (spot) setSelectedSpot(spot);
     setDetailInitialTab(initialTab ?? "detail");
     window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [user]);
+  }, [user, router]);
 
   const showToast = useCallback((toast: Omit<ToastMessage, "id">) => {
     const id = Date.now().toString();
@@ -148,37 +155,6 @@ function DemoHome() {
           />
         )}
         {currentView === "help-center" && <HelpCenterView />}
-        {currentView === "masuk" && (
-          <MasukView
-            onLoginDemo={async (id) => {
-            try {
-              await signOutSupabase();
-              setSupabaseProfile(null);
-              demoLogin(id);
-              setCurrentView("katalog");
-            } catch (error) {
-              console.error("Gagal beralih ke akun demo:", error);
-              showToast({
-                type: "error",
-                message: "Gagal masuk menggunakan akun demo.",
-              });
-            }   
-          }}
-          onLoginSupabase={(profile) => {
-            demoLogout();
-            setSupabaseProfile(profile);
-            setCurrentView("katalog");
-          }}
-          onNavigateToRegister={() => navigate("daftar")}
-        />
-      )}
-
-        {currentView === "daftar" && (
-          <DaftarView
-          onNavigateToLogin={() => navigate("masuk")}
-        />
-      )}
-
         {currentView === "pesanan" && user?.role === "penyewa" && (
           <PesananView
             user={user}
@@ -220,12 +196,6 @@ function DemoHome() {
             }}
             onShowToast={showToast}
           />
-        )}
-        {currentView === "dasbor" && user?.role === "admin" && (
-          <DasborView onShowToast={showToast} />
-        )}
-        {currentView === "verifikasi" && user?.role === "admin" && (
-          <VerifikasiView onShowToast={showToast} />
         )}
       </main>
 

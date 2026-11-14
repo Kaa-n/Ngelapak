@@ -98,6 +98,7 @@ export async function signUpWithEmail(input: {
     email,
     password: input.password,
     options: {
+      emailRedirectTo: new URL("/auth/callback", window.location.origin).href,
       data: {
         nama,
       },
