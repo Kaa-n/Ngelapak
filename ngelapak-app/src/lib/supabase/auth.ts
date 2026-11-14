@@ -1,4 +1,3 @@
-
 import { createClient } from "@/lib/supabase/client";
 import type { Role } from "@/lib/types";
 
@@ -14,8 +13,9 @@ export interface SupabaseProfile {
 // Mengambil profil berdasarkan ID akun Supabase Auth.
 export async function getSupabaseProfile(
   userId: string
-): Promise<SupabaseProfile> {
+): Promise<SupabaseProfile | null> {
   const supabase = createClient();
+  if (!supabase) return null;
 
   const { data, error } = await supabase
     .from("profiles")
@@ -23,14 +23,12 @@ export async function getSupabaseProfile(
     .eq("id", userId)
     .single();
 
-  if (error) {
-    throw new Error(
-      `Gagal mengambil profil pengguna: ${error.message}`
-    );
+  if (error || !data) {
+    return null;
   }
 
   if (data.role !== "admin" && data.role !== "penyewa") {
-    throw new Error("Role pengguna tidak valid.");
+    return null;
   }
 
   return {
@@ -47,6 +45,9 @@ export async function signInWithEmail(
   password: string
 ): Promise<SupabaseProfile> {
   const supabase = createClient();
+  if (!supabase) {
+    throw new Error("Kredensial Supabase belum dikonfigurasi di Environment Variables.");
+  }
 
   const { data, error } = await supabase.auth.signInWithPassword({
     email: email.trim().toLowerCase(),
@@ -61,7 +62,12 @@ export async function signInWithEmail(
     throw new Error("Pengguna tidak ditemukan.");
   }
 
-  return getSupabaseProfile(data.user.id);
+  const profile = await getSupabaseProfile(data.user.id);
+  if (!profile) {
+    throw new Error("Profil pengguna tidak ditemukan di database.");
+  }
+
+  return profile;
 }
 
 // Registrasi pengguna baru.
@@ -71,6 +77,9 @@ export async function signUpWithEmail(input: {
   password: string;
 }) {
   const supabase = createClient();
+  if (!supabase) {
+    throw new Error("Kredensial Supabase belum dikonfigurasi di Environment Variables.");
+  }
 
   const nama = input.nama.trim();
   const email = input.email.trim().toLowerCase();
@@ -107,6 +116,9 @@ export async function signUpWithEmail(input: {
 // Mengambil profil pengguna yang sedang login.
 export async function getCurrentSupabaseProfile() {
   const supabase = createClient();
+  if (!supabase) {
+    return null;
+  }
 
   const { data, error } = await supabase.auth.getUser();
 
@@ -121,6 +133,7 @@ export async function getCurrentSupabaseProfile() {
 // Logout pengguna Supabase.
 export async function signOutSupabase() {
   const supabase = createClient();
+  if (!supabase) return;
 
   const { error } = await supabase.auth.signOut();
 
