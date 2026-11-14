@@ -8,6 +8,9 @@ export interface SupabaseProfile {
   nama: string;
   email: string;
   role: Role;
+  nim: string | null;
+  fakultas: string | null;
+  telepon: string | null;
 }
 
 // Mengambil profil berdasarkan ID akun Supabase Auth.
@@ -19,7 +22,7 @@ export async function getSupabaseProfile(
 
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, nama, email, role")
+    .select("id, nama, email, role, nim, fakultas, telepon")
     .eq("id", userId)
     .single();
 
@@ -36,6 +39,9 @@ export async function getSupabaseProfile(
     nama: data.nama,
     email: data.email,
     role: data.role,
+    nim: data.nim,
+    fakultas: data.fakultas,
+    telepon: data.telepon,
   };
 }
 
