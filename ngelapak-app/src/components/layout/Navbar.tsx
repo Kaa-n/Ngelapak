@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { navigationFor, type DemoUser, type PageView } from "@/lib/types";
+import type { SupabaseProfile } from "@/lib/supabase/auth";
 
 interface NavbarProps {
   currentView: PageView;
   onNavigate: (view: PageView) => void;
-  user: DemoUser | null;
+  user: DemoUser | SupabaseProfile | null;
   onLogout: () => void;
 }
 
@@ -83,7 +84,8 @@ export default function Navbar({
                     {user.nama}
                   </p>
                   <p className="text-xs text-[#855300]">
-                    {user.role === "admin" ? "Admin" : "Penyewa"} · Demo
+                    {user.role === "admin" ? "Admin" : "Penyewa"} ·{" "}
+                    {"nim" in user ? "Pengguna" : "Akun Demo"}
                   </p>
                 </div>
 

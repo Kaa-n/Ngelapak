@@ -48,6 +48,9 @@ function DemoHome() {
   const [supabaseProfile, setSupabaseProfile] =
     useState<SupabaseProfile | null>(null);
 
+  function handleProfileUpdated(updatedProfile: SupabaseProfile) {
+    setSupabaseProfile(updatedProfile);
+  }
   const { user: demoUser } = useDemo();
   const user = demoUser ?? supabaseProfile;
   // Memulihkan sesi Supabase ketika halaman dibuka atau di-refresh.
@@ -193,6 +196,7 @@ function DemoHome() {
             user={user}
             onBack={() => navigate("home")}
             onShowToast={showToast}
+            onProfileUpdated={handleProfileUpdated}
           />
         )}
         {currentView === "katalog" && (
