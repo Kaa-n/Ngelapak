@@ -1,7 +1,11 @@
 import { MOCK_BOOKINGS } from "@/lib/mock-data";
 import Link from "next/link";
 
-export const dynamic = "force-dynamic";
+export function generateStaticParams() {
+  return MOCK_BOOKINGS.map((booking) => ({
+    ticketId: booking.id,
+  }));
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
