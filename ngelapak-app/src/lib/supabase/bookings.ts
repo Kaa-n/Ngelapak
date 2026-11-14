@@ -19,7 +19,7 @@ export async function createSupabaseBooking(
   const supabase = createClient();
 
   const { data, error } = await supabase.rpc(
-    "create_booking_with_payment",
+    "submit_booking_with_payment",
     {
       p_spot_kode: input.spotKode,
       p_tanggal_mulai: input.tanggalMulai,
