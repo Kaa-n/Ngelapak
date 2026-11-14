@@ -131,6 +131,7 @@ export type Database = {
     Views: Record<never, never>;
     Functions: {
       is_admin: { Args: Record<never, never>; Returns: boolean };
+      review_booking_payment: { Args: { p_booking_id: string; p_approve: boolean }; Returns: undefined };
       submit_booking_with_payment: {
         Args: {
           p_spot_kode: string;
@@ -142,7 +143,7 @@ export type Database = {
           p_nama_usaha: string;
           p_kategori_penjual: string;
           p_catatan: string;
-          p_bukti_bayar?: string;
+          p_bukti_bayar: string;
         };
         Returns: string;
       };

@@ -54,6 +54,7 @@ export default function DetailSpotView({
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [paymentProof, setPaymentProof] = useState<File | null>(null);
 
   // State Alur Pembayaran Interaktif
   const [showPaymentStep, setShowPaymentStep] = useState(false); // Modal Barcode QRIS & Token
@@ -94,7 +95,7 @@ export default function DetailSpotView({
   const jadwalList = spot.jadwalOperasional || [];
 
   // Perhitungan Tarif & Durasi
-  const tarif = spot.tarifPerHari || 160000;
+  const tarif = spot.tarifPerHari;
   const totalBayar = tarif * selectedDays;
 
   const endDate = new Date((startDate || today()) + "T00:00:00Z");
@@ -183,7 +184,7 @@ export default function DetailSpotView({
           ...({ namaUsaha, kategoriPenjual } as Record<string, unknown>),
         });
       } else {
-        // Akun Supabase menyimpan pemesanan ke database.
+        if (!paymentProof) throw new Error("Unggah bukti transfer terlebih dahulu.");
         id = await createSupabaseBooking({
           spotKode: spot.kode,
           tanggalMulai: startDate,
@@ -194,6 +195,7 @@ export default function DetailSpotView({
           namaUsaha,
           kategoriPenjual,
           catatan: catatanTambahan,
+          buktiBayar: paymentProof,
         });
       }
 
@@ -249,7 +251,11 @@ export default function DetailSpotView({
           </div>
 
           {/* Barcode QRIS / Virtual Account */}
-          {metodePembayaran === "qris" ? (
+          {user?.id !== "ayu" && user?.id !== "bayu" ? (
+            <p className="mb-5 rounded-lg bg-[#f2f3ff] p-3 text-sm">
+              Gunakan instruksi pembayaran dari pengelola kampus, lalu unggah bukti transfer untuk diperiksa admin.
+            </p>
+          ) : metodePembayaran === "qris" ? (
             <div className="flex flex-col items-center justify-center bg-[#faf8ff] p-4 rounded-xl border border-[#e2e7ff] mb-5">
               <img
                 src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${reservationId}`}
@@ -282,6 +288,13 @@ export default function DetailSpotView({
             </div>
           </div>
 
+          {user?.id !== "ayu" && user?.id !== "bayu" && (
+            <label className="mb-4 grid gap-1 text-sm font-semibold">
+              Bukti transfer (JPG, PNG, PDF, maks. 6 MB)
+              <input type="file" accept="image/jpeg,image/png,application/pdf" className="w-full text-sm"
+                disabled={isSubmitting} onChange={(event) => setPaymentProof(event.target.files?.[0] ?? null)} />
+            </label>
+          )}
           <div className="flex gap-2">
             <button
               onClick={() => setShowPaymentStep(false)}
@@ -291,7 +304,7 @@ export default function DetailSpotView({
             </button>
             <button
               onClick={handleConfirmPayment}
-              disabled={isSubmitting}
+              disabled={isSubmitting || (user?.id !== "ayu" && user?.id !== "bayu" && !paymentProof)}
               className="flex-1 h-11 rounded-xl bg-[#003466] text-white text-[13px] font-bold hover:bg-[#1a4b84] transition-colors flex items-center justify-center gap-1 shadow-md"
             >
               {isSubmitting ? "Memverifikasi..." : "Saya Sudah Bayar ✓"}
@@ -309,7 +322,7 @@ export default function DetailSpotView({
         <div className="w-20 h-20 rounded-full bg-[#6ffbbe]/20 flex items-center justify-center mb-6">
           <span className="material-symbols-outlined text-[#003c27] text-[48px]">check_circle</span>
         </div>
-        <h2 className="text-[24px] font-bold text-[#131b2e] mb-3">Pembayaran Berhasil</h2>
+        <h2 className="text-[24px] font-bold text-[#131b2e] mb-3">Pengajuan Terkirim</h2>
         <p className="text-[14px] text-[#424750] mb-2 leading-relaxed max-w-sm">
           Pembayaran sewa Spot <strong>{spot.nama}</strong> untuk <strong>{namaUsaha}</strong> ({kategoriPenjual}) selama <strong>{selectedDays} hari</strong> sudah tercatat.
         </p>

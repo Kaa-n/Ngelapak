@@ -1,5 +1,6 @@
 
 import { createClient } from "@/lib/supabase/client";
+import { getUploadPath, proofMimeTypes } from "@/lib/supabase/storage";
 
 interface CreateBookingInput {
   spotKode: string;
@@ -11,12 +12,19 @@ interface CreateBookingInput {
   namaUsaha: string;
   kategoriPenjual: string;
   catatan: string;
+  buktiBayar: File;
 }
 
 export async function createSupabaseBooking(
   input: CreateBookingInput
 ): Promise<string> {
   const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Silakan masuk kembali untuk mengirim pembayaran.");
+  const path = getUploadPath(input.buktiBayar, proofMimeTypes, user.id);
+  const bucket = supabase.storage.from("payment-proofs");
+  const { error: uploadError } = await bucket.upload(path, input.buktiBayar);
+  if (uploadError) throw new Error("Bukti transfer gagal diunggah.");
 
   const { data, error } = await supabase.rpc(
     "submit_booking_with_payment",
@@ -30,10 +38,12 @@ export async function createSupabaseBooking(
       p_nama_usaha: input.namaUsaha,
       p_kategori_penjual: input.kategoriPenjual,
       p_catatan: input.catatan,
+      p_bukti_bayar: path,
     }
   );
 
   if (error) {
+    await bucket.remove([path]);
     throw new Error(error.message);
   }
 

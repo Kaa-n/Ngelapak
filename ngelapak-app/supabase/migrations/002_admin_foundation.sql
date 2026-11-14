@@ -145,7 +145,7 @@ revoke execute on function public.handle_new_user() from public, anon, authentic
 create function public.submit_booking_with_payment(
   p_spot_kode text, p_tanggal_mulai date, p_jumlah_hari integer, p_total_bayar integer,
   p_metode_pembayaran text, p_jenis_usaha text, p_nama_usaha text,
-  p_kategori_penjual text, p_catatan text, p_bukti_bayar text default null
+  p_kategori_penjual text, p_catatan text, p_bukti_bayar text
 ) returns text language plpgsql security definer set search_path = ''
 as $$
 declare
@@ -172,13 +172,13 @@ begin
   if amount <= 0 or amount is distinct from p_total_bayar then
     raise exception 'Tarif lapak berubah. Muat ulang halaman sebelum membayar.';
   end if;
-  if p_bukti_bayar is not null and not exists (
+  if p_bukti_bayar is null or not exists (
     select 1 from storage.objects where bucket_id = 'payment-proofs' and name = p_bukti_bayar
       and split_part(name, '/', 1) = tenant.id::text for update
   ) then
     raise exception 'Bukti transfer tidak ditemukan.';
   end if;
-  if p_bukti_bayar is not null and exists (
+  if exists (
     select 1 from public.bookings where bukti_bayar = p_bukti_bayar
   ) then
     raise exception 'Bukti transfer sudah dipakai.';
