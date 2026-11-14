@@ -110,11 +110,8 @@ export async function getCurrentSupabaseProfile() {
 
   const { data, error } = await supabase.auth.getUser();
 
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  if (!data.user) {
+  // Jika belum login (Auth session missing) atau tidak ada user, kembalikan null (bukan lempar error)
+  if (error || !data?.user) {
     return null;
   }
 
