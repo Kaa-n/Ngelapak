@@ -19,6 +19,9 @@ export interface DemoUser {
   nama: string;
   email: string;
   role: Role;
+  nim?: string | null;
+  fakultas?: string | null;
+  telepon?: string | null;
 }
 
 export function canAccess(view: PageView, role?: Role) {

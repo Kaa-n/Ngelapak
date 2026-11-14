@@ -147,3 +147,66 @@ export async function signOutSupabase() {
     throw new Error(error.message);
   }
 }
+
+// Memperbarui data profil pengguna yang sedang login.
+export async function updateCurrentSupabaseProfile(input: {
+  nama: string;
+  nim: string;
+  fakultas: string;
+  telepon: string;
+}): Promise<SupabaseProfile> {
+  const supabase = createClient();
+
+  if (!supabase) {
+    throw new Error("Koneksi Supabase belum dikonfigurasi.");
+  }
+
+  // Mengambil identitas pengguna dari sesi Supabase.
+  const { data: authData, error: authError } =
+    await supabase.auth.getUser();
+
+  if (authError || !authData.user) {
+    throw new Error("Sesi login tidak ditemukan. Silakan login kembali.");
+  }
+
+  const nama = input.nama.trim();
+  const nim = input.nim.trim();
+  const fakultas = input.fakultas.trim();
+  const telepon = input.telepon.trim();
+
+  if (!nama || !nim || !fakultas || !telepon) {
+    throw new Error("Semua data profil wajib diisi.");
+  }
+
+  // Update hanya berdasarkan ID akun yang sedang login.
+  const { data, error } = await supabase
+    .from("profiles")
+    .update({
+      nama,
+      nim,
+      fakultas,
+      telepon,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", authData.user.id)
+    .select("id, nama, email, role, nim, fakultas, telepon")
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (data.role !== "admin" && data.role !== "penyewa") {
+    throw new Error("Role pengguna tidak valid.");
+  }
+
+  return {
+    id: data.id,
+    nama: data.nama,
+    email: data.email,
+    role: data.role,
+    nim: data.nim,
+    fakultas: data.fakultas,
+    telepon: data.telepon,
+  };
+}

@@ -19,9 +19,14 @@ const PRODUCTS = "ngelapak-demo-produk-v1";
 
 type ProfileOverrides = Record<
   string,
-  { nama: string; email: string }
+  {
+    nama: string;
+    email: string;
+    nim?: string;
+    fakultas?: string;
+    telepon?: string;
+  }
 >;
-
 function getProfileOverrides(): ProfileOverrides {
   try {
     const data = JSON.parse(read(PROFILES));
@@ -182,6 +187,9 @@ export function demoLogin(id: string) {
 export function updateDemoProfile(input: {
   nama: string;
   email: string;
+  nim: string;
+  fakultas: string;
+  telepon: string;
 }) {
   const user = currentUser();
 
@@ -191,9 +199,12 @@ export function updateDemoProfile(input: {
 
   const nama = input.nama.trim();
   const email = input.email.trim().toLowerCase();
+  const nim = input.nim.trim();
+  const fakultas = input.fakultas.trim();
+  const telepon = input.telepon.trim();
 
-  if (!nama || !email) {
-    throw new Error("Nama dan email wajib diisi.");
+  if (!nama || !email || !nim || !fakultas || !telepon) {
+    throw new Error("Semua data profil wajib diisi.");
   }
 
   const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -217,6 +228,9 @@ export function updateDemoProfile(input: {
   profiles[user.id] = {
     nama,
     email,
+    nim,
+    fakultas,
+    telepon,
   };
 
   try {
