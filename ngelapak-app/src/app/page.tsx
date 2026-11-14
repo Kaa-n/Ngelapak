@@ -24,6 +24,7 @@ import {
   signOutSupabase,
   type SupabaseProfile,
 } from "../lib/supabase/auth";
+import HelpCenterView from "../components/views/HelpCenterView";
 
 export type { PageView, ToastMessage };
 
@@ -146,7 +147,7 @@ function DemoHome() {
             onShowToast={showToast}
           />
         )}
-        
+        {currentView === "help-center" && <HelpCenterView />}
         {currentView === "masuk" && (
           <MasukView
             onLoginDemo={async (id) => {
