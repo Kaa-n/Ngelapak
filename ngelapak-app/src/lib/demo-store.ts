@@ -9,7 +9,7 @@ import {
   type TransactionStatus,
 } from "./mock-data";
 import type { DemoUser, Role } from "./types";
-import { cancellationDeadline, CANCELLATION_WINDOW_MS, PAYMENT_WINDOW_MS, rentalStart } from "./rental-policy";
+import { cancellationDeadline, CANCELLATION_WINDOW_MS, CLEANING_DAYS, PAYMENT_WINDOW_MS, rentalPeriodsConflict, rentalStart } from "./rental-policy";
 
 // Demo only: browser storage is editable and is not a security boundary.
 const SESSION = "ngelapak-demo-session-v1";
@@ -82,7 +82,7 @@ function withSampleCancellations(bookings: Booking[], now: number): Booking[] {
       if (existing.spotId !== sample.spotId || existing.status === "dibatalkan" ||
           existing.statusVerifikasi === "ditolak") return date;
       const end = Date.parse(existing.tanggalSelesai + "T00:00:00Z");
-      return Number.isFinite(end) ? Math.max(date, end + CANCELLATION_WINDOW_MS) : date;
+      return Number.isFinite(end) ? Math.max(date, end + (CLEANING_DAYS + 1) * CANCELLATION_WINDOW_MS) : date;
     }, now + 14 * CANCELLATION_WINDOW_MS);
     const start = new Date(nextFreeDay).toISOString().slice(0, 10);
     const paidAt = new Date(now - PAYMENT_WINDOW_MS).toISOString();
@@ -134,6 +134,10 @@ function parseBookings(raw: string): Booking[] {
   }
 
   return withSampleCancellations(MOCK_BOOKINGS, now);
+}
+
+export function getAllDemoBookings() {
+  return parseBookings(read(BOOKINGS));
 }
 
 function currentUser() {
@@ -401,6 +405,12 @@ export function createDemoBooking(input: {
 
   const bookings = parseBookings(read(BOOKINGS));
 
+  if (spot.jadwalOperasional?.some((schedule) =>
+    rentalPeriodsConflict(input.tanggalMulai, end, schedule.startDate, schedule.endDate)
+  )) {
+    throw new Error("Jadwal bertabrakan dengan masa sewa atau pembersihan spot. Pilih tanggal berbeda.");
+  }
+
   // Periksa bentrok jadwal dengan pesanan lain.
   if (
     bookings.some(
@@ -408,8 +418,7 @@ export function createDemoBooking(input: {
         booking.spotId === spot.id &&
         booking.status !== "dibatalkan" &&
         booking.statusVerifikasi !== "ditolak" &&
-        booking.tanggalMulai <= end &&
-        booking.tanggalSelesai >= input.tanggalMulai,
+        rentalPeriodsConflict(input.tanggalMulai, end, booking.tanggalMulai, booking.tanggalSelesai),
     )
   ) {
     throw new Error(

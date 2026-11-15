@@ -73,9 +73,11 @@ test("Midtrans demo confirms payment and releases a date on cancellation approva
   assert.equal(read(id).pembatalan.refundCompleted, true);
 });
 
+const futureDate = (days) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+
 test("tenant bookings persist, isolate identities, prevent overlaps, and accept admin decisions", () => {
   const { store, fixtures, localStorage } = setup();
-  const input = { spotId: "spot-001", tanggalMulai: store.today(), jumlahHari: 2, jenisUsaha: "Kopi", catatan: "", metodePembayaran: "QRIS" };
+  const input = { spotId: "spot-001", tanggalMulai: futureDate(90), jumlahHari: 2, jenisUsaha: "Kopi", catatan: "", metodePembayaran: "QRIS" };
   assert.throws(() => store.createDemoBooking(input), /akses/);
   store.demoLogin("admin");
   assert.throws(() => store.createDemoBooking(input), /akses/);
@@ -94,10 +96,12 @@ test("tenant bookings persist, isolate identities, prevent overlaps, and accept 
   assert.throws(() => store.verifyDemoBooking(id, "disetujui"), /akses/);
   store.demoLogin("bayu");
   assert.throws(() => store.createDemoBooking(input), /bertabrakan/);
+  assert.throws(() => store.createDemoBooking({ ...input, tanggalMulai: futureDate(94) }), /bertabrakan/);
+  assert.ok(store.createDemoBooking({ ...input, tanggalMulai: futureDate(95) }));
   store.demoLogin("admin");
   store.verifyDemoBooking(id, "ditolak");
-  assert.equal(read()[0].statusVerifikasi, "ditolak");
-  assert.equal(read()[0].status, "dibatalkan");
+  assert.equal(read().find((booking) => booking.id === id).statusVerifikasi, "ditolak");
+  assert.equal(read().find((booking) => booking.id === id).status, "dibatalkan");
   assert.throws(() => store.verifyDemoBooking(id, "disetujui"), /tidak lagi/);
   store.demoLogin("bayu");
   const replacement = store.createDemoBooking(input);
@@ -111,7 +115,7 @@ test("tenant bookings persist, isolate identities, prevent overlaps, and accept 
 test("tenant can cancel within 24 hours before admin verification", () => {
   const { store, localStorage } = setup();
   store.demoLogin("ayu");
-  const input = { spotId: "spot-001", tanggalMulai: store.today(), jumlahHari: 1, jenisUsaha: "Kopi", catatan: "", metodePembayaran: "QRIS" };
+  const input = { spotId: "spot-001", tanggalMulai: futureDate(90), jumlahHari: 1, jenisUsaha: "Kopi", catatan: "", metodePembayaran: "QRIS" };
   const id = store.createDemoBooking(input);
   const read = () => JSON.parse(localStorage.getItem("ngelapak-demo-bookings-v1"));
   const form = { nama: "Ayu", nim: "2105551001", telepon: "081234", bank: "BRI", nomorRekening: "1234567890", namaRekening: "Ayu", alasan: "Jadwal bentrok kuliah" };

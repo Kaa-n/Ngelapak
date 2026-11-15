@@ -2,7 +2,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Panel admin dan Supabase
 
-Isi `NEXT_PUBLIC_SUPABASE_URL` dan `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` di `.env.local`. Untuk proyek Supabase baru, jalankan migrasi `001` sampai `008` secara berurutan. Untuk proyek tim, cocokkan skema dengan [audit](AUDIT-TAHAP-1.md) dan terapkan migrasi yang belum terpasang setelah diuji di proyek pengembangan. Rilis perubahan database dan aplikasi secara terkoordinasi.
+Isi `NEXT_PUBLIC_SUPABASE_URL` dan `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` di `.env.local`. Untuk proyek Supabase baru, jalankan migrasi `001` sampai `009` secara berurutan. Untuk proyek tim, cocokkan skema dengan [audit](AUDIT-TAHAP-1.md) dan terapkan migrasi yang belum terpasang setelah diuji di proyek pengembangan. Migrasi `009` menerapkan jeda pembersihan tiga hari pada checkout Midtrans. Rilis perubahan database dan aplikasi secara terkoordinasi.
 
 | Akses | Tamu | Penyewa | Admin |
 | --- | --- | --- | --- |

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { midtransBookingId, openSnap, paymentServices, syncMidtransPayment } from "@/lib/midtrans/server";
+import { CLEANING_DAYS, shiftRentalDate } from "@/lib/rental-policy";
 import type { Database } from "@/types/database";
 
 const inputFields = z.object({
@@ -37,12 +38,12 @@ export async function POST(request: Request) {
     }
     if (!input.success) return new Response(null, { status: 400 });
     const order = input.data;
-    const tanggalSelesai = new Date(Date.parse(order.tanggalMulai) + (order.jumlahHari - 1) * 86400000).toISOString().slice(0, 10);
     const { data: expired, error: expiredError } = await services.db.from("bookings")
       .select("id,total_bayar,payment_expires_at,spots!inner(kode)")
       .eq("spots.kode", order.spotKode).eq("metode_pembayaran", "midtrans")
       .eq("status", "menunggu").lte("payment_expires_at", new Date().toISOString())
-      .lte("tanggal_mulai", tanggalSelesai).gte("tanggal_selesai", order.tanggalMulai).limit(10);
+      .lte("tanggal_mulai", shiftRentalDate(order.tanggalMulai, order.jumlahHari - 1 + CLEANING_DAYS))
+      .gte("tanggal_selesai", shiftRentalDate(order.tanggalMulai, -CLEANING_DAYS)).limit(10);
     if (expiredError) throw new Error("Ketersediaan untuk pembayaran belum dapat diperiksa.");
     await Promise.allSettled((expired ?? []).map((item) => syncMidtransPayment(services, item)));
     const { data: booking, error } = await services.db.rpc("reserve_midtrans_booking", {

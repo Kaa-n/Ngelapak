@@ -8,8 +8,8 @@ import type { ToastMessage, DemoUser } from "@/lib/types";
 import type { SupabaseProfile } from "@/lib/supabase/auth";
 import { createSupabaseBooking } from "@/lib/supabase/bookings";
 import { createClient } from "@/lib/supabase/client";
-import { createDemoBooking, today } from "@/lib/demo-store";
-import { CANCELLATION_WINDOW_MS, PAYMENT_WINDOW_MS, rentalStart, formatRentalTime } from "@/lib/rental-policy";
+import { createDemoBooking, getAllDemoBookings, today } from "@/lib/demo-store";
+import { CANCELLATION_WINDOW_MS, CLEANING_DAYS, PAYMENT_WINDOW_MS, rentalStart, formatRentalTime, shiftRentalDate } from "@/lib/rental-policy";
 
 const emptySubscribe = () => () => { };
 
@@ -46,8 +46,8 @@ export default function DetailSpotView({
   onShowToast,
 }: DetailSpotViewProps) {
   // State Form Booking & Pendaftaran Penjual (Jobdesk FE 3)
-  const [selectedDays, setSelectedDays] = useState(1);
   const [startDate, setStartDate] = useState(() => today());
+  const [endDateStr, setEndDateStr] = useState(() => today());
   const [kategoriPenjual, setKategoriPenjual] = useState<"Mahasiswa Wirausaha" | "UMKM Umum">("Mahasiswa Wirausaha");
   const [namaUsaha, setNamaUsaha] = useState("");
   const [jenisUsaha, setJenisUsaha] = useState("");
@@ -109,34 +109,38 @@ export default function DetailSpotView({
   }
 
   // BACA DATA JADWAL OPERASIONAL UNIK PER SPOT (Dinamis dari mock-data.ts)
-  const jadwalList = spot.jadwalOperasional || [];
+  const currentDay = today();
+  const bookings = isMounted && demoAccount ? getAllDemoBookings() : [];
+  const fixtureJadwalList = spot.jadwalOperasional || [];
+  const bookingScheduleList = bookings.filter((booking) =>
+    booking.spotId === spot.id &&
+    booking.status !== "dibatalkan" &&
+    booking.statusVerifikasi !== "ditolak" &&
+    shiftRentalDate(booking.tanggalSelesai, CLEANING_DAYS) >= currentDay
+  ).map((booking) => ({
+    id: `booking-${booking.id}`,
+    penjual: booking.penyewa.nama,
+    kategori: "UMKM Umum" as const,
+    startDate: booking.tanggalMulai,
+    endDate: booking.tanggalSelesai,
+    status: booking.tanggalMulai <= currentDay ? "Active" as const : "Upcoming" as const,
+    statusVerifikasi: booking.statusVerifikasi,
+    isCleaning: booking.tanggalSelesai < currentDay,
+  }));
+  const jadwalList = [...fixtureJadwalList, ...bookingScheduleList];
+  const unavailableRanges = demoAccount ? jadwalList : reservedDates;
 
   // Perhitungan Tarif & Durasi
   const tarif = spot.tarifPerHari;
+  const selectedDays = (Date.parse(endDateStr) - Date.parse(startDate)) / CANCELLATION_WINDOW_MS + 1;
   const totalBayar = tarif * selectedDays;
+  const maxEndDateStr = shiftRentalDate(startDate, 29);
+  const cleaningStart = shiftRentalDate(endDateStr, 1);
+  const cleaningEnd = shiftRentalDate(endDateStr, CLEANING_DAYS);
+  const isConflicted = unavailableRanges.some(({ startDate: occupiedStart, endDate: occupiedEnd }) =>
+    startDate <= shiftRentalDate(occupiedEnd, CLEANING_DAYS) && cleaningEnd >= occupiedStart,
+  );
 
-  const endDate = new Date((startDate || today()) + "T00:00:00Z");
-  endDate.setUTCDate(endDate.getUTCDate() + selectedDays - 1);
-  const endDateStr = Number.isFinite(endDate.getTime()) ? endDate.toISOString().split("T")[0] : today();
-
-  // Logika Validasi Tanggal Bentrok dengan Jadwal Operasional
-  const checkOverlap = (startInput: string, days: number) => {
-    try {
-      const sTime = new Date(startInput).getTime();
-      const eTime = sTime + (days - 1) * 86400000;
-      const schedule = demoAccount ? jadwalList : reservedDates;
-      return schedule.find((sched) => {
-        const start = new Date(sched.startDate).getTime();
-        const end = new Date(sched.endDate).getTime();
-        return sTime <= end && eTime >= start;
-      });
-    } catch {
-      return null;
-    }
-  };
-
-  const conflictingSchedule = checkOverlap(startDate, selectedDays);
-  const isConflicted = !!conflictingSchedule;
 
   const ULASAN_MOCK = [
     { nama: "Ayu Maharani", fakultas: "FT", rating: 5, komentar: "Lokasi sangat strategis, banyak mahasiswa lewat. Fasilitas lengkap!", tanggal: "15 Okt 2026" },
@@ -157,6 +161,10 @@ export default function DetailSpotView({
     }
     if (!jenisUsaha.trim()) {
       onShowToast({ type: "error", message: "Jenis usaha harus diisi", description: "Lengkapi semua field yang diperlukan" });
+      return;
+    }
+    if (!Number.isInteger(selectedDays) || selectedDays < 1 || selectedDays > 30) {
+      onShowToast({ type: "error", message: "Pilih tanggal sewa antara 1 dan 30 hari." });
       return;
     }
     if (isConflicted) {
@@ -411,9 +419,16 @@ export default function DetailSpotView({
                           <p className="text-[11px] text-[#737781]">
                             Tanggal Selesai: <strong>{formatDate(item.endDate)}</strong>
                           </p>
+                          <p className="text-[11px] text-[#855300]">
+                            Cleaning area sampai {formatDate(shiftRentalDate(item.endDate, CLEANING_DAYS))}
+                          </p>
                         </div>
                         <span className="bg-[#855300] text-white text-[11px] px-2.5 py-1 rounded-full font-bold">
-                          Sedang Beroperasi
+                          {"statusVerifikasi" in item && item.statusVerifikasi === "menunggu"
+                            ? "Menunggu Verifikasi"
+                            : "isCleaning" in item && item.isCleaning
+                              ? "Masa Cleaning"
+                              : "Sedang Beroperasi"}
                         </span>
                       </div>
                     ))
@@ -438,9 +453,12 @@ export default function DetailSpotView({
                           <p className="text-[11px] text-[#737781]">
                             {formatDate(item.startDate)} s/d {formatDate(item.endDate)}
                           </p>
+                          <p className="text-[11px] text-[#855300]">
+                            Cleaning area sampai {formatDate(shiftRentalDate(item.endDate, CLEANING_DAYS))}
+                          </p>
                         </div>
                         <span className="bg-[#eaedff] text-[#003466] text-[11px] px-2.5 py-1 rounded-full border border-[#003466]/20">
-                          Tervalidasi
+                          {"statusVerifikasi" in item && item.statusVerifikasi === "menunggu" ? "Menunggu Verifikasi" : "Tervalidasi"}
                         </span>
                       </div>
                     ))
@@ -562,13 +580,13 @@ export default function DetailSpotView({
                   </div>
 
                   {/* Tanggal Terisi Khusus Spot Ini */}
-                  {(demoAccount ? jadwalList : reservedDates).length > 0 && (
+                  {unavailableRanges.length > 0 && (
                     <div className="rounded-xl bg-[#ffddb8]/30 p-3 border border-[#ffddb8] text-[11px] text-[#855300]">
-                      <span className="font-bold block mb-1">Tanggal Terisi (Jadwal Operasional Spot Ini):</span>
+                      <span className="font-bold block mb-1">Tanggal terpakai dan masa cleaning spot ini:</span>
                       <ul className="list-disc pl-4 space-y-0.5">
-                        {(demoAccount ? jadwalList : reservedDates).map((s) => (
-                          <li key={s.startDate + s.endDate}>
-                            {formatDate(s.startDate)} - {formatDate(s.endDate)}
+                        {unavailableRanges.map((range) => (
+                          <li key={range.startDate + range.endDate}>
+                            {formatDate(range.startDate)} – {formatDate(range.endDate)} · Pembersihan sampai {formatDate(shiftRentalDate(range.endDate, CLEANING_DAYS))}
                           </li>
                         ))}
                       </ul>
@@ -583,48 +601,50 @@ export default function DetailSpotView({
                     <input
                       type="date"
                       value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
                       min={today()}
+                      onChange={(e) => {
+                        const nextStart = e.target.value;
+                        if (!nextStart) return;
+                        setStartDate(nextStart);
+                        if (endDateStr < nextStart) setEndDateStr(nextStart);
+                        else {
+                          const limit = new Date(`${nextStart}T00:00:00Z`);
+                          limit.setUTCDate(limit.getUTCDate() + 29);
+                          if (endDateStr > limit.toISOString().slice(0, 10)) setEndDateStr(limit.toISOString().slice(0, 10));
+                        }
+                      }}
                       className={`w-full h-10 px-3 text-[14px] rounded-lg outline-none transition-all ${isConflicted
-                          ? "bg-red-50 text-red-900 border border-red-500"
-                          : "bg-[#f2f3ff] text-[#131b2e] focus:bg-white focus:ring-2 focus:ring-[#003466]/20"
-                        }`}
+                        ? "bg-red-50 text-red-900 border border-red-500"
+                        : "bg-[#f2f3ff] text-[#131b2e] focus:bg-white focus:ring-2 focus:ring-[#003466]/20"
+                      }`}
                     />
                   </div>
 
-                  {/* Durasi Sewa */}
+                  {/* Tanggal Selesai dan Durasi Sewa */}
                   <div>
                     <label className="block text-[12px] font-semibold text-[#424750] mb-1.5 uppercase tracking-wide">
-                      Durasi Sewa
+                      Tanggal Selesai *
                     </label>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedDays((d) => Math.max(d - 1, 1))}
-                        className="w-9 h-9 rounded-lg bg-[#eaedff] text-[#131b2e] flex items-center justify-center font-bold hover:bg-[#dae2fd] transition-colors"
-                      >
-                        −
-                      </button>
-                      <div className="flex-1 text-center py-2 bg-[#f2f3ff] rounded-lg text-[14px] font-bold text-[#131b2e]">
-                        {selectedDays} hari
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedDays((d) => Math.min(d + 1, 30))}
-                        className="w-9 h-9 rounded-lg bg-[#eaedff] text-[#131b2e] flex items-center justify-center font-bold hover:bg-[#dae2fd] transition-colors"
-                      >
-                        +
-                      </button>
+                    <input type="date" value={endDateStr} min={startDate} max={maxEndDateStr}
+                      onChange={(e) => {
+                        if (e.target.value) setEndDateStr(e.target.value);
+                      }}
+                      className="w-full h-10 px-3 bg-[#f2f3ff] text-[#131b2e] text-[14px] rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-[#003466]/20 transition-all" />
+                    <div className="mt-2 text-center py-2 bg-[#f2f3ff] rounded-lg text-[14px] font-bold text-[#131b2e]">
+                      Durasi sewa : {selectedDays} hari
                     </div>
                     <p className="text-[11px] text-[#737781] mt-1.5">
                       {formatDate(startDate)} – {formatDate(endDateStr)}
+                    </p>
+                    <p className="mt-2 rounded-lg border border-[#ffddb8] bg-[#ffddb8]/30 p-2.5 text-[11px] leading-relaxed text-[#855300]">
+                      Masa cleaning area berlangsung 3 hari setelah sewa: {formatDate(cleaningStart)}–{formatDate(cleaningEnd)}. Tanggal tersebut tidak tersedia untuk pesanan baru. Jika tanggal yang dipilih berbenturan dengan jadwal lain, pemesanan tidak dapat dilanjutkan.
                     </p>
                   </div>
 
                   {/* Peringatan Tanggal Bentrok */}
                   {isConflicted && (
                     <div className="rounded-lg bg-red-50 p-2.5 text-[12px] text-red-600 border border-red-200">
-                      Tanggal ini sudah terisi. Silakan pilih tanggal lain.
+                      Tanggal bertabrakan dengan jadwal sewa atau masa pembersihan. Silakan pilih tanggal lain.
                     </div>
                   )}
 
