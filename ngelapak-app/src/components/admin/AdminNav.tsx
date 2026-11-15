@@ -11,7 +11,7 @@ const pages = [
   { segment: "refund", label: "Pembatalan & Refund", icon: Undo2 },
 ];
 
-export default function AdminNav({ basePath }: { basePath: string }) {
+export default function AdminNav({ basePath, mobile = false }: { basePath: string; mobile?: boolean }) {
   const segment = useSelectedLayoutSegment();
   const links = pages.map(({ segment: pageSegment, label, icon: Icon }) => {
     const href = pageSegment ? `${basePath}/${pageSegment}` : basePath;
@@ -22,7 +22,7 @@ export default function AdminNav({ basePath }: { basePath: string }) {
         href={href}
         aria-current={active ? "page" : undefined}
         onClick={(event) => event.currentTarget.closest("details")?.removeAttribute("open")}
-        className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-[#1a4b84] lg:gap-1.5 lg:px-2.5 xl:px-3 ${
+        className={`flex items-center gap-2.5 rounded-lg px-3 py-3 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-[#1a4b84] ${
           active ? "bg-[#003466] text-white" : "text-[#424750] hover:bg-[#f2f3ff] hover:text-[#003466]"
         }`}
       >
@@ -32,11 +32,11 @@ export default function AdminNav({ basePath }: { basePath: string }) {
     );
   });
 
+  if (!mobile) {
+    return <nav aria-label="Panel admin" className="grid gap-1">{links}</nav>;
+  }
+
   return (
-    <>
-      <nav aria-label="Panel admin" className="hidden flex-1 items-center justify-center gap-1 lg:flex">
-        {links}
-      </nav>
       <details className="relative ml-auto lg:hidden" onKeyDown={(event) => {
         if (event.key !== "Escape" || !event.currentTarget.open) return;
         event.currentTarget.open = false;
@@ -50,6 +50,5 @@ export default function AdminNav({ basePath }: { basePath: string }) {
           {links}
         </nav>
       </details>
-    </>
   );
 }

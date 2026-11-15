@@ -1,4 +1,5 @@
 import Link from "next/link";
+import RevenueBars from "@/components/admin/RevenueBars";
 import { ArrowRight, Info, Plus, ReceiptText, Undo2, Wallet, type LucideIcon } from "lucide-react";
 import { AdminEmptyState, AdminHeading } from "@/components/admin/AdminPresentation";
 import { actionLinkClass, panelClass, primaryLinkClass } from "@/components/admin/styles";
@@ -57,8 +58,6 @@ export default function AdminDashboard({ metrics, paymentCount, refundCount, met
   addSpotHref?: string;
   basePath: "/admin" | "/demo/admin";
 }) {
-  const maxRevenue = Math.max(1, ...(metrics?.trend.map((week) => week.amount) ?? []));
-
   return (
     <>
       <AdminHeading
@@ -107,21 +106,12 @@ export default function AdminDashboard({ metrics, paymentCount, refundCount, met
             <AdminEmptyState icon="bar_chart" title={metrics ? "Belum ada pendapatan terverifikasi pada periode ini" : "Data tren belum tersedia"} />
           ) : (
             <>
-              <ul aria-label="Pendapatan per minggu" className="grid min-w-0 grid-cols-8 gap-1.5 sm:gap-3">
-                {metrics.trend.map((week, index) => {
-                  const label = shortDate.format(new Date(week.week_start));
-                  return (
-                    <li key={week.week_start} title={`Minggu mulai ${label} — ${currency.format(week.amount)}`} className="min-w-0">
-                      <span className="sr-only">Minggu mulai {label}, {currency.format(week.amount)}</span>
-                      <div aria-hidden="true" className="flex h-36 items-end justify-center border-b border-[#d7def5] bg-[linear-gradient(to_top,#eaedff_1px,transparent_1px)] bg-size-[100%_25%] sm:h-44">
-                        <div className={`w-full max-w-13 rounded-t-lg ${index === metrics.trend.length - 1 ? "bg-[#003466]" : "bg-[#8eb4e8]"}`}
-                          style={{ height: `${100 * week.amount / maxRevenue}%` }} />
-                      </div>
-                      <p aria-hidden="true" className="mt-2 text-center text-[10px] leading-tight text-[#424750] sm:text-xs">{label}</p>
-                    </li>
-                  );
-                })}
-              </ul>
+              <RevenueBars weeks={metrics.trend.map((week) => ({
+                date: week.week_start,
+                label: shortDate.format(new Date(week.week_start)),
+                value: currency.format(week.amount),
+                amount: week.amount,
+              }))} />
               <details className="text-sm text-[#424750]">
                 <summary className="cursor-pointer font-semibold text-[#003466]">Rincian mingguan</summary>
                 <dl className="mt-2 divide-y divide-[#e2e7ff]">
