@@ -4,6 +4,8 @@ import { use, useEffect, useState } from "react";
 import { MOCK_BOOKINGS } from "@/lib/mock-data";
 import Link from "next/link";
 
+const todayInBali = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Makassar" });
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function formatDate(dateStr: string): string {
@@ -170,10 +172,10 @@ export default function ValidasiTicketPage({
   params: Promise<{ ticketId: string }>;
 }) {
   const { ticketId } = use(params);
-  const [now, setNow] = useState<Date | null>(null);
-
+  const [currentTime, setCurrentTime] = useState<number | null>(null);
   useEffect(() => {
-    setNow(new Date());
+    const frame = requestAnimationFrame(() => setCurrentTime(Date.now()));
+    return () => cancelAnimationFrame(frame);
   }, []);
 
   // 1. Lookup booking
@@ -199,8 +201,7 @@ export default function ValidasiTicketPage({
   }
 
   // 4. Valid – compute activity status (based on client date when mounted)
-  const currentDate = now ?? new Date(booking.tanggalMulai);
-  const todayStr = currentDate.toISOString().slice(0, 10);
+  const todayStr = currentTime === null ? booking.tanggalMulai : todayInBali.format(currentTime);
   const isActive =
     booking.tanggalMulai <= todayStr && todayStr <= booking.tanggalSelesai;
   const isUpcoming = booking.tanggalMulai > todayStr;
@@ -227,7 +228,7 @@ export default function ValidasiTicketPage({
     );
   }
 
-  const checkedAt = now ? formatDateTime(now) : "Memuat waktu pemeriksaan...";
+  const checkedAt = currentTime === null ? "Memuat waktu pemeriksaan..." : formatDateTime(new Date(currentTime));
 
   return (
     <PageShell>

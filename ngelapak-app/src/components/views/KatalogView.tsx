@@ -24,42 +24,52 @@ const InteractiveMap = dynamic(
 interface KatalogViewProps {
   onNavigateToDetail: (spot: Spot) => void;
   onShowToast: (toast: Omit<ToastMessage, "id">) => void;
+  demoMode?: boolean;
 }
 
 const ITEMS_PER_PAGE = 6;
 
-export default function KatalogView({ onNavigateToDetail, onShowToast }: KatalogViewProps) {
+export default function KatalogView({ onNavigateToDetail, onShowToast, demoMode = false }: KatalogViewProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [zonaFilter, setZonaFilter] = useState<ZonaFilter>("all");
   const [ukuranFilter, setUkuranFilter] = useState<UkuranFilter>("all");
   const [sortBy, setSortBy] = useState<SortOption>("populer");
   const [activeChips, setActiveChips] = useState<Set<string>>(new Set(["listrik"]));
   const [currentPage, setCurrentPage] = useState(1);
-  const [dateStart, setDateStart] = useState(() => today());
-  const [dateEnd, setDateEnd] = useState(() => today());
-  const [isFiltering, setIsFiltering] = useState(false);
+  const [dateStart, setDateStart] = useState(today);
+  const [dateEnd, setDateEnd] = useState(today);
+  const [period, setPeriod] = useState(() => ({ start: today(), end: today() }));
   const [customLokasi, setCustomLokasi] = useState<string | null>(null);
   const [spots, setSpots] = useState<Spot[]>([]);
   const [isLoadingSpots, setIsLoadingSpots] = useState(true);
   const [spotError, setSpotError] = useState<string | null>(null);
+  const [availabilityKnown, setAvailabilityKnown] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
 
     async function loadSpots() {
+      if (demoMode) {
+        setSpots(MOCK_SPOTS);
+        setIsLoadingSpots(false);
+        setSpotError(null);
+        setAvailabilityKnown(true);
+        return;
+      }
       try {
         setIsLoadingSpots(true);
         setSpotError(null);
+        setAvailabilityKnown(false);
 
-        const data = await getSupabaseSpots();
+        const data = await getSupabaseSpots(period);
 
         if (isMounted) {
-          // Keep the catalog usable in demo/dev environments before spots are seeded.
-          setSpots(data.length > 0 ? data : MOCK_SPOTS);
+          setSpots(data.spots);
+          setAvailabilityKnown(data.availabilityKnown);
         }
       } catch (error) {
         if (isMounted) {
-          setSpots(MOCK_SPOTS);
+          setSpots([]);
           setSpotError(
             error instanceof Error
               ? error.message
@@ -70,7 +80,7 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
         if (isMounted) {
           setIsLoadingSpots(false);
         }
-    } 
+      }
     }
 
     loadSpots();
@@ -78,7 +88,7 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [period, demoMode]);
   
 
   const toggleChip = useCallback((chipId: string) => {
@@ -161,16 +171,13 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
   );
 
   const handleApplyFilter = () => {
-    setIsFiltering(true);
+    const duration = (Date.parse(dateEnd) - Date.parse(dateStart)) / 86_400_000 + 1;
+    if (!Number.isFinite(duration) || duration < 1 || duration > 30) {
+      onShowToast({ type: "error", message: "Pilih rentang sewa antara 1 dan 30 hari." });
+      return;
+    }
     setCurrentPage(1);
-    setTimeout(() => {
-      setIsFiltering(false);
-      onShowToast({
-        type: "success",
-        message: "Filter diterapkan",
-        description: `Menampilkan ${filteredAndSorted.length} spot`,
-      });
-    }, 600);
+    setPeriod({ start: dateStart, end: dateEnd });
   };
 
   const handleReset = () => {
@@ -181,8 +188,10 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
     setActiveChips(new Set());
     setCustomLokasi(null);
     setCurrentPage(1);
-    setDateStart(today());
-    setDateEnd(today());
+    const now = today();
+    setDateStart(now);
+    setDateEnd(now);
+    setPeriod({ start: now, end: now });
   };
 
   const availableSpotsCount = useMemo(
@@ -197,6 +206,12 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
             1. KATALOG HERO (KESATUAN UTAMA: Banner, Filter Card,
                Zone Tabs, Spot Grid, & Paginasi di dalam Card)
             ======================================================== */}
+        {spotError && <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700" role="alert">{spotError}</p>}
+        {!demoMode && !isLoadingSpots && !spotError && !availabilityKnown && (
+          <p className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="status">
+            Jadwal sewa belum bisa diperiksa. Daftar ini menampilkan status umum lapak.
+          </p>
+        )}
         <KatalogHero
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
@@ -211,12 +226,12 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
           activeChips={activeChips}
           toggleChip={toggleChip}
           onResetChips={handleResetChips}
-          isFiltering={isFiltering}
+          isFiltering={isLoadingSpots}
           onApplyFilter={handleApplyFilter}
           onReset={handleReset}
           onResetPage={() => setCurrentPage(1)}
           totalCount={filteredAndSorted.length}
-          availableCount={availableSpotsCount}
+          availableCount={availabilityKnown ? availableSpotsCount : 0}
           customLokasi={customLokasi}
           setCustomLokasi={setCustomLokasi}
           sortBy={sortBy}
@@ -232,7 +247,7 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
         {/* ========================================================
             2. PETA SPASIAL KAMPUS (FULL WIDTH)
             ======================================================== */}
-        {!isFiltering && filteredAndSorted.length > 0 && (
+        {!isLoadingSpots && filteredAndSorted.length > 0 && (
           <div id="peta-spasial" className="mt-8 pt-8 border-t border-[#e2e7ff] mb-10">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
               <div>
@@ -258,7 +273,7 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
             {/* FULL WIDTH INTERACTIVE MAP */}
             <InteractiveMap
               spots={spots}
-              defaultStatus="tersedia"
+              defaultStatus={availabilityKnown ? "tersedia" : "all"}
               defaultZone={zonaFilter}
               context="katalog"
               onSelectSpot={onNavigateToDetail}

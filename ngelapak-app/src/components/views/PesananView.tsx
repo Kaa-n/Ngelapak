@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { canCancelBooking, useDemo } from "@/lib/demo-store";
+import { paymentLabel } from "@/lib/rental-policy";
 import { formatDate, formatRupiah } from "@/lib/mock-data";
 import type { Booking } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
@@ -16,9 +17,9 @@ import DetailPesananView from "./DetailPesananView";
 type FilterTab = "semua" | "menunggu" | "disetujui" | "ditolak" | "dibatalkan";
 
 function getEffectiveStatus(booking: Booking): FilterTab {
+  if (booking.statusVerifikasi === "ditolak") return "ditolak";
   if (booking.status === "dibatalkan") return "dibatalkan";
   if (booking.statusVerifikasi === "disetujui") return "disetujui";
-  if (booking.statusVerifikasi === "ditolak") return "ditolak";
   return "menunggu";
 }
 
@@ -27,7 +28,7 @@ function getStatusBadge(booking: Booking): {
   cls: string;
   icon: string;
 } {
-  if (booking.status === "dibatalkan")
+  if (booking.status === "dibatalkan" && booking.statusVerifikasi !== "ditolak")
     return {
       label: "Dibatalkan",
       cls: "bg-red-50 text-red-700 border-red-200",
@@ -35,18 +36,19 @@ function getStatusBadge(booking: Booking): {
     };
   if (booking.statusVerifikasi === "disetujui")
     return {
-      label: booking.status === "selesai" ? "Selesai" : "Disetujui",
+      label: booking.status === "selesai" ? "Selesai"
+        : booking.metodePembayaran === "midtrans" ? "Lunas" : "Disetujui",
       cls: "bg-emerald-50 text-emerald-700 border-emerald-200",
       icon: "check_circle",
     };
   if (booking.statusVerifikasi === "ditolak")
     return {
-      label: "Ditolak",
+      label: booking.metodePembayaran === "midtrans" ? paymentLabel(booking.statusVerifikasi, booking.paymentStatus) : "Ditolak",
       cls: "bg-red-50 text-red-700 border-red-200",
       icon: "do_not_disturb_on",
     };
   return {
-    label: "Menunggu",
+    label: booking.metodePembayaran === "midtrans" ? paymentLabel(booking.statusVerifikasi, booking.paymentStatus) : "Menunggu",
     cls: "bg-amber-50 text-amber-700 border-amber-200",
     icon: "schedule",
   };
@@ -79,13 +81,17 @@ function getStepIndex(booking: Booking): number {
 
 function StatusStepper({ booking }: { booking: Booking }) {
   const current = getStepIndex(booking);
+  const steps = booking.metodePembayaran === "midtrans" ? [
+    STEPS[0], { label: "Menunggu pembayaran", icon: "pending_actions" },
+    { label: "Konfirmasi pembayaran", icon: "fact_check" }, STEPS[3],
+  ] : STEPS;
   const isRejected =
     booking.statusVerifikasi === "ditolak" ||
     booking.status === "dibatalkan";
 
   return (
     <div className="flex items-start gap-0 w-full mt-4">
-      {STEPS.map((step, idx) => {
+      {steps.map((step, idx) => {
         const done = idx < current;
         const active = idx === current;
         const rejected = isRejected && idx === 2;
@@ -276,11 +282,12 @@ const TABS: { key: FilterTab; label: string }[] = [
     const { bookings: demoBookings } = useDemo();
 
     const [supabaseBookings, setSupabaseBookings] = useState<Booking[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState("");
 
     const isDemoUser = user?.id === "ayu" || user?.id === "bayu";
 
+    const [reloadVersion, setReloadVersion] = useState(0);
     useEffect(() => {
       if (!user || user.role !== "penyewa" || isDemoUser) return;
 
@@ -316,7 +323,7 @@ const TABS: { key: FilterTab; label: string }[] = [
       return () => {
         mounted = false;
       };
-    }, [user?.id, user?.role, isDemoUser]);
+    }, [user, isDemoUser, reloadVersion]);
 
     const bookings = isDemoUser ? demoBookings : supabaseBookings;
 
@@ -329,8 +336,13 @@ const TABS: { key: FilterTab; label: string }[] = [
   if (detailId) {
     return (
       <DetailPesananView
+        key={detailId}
         bookingId={detailId}
-        onBack={() => setDetailId(null)}
+        useSupabase={!isDemoUser}
+        onBack={() => {
+          setDetailId(null);
+          setReloadVersion((value) => value + 1);
+        }}
         onShowToast={onShowToast}
       />
     );
@@ -438,7 +450,16 @@ const TABS: { key: FilterTab; label: string }[] = [
       )}
 
       {/* ── EMPTY STATE ── */}
-      {bookings.length === 0 && (
+      {!isDemoUser && loading && <p role="status" className="mb-4 text-sm">Memuat pesanan…</p>}
+      {!isDemoUser && loadError && (
+        <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm">
+          {loadError}
+          <button type="button" className="ml-2 underline" onClick={() => setReloadVersion((value) => value + 1)}>
+            Coba lagi
+          </button>
+        </div>
+      )}
+      {bookings.length === 0 && (isDemoUser || (!loading && !loadError)) && (
         <div className="bg-white rounded-2xl border border-[#e2e7ff] p-12 text-center">
           <div className="w-16 h-16 rounded-full bg-[#eef0ff] flex items-center justify-center mx-auto mb-4">
             <span className="material-symbols-outlined text-4xl text-[#003466]">

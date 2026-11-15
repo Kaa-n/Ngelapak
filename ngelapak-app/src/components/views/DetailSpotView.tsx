@@ -1,19 +1,16 @@
 "use client";
 
-import React, { useState, useSyncExternalStore } from "react";
+import React, { useEffect, useState, useSyncExternalStore } from "react";
 import type { Spot } from "@/lib/mock-data";
 import dynamic from "next/dynamic";
 import { formatRupiah, formatDate } from "@/lib/mock-data";
 import type { ToastMessage, DemoUser } from "@/lib/types";
 import type { SupabaseProfile } from "@/lib/supabase/auth";
 import { createSupabaseBooking } from "@/lib/supabase/bookings";
+import { createClient } from "@/lib/supabase/client";
 import { createDemoBooking, getAllDemoBookings, today } from "@/lib/demo-store";
+import { CANCELLATION_WINDOW_MS, CLEANING_DAYS, PAYMENT_WINDOW_MS, rentalStart, formatRentalTime, shiftRentalDate } from "@/lib/rental-policy";
 
-const addDaysForDate = (date: string, days: number) => {
-  const value = new Date(`${date}T00:00:00Z`);
-  value.setUTCDate(value.getUTCDate() + days);
-  return value.toISOString().slice(0, 10);
-};
 const emptySubscribe = () => () => { };
 
 // Dynamic import InteractiveMap buatan rekan tim (mencegah error window is not defined)
@@ -48,7 +45,6 @@ export default function DetailSpotView({
   onOrderDetail,
   onShowToast,
 }: DetailSpotViewProps) {
-  const bookings = getAllDemoBookings();
   // State Form Booking & Pendaftaran Penjual (Jobdesk FE 3)
   const [startDate, setStartDate] = useState(() => today());
   const [endDateStr, setEndDateStr] = useState(() => today());
@@ -56,14 +52,30 @@ export default function DetailSpotView({
   const [namaUsaha, setNamaUsaha] = useState("");
   const [jenisUsaha, setJenisUsaha] = useState("");
   const [catatanTambahan, setCatatanTambahan] = useState("");
-  const [metodePembayaran, setMetodePembayaran] = useState("qris");
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [reservedDates, setReservedDates] = useState<{ startDate: string; endDate: string }[]>([]);
+  const demoAccount = user?.id === "ayu" || user?.id === "bayu";
+  const spotId = spot?.id;
+
+  useEffect(() => {
+    if (!spotId || demoAccount || !/^[\da-f-]{36}$/i.test(spotId)) return;
+    let active = true;
+    async function loadDates() {
+      if (!spotId) return;
+      const { data } = await createClient().rpc("get_reserved_lapak_dates", { p_spot_id: spotId });
+      if (active && data) setReservedDates(data.map((row) => ({
+        startDate: row.tanggal_mulai, endDate: row.tanggal_selesai,
+      })));
+    }
+    void loadDates().catch(() => undefined);
+    return () => { active = false; };
+  }, [spotId, demoAccount]);
 
   // State Alur Pembayaran Interaktif
-  const [showPaymentStep, setShowPaymentStep] = useState(false); // Modal Barcode QRIS & Token
-  const [bookingSuccess, setBookingSuccess] = useState(false);   // Ringkasan Halaman Sukses
+  const [showPaymentStep, setShowPaymentStep] = useState(false);
+  const [checkoutOpenedAt, setCheckoutOpenedAt] = useState(0);
   const [reservationId, setReservationId] = useState("");
 
   const [activeTab, setActiveTab] = useState<"detail" | "operasional" | "fasilitas" | "ulasan">(initialTab);
@@ -97,65 +109,38 @@ export default function DetailSpotView({
   }
 
   // BACA DATA JADWAL OPERASIONAL UNIK PER SPOT (Dinamis dari mock-data.ts)
+  const currentDay = today();
+  const bookings = isMounted && demoAccount ? getAllDemoBookings() : [];
   const fixtureJadwalList = spot.jadwalOperasional || [];
   const bookingScheduleList = bookings.filter((booking) =>
     booking.spotId === spot.id &&
     booking.status !== "dibatalkan" &&
     booking.statusVerifikasi !== "ditolak" &&
-    addDaysForDate(booking.tanggalSelesai, 3) >= today() &&
-    (!booking.createdAt || Date.now() - Date.parse(booking.createdAt) < 24 * 60 * 60 * 1000 || booking.statusVerifikasi !== "menunggu")
+    shiftRentalDate(booking.tanggalSelesai, CLEANING_DAYS) >= currentDay
   ).map((booking) => ({
     id: `booking-${booking.id}`,
     penjual: booking.penyewa.nama,
     kategori: "UMKM Umum" as const,
     startDate: booking.tanggalMulai,
     endDate: booking.tanggalSelesai,
-    status: booking.tanggalMulai <= today() ? "Active" as const : "Upcoming" as const,
+    status: booking.tanggalMulai <= currentDay ? "Active" as const : "Upcoming" as const,
     statusVerifikasi: booking.statusVerifikasi,
-    isCleaning: booking.tanggalSelesai < today(),
+    isCleaning: booking.tanggalSelesai < currentDay,
   }));
   const jadwalList = [...fixtureJadwalList, ...bookingScheduleList];
-  const unavailableRanges = [
-    ...jadwalList.map((schedule) => {
-      const to = new Date(`${schedule.endDate}T00:00:00`);
-      to.setDate(to.getDate() + 3);
-      return { from: new Date(`${schedule.startDate}T00:00:00`), to };
-    }),
-  ];
+  const unavailableRanges = demoAccount ? jadwalList : reservedDates;
 
   // Perhitungan Tarif & Durasi
-  const tarif = spot.tarifPerHari || 160000;
-  const selectedDays = Math.max(1, Math.round((Date.parse(`${endDateStr}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86400000) + 1);
+  const tarif = spot.tarifPerHari;
+  const selectedDays = (Date.parse(endDateStr) - Date.parse(startDate)) / CANCELLATION_WINDOW_MS + 1;
   const totalBayar = tarif * selectedDays;
-  const maxEndDate = new Date(`${startDate}T00:00:00Z`);
-  maxEndDate.setUTCDate(maxEndDate.getUTCDate() + 29);
-  const maxEndDateStr = maxEndDate.toISOString().slice(0, 10);
-  const cleaningStart = new Date(`${endDateStr}T00:00:00Z`);
-  cleaningStart.setUTCDate(cleaningStart.getUTCDate() + 1);
-  const cleaningEnd = new Date(`${endDateStr}T00:00:00Z`);
-  cleaningEnd.setUTCDate(cleaningEnd.getUTCDate() + 3);
+  const maxEndDateStr = shiftRentalDate(startDate, 29);
+  const cleaningStart = shiftRentalDate(endDateStr, 1);
+  const cleaningEnd = shiftRentalDate(endDateStr, CLEANING_DAYS);
+  const isConflicted = unavailableRanges.some(({ startDate: occupiedStart, endDate: occupiedEnd }) =>
+    startDate <= shiftRentalDate(occupiedEnd, CLEANING_DAYS) && cleaningEnd >= occupiedStart,
+  );
 
-  // Logika Validasi Tanggal Bentrok dengan Jadwal Operasional
-  const checkOverlap = (startInput: string) => {
-    try {
-      const cleaningEnd = new Date(`${endDateStr}T00:00:00Z`);
-      cleaningEnd.setUTCDate(cleaningEnd.getUTCDate() + 3);
-      const cleaningEndDate = cleaningEnd.toISOString().slice(0, 10);
-      const conflicts = (occupiedStart: string, occupiedEnd: string) => {
-        const requestedCleaningEnd = addDaysForDate(endDateStr, 3);
-        const occupiedCleaningEnd = addDaysForDate(occupiedEnd, 3);
-        // Sewa yang diminta juga memakai area selama 3 hari pembersihan.
-        return startInput <= occupiedCleaningEnd && requestedCleaningEnd >= occupiedStart;
-      };
-
-      return jadwalList.find((schedule) => conflicts(schedule.startDate, schedule.endDate)) ?? null;
-    } catch {
-      return null;
-    }
-  };
-
-  const conflictingSchedule = checkOverlap(startDate);
-  const isConflicted = !!conflictingSchedule;
 
   const ULASAN_MOCK = [
     { nama: "Ayu Maharani", fakultas: "FT", rating: 5, komentar: "Lokasi sangat strategis, banyak mahasiswa lewat. Fasilitas lengkap!", tanggal: "15 Okt 2026" },
@@ -178,8 +163,12 @@ export default function DetailSpotView({
       onShowToast({ type: "error", message: "Jenis usaha harus diisi", description: "Lengkapi semua field yang diperlukan" });
       return;
     }
+    if (!Number.isInteger(selectedDays) || selectedDays < 1 || selectedDays > 30) {
+      onShowToast({ type: "error", message: "Pilih tanggal sewa antara 1 dan 30 hari." });
+      return;
+    }
     if (isConflicted) {
-      onShowToast({ type: "error", message: "Tanggal tidak tersedia", description: `Bertabrakan dengan jadwal '${conflictingSchedule?.penjual}'` });
+      onShowToast({ type: "error", message: "Tanggal tidak tersedia", description: "Pilih tanggal sewa lain." });
       return;
     }
     if (!agreeTerms) {
@@ -187,209 +176,72 @@ export default function DetailSpotView({
       return;
     }
 
-    // Generate Token / ID Transaksi Unik
-    const generatedToken = `TXN-${Math.random().toString(36).substring(2, 8).toUpperCase()}-2026`;
-    setReservationId(generatedToken);
-    setShowPaymentStep(true); // Buka modal pembayaran
-  };
-
-  // LANGKAH 2: Konfirmasi Pembayaran Selesai -> Diteruskan ke Halaman Ringkasan Sukses
-  
-  const handleConfirmPayment = async () => {
-    if (!user || user.role !== "penyewa") {
-      onShowToast({
-        type: "error",
-        message: "Akun tidak memiliki akses untuk melakukan pemesanan.",
-      });
+    const now = Date.now();
+    if (now + PAYMENT_WINDOW_MS > rentalStart(startDate)) {
+      onShowToast({ type: "error", message: "Pemesanan ditutup satu jam sebelum sewa mulai (08.00 WITA)." });
       return;
     }
 
+    // Keep the same checkout ID when the request is retried.
+    if (!reservationId) setReservationId("MT-" + crypto.randomUUID().replaceAll("-", ""));
+    setCheckoutOpenedAt(now);
+    setShowPaymentStep(true);
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!user || user.role !== "penyewa" || isSubmitting) return;
     setIsSubmitting(true);
-
     try {
-      let id: string;
-
-      // Akun demo tetap menggunakan penyimpanan localStorage.
-      if (user.id === "ayu" || user.id === "bayu") {
-        id = createDemoBooking({
-          spotId: spot.id,
-          tanggalMulai: startDate,
-          jumlahHari: selectedDays,
-          jenisUsaha,
-          catatan: catatanTambahan,
-          metodePembayaran,
-          ...({ namaUsaha, kategoriPenjual } as Record<string, unknown>),
+      if (demoAccount) {
+        const id = createDemoBooking({
+          spotId: spot.id, tanggalMulai: startDate, jumlahHari: selectedDays,
+          jenisUsaha, catatan: catatanTambahan, metodePembayaran: "midtrans",
         });
-      } else {
-        // Akun Supabase menyimpan pemesanan ke database.
-        id = await createSupabaseBooking({
-          spotKode: spot.kode,
-          tanggalMulai: startDate,
-          jumlahHari: selectedDays,
-          totalBayar,
-          metodePembayaran,
-          jenisUsaha,
-          namaUsaha,
-          kategoriPenjual,
-          catatan: catatanTambahan,
-        });
+        onOrderDetail(id);
+        return;
       }
-
-      setReservationId(id);
-      setShowPaymentStep(false);
-      setBookingSuccess(true);
-
-      onShowToast({
-        type: "success",
-        message: "Pengajuan pemesanan berhasil",
-        description:
-          "Pesanan berhasil dicatat dan sedang menunggu verifikasi admin.",
+      const checkout = await createSupabaseBooking({
+        id: reservationId, spotKode: spot.kode, tanggalMulai: startDate, jumlahHari: selectedDays,
+        totalBayar, jenisUsaha, namaUsaha, kategoriPenjual, catatan: catatanTambahan, setuju: agreeTerms,
       });
+      if (checkout.checkoutUrl) window.location.assign(checkout.checkoutUrl);
+      else onOrderDetail(checkout.id);
     } catch (error) {
-      console.error("Gagal menyimpan pemesanan:", error);
-
-      const rawMessage = error instanceof Error ? error.message : "Terjadi kesalahan saat menyimpan pemesanan.";
-      const conflictMessage = /no_overlapping_bookings|conflict|overlap/i.test(rawMessage)
-        ? "Tanggal yang dipilih baru saja terisi oleh pesanan lain. Muat ulang jadwal dan pilih tanggal berbeda."
-        : rawMessage;
       onShowToast({
-        type: "error",
-        message: "Pengajuan gagal disimpan",
-        description: conflictMessage,
+        type: "error", message: "Pembayaran gagal dibuka",
+        description: error instanceof Error ? error.message : "Coba lagi.",
       });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-
-  // TAHAP 1: MODAL PEMBAYARAN INTERAKTIF (BARCODE & TOKEN TRANSAKSI)
   if (showPaymentStep) {
+    const cutoff = rentalStart(startDate) - CANCELLATION_WINDOW_MS;
     return (
-      <div className="min-h-screen bg-black/50 fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-        <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-[#e2e7ff] relative animate-in fade-in zoom-in duration-200">
-          <button
-            onClick={() => setShowPaymentStep(false)}
-            className="absolute top-4 right-4 text-[#737781] hover:text-black text-sm font-bold"
-          >
-            ✕ Batal
-          </button>
-
-          <div className="text-center mb-5">
-            <span className="material-symbols-outlined text-[#003466] text-[40px] mb-1">qr_code_2</span>
-            <h3 className="text-[20px] font-bold text-[#131b2e]">Instruksi Pembayaran</h3>
-            <p className="text-[12px] text-[#737781]">Selesaikan pembayaran untuk memvalidasi sewa lapak</p>
-          </div>
-
-          {/* Token Transaksi */}
-          <div className="bg-[#f2f3ff] rounded-xl p-3 text-center mb-5 border border-[#e2e7ff]">
-            <span className="text-[11px] text-[#737781] uppercase font-semibold block mb-0.5">Token / ID Transaksi</span>
-            <span className="text-[16px] font-mono font-bold text-[#003466] tracking-wider">{reservationId}</span>
-          </div>
-
-          {/* Barcode QRIS / Virtual Account */}
-          {metodePembayaran === "qris" ? (
-            <div className="flex flex-col items-center justify-center bg-[#faf8ff] p-4 rounded-xl border border-[#e2e7ff] mb-5">
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${reservationId}`}
-                alt="Barcode Pembayaran QRIS"
-                className="w-44 h-44 border-4 border-white shadow-md rounded-lg mb-2"
-              />
-              <p className="text-[12px] font-semibold text-[#131b2e]">Pindai QRIS Menggunakan e-Wallet / Mobile Banking</p>
-            </div>
-          ) : (
-            <div className="bg-[#eaedff] p-4 rounded-xl mb-5 text-center border border-[#003466]/20 space-y-1.5">
-              <span className="text-[12px] font-bold text-[#003466] uppercase block">{metodePembayaran.replace("-", " ")}</span>
-              <p className="text-[11px] text-[#737781]">Nomor Virtual Account Bank:</p>
-              <div className="text-[20px] font-mono font-bold text-[#131b2e] tracking-wide">8821 0812 3456 7890</div>
-            </div>
-          )}
-
-          {/* Rincian Biaya */}
-          <div className="border-t border-[#e2e7ff] pt-3 mb-5 space-y-1.5 text-[13px]">
-            <div className="flex justify-between text-[#424750]">
-              <span>Spot Lapak</span>
-              <span className="font-semibold text-[#131b2e]">{spot.nama}</span>
-            </div>
-            <div className="flex justify-between text-[#424750]">
-              <span>Durasi Sewa</span>
-              <span className="font-semibold text-[#131b2e]">{selectedDays} Hari</span>
-            </div>
-            <div className="flex justify-between text-[#424750]">
-              <span>Total Tagihan</span>
-              <span className="font-bold text-[#003466]">{formatRupiah(totalBayar)}</span>
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={() => setShowPaymentStep(false)}
-              className="flex-1 h-11 rounded-xl bg-[#eaedff] text-[#131b2e] text-[13px] font-semibold hover:bg-[#dae2fd] transition-colors"
-            >
-              Ubah Opsi
-            </button>
-            <button
-              onClick={handleConfirmPayment}
-              disabled={isSubmitting}
-              className="flex-1 h-11 rounded-xl bg-[#003466] text-white text-[13px] font-bold hover:bg-[#1a4b84] transition-colors flex items-center justify-center gap-1 shadow-md"
-            >
-              {isSubmitting ? "Memverifikasi..." : "Saya Sudah Bayar ✓"}
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <section role="dialog" aria-modal="true" aria-labelledby="checkout-title" className="w-full max-w-md space-y-4 rounded-2xl bg-white p-6 shadow-xl">
+          <h3 id="checkout-title" className="text-xl font-bold text-[#131b2e]">{demoAccount ? "Pembayaran demo" : "Bayar lewat Midtrans"}</h3>
+          <p className="text-sm text-[#424750]">{spot.nama} · {formatDate(startDate)} – {formatDate(endDateStr)}</p>
+          <p className="text-xl font-bold text-[#003466]">{formatRupiah(totalBayar)}</p>
+          <p className="text-sm text-[#424750]">Bayar dalam 1 jam sejak pesanan dibuat. Jadwal ditahan selama menunggu pembayaran.</p>
+          <p className="rounded-lg bg-[#f2f3ff] p-3 text-sm text-[#003466]">{checkoutOpenedAt >= cutoff
+            ? "Batas pengajuan batal untuk jadwal ini sudah lewat. Pastikan tanggal sewa sebelum membayar."
+            : `Pengajuan batal tersedia maksimal 24 jam setelah lunas, paling lambat ${formatRentalTime(cutoff)}.`}</p>
+          {demoAccount && <p className="text-sm text-[#424750]">Simulasikan pembayaran dari Detail Pesanan.</p>}
+          <div className="flex flex-wrap justify-end gap-2">
+            <button type="button" disabled={isSubmitting} onClick={() => { setShowPaymentStep(false); setReservationId(""); }}
+              className="rounded-lg px-4 py-2 text-sm font-semibold text-[#003466]">Kembali</button>
+            <button type="button" disabled={isSubmitting} onClick={handleConfirmPayment}
+              className="rounded-lg bg-[#003466] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+              {isSubmitting ? "Menyiapkan…" : demoAccount ? "Buat pesanan demo" : "Lanjut ke Midtrans"}
             </button>
           </div>
-        </div>
+        </section>
       </div>
     );
   }
 
-  // TAHAP 2: RINGKASAN SETELAH VERIFIKASI PEMBAYARAN SUKSES
-  if (bookingSuccess) {
-    return (
-      <div className="max-w-lg mx-auto px-4 py-16 flex flex-col items-center text-center">
-        <div className="w-20 h-20 rounded-full bg-[#6ffbbe]/20 flex items-center justify-center mb-6">
-          <span className="material-symbols-outlined text-[#003c27] text-[48px]">check_circle</span>
-        </div>
-        <h2 className="text-[24px] font-bold text-[#131b2e] mb-3">Pembayaran Berhasil</h2>
-        <p className="text-[14px] text-[#424750] mb-2 leading-relaxed max-w-sm">
-          Pembayaran sewa Spot <strong>{spot.nama}</strong> untuk <strong>{namaUsaha}</strong> ({kategoriPenjual}) selama <strong>{selectedDays} hari</strong> sudah tercatat.
-        </p>
-        <p className="text-[13px] text-[#737781] mb-8">
-          Total: <strong className="text-[#003466]">{formatRupiah(totalBayar)}</strong>. Admin belum memverifikasi. Pembatalan tersedia 1x24 jam di detail pesanan.
-        </p>
-
-        <div className="w-full bg-[#f2f3ff] rounded-xl p-4 mb-6 text-left space-y-2.5">
-          {[
-            { icon: "confirmation_number", label: "ID RESERVASI", value: reservationId },
-            { icon: "storefront", label: "NAMA USAHA", value: `${namaUsaha} (${kategoriPenjual})` },
-            { icon: "calendar_today", label: "PERIODE", value: `${formatDate(startDate)} – ${formatDate(endDateStr)}` },
-            { icon: "payments", label: "TOTAL BAYAR", value: formatRupiah(totalBayar) },
-          ].map((item) => (
-            <div key={item.label} className="flex items-start gap-3">
-              <span className="material-symbols-outlined text-[16px] text-[#003466] mt-0.5">{item.icon}</span>
-              <div>
-                <span className="text-[11px] text-[#737781] uppercase font-medium tracking-wide block">{item.label}</span>
-                <span className="text-[13px] font-semibold text-[#131b2e]">{item.value}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex gap-3 w-full">
-          <button
-            onClick={onBack}
-            className="flex-1 h-11 rounded-xl bg-[#eaedff] text-[#131b2e] text-[14px] font-semibold hover:bg-[#dae2fd] transition-colors"
-          >
-            Kembali ke Katalog
-          </button>
-          <button
-            onClick={() => onOrderDetail(reservationId)}
-            className="flex-1 h-11 rounded-xl bg-[#003466] text-white text-[14px] font-semibold hover:bg-[#1a4b84] transition-colors"
-          >
-            Detail Pesanan
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   // TAMPILAN UTAMA (KATALOG DETAIL SPOT & FORM PEMESANAN)
   return (
@@ -568,7 +420,7 @@ export default function DetailSpotView({
                             Tanggal Selesai: <strong>{formatDate(item.endDate)}</strong>
                           </p>
                           <p className="text-[11px] text-[#855300]">
-                            Cleaning area sampai {formatDate(addDaysForDate(item.endDate, 3))}
+                            Cleaning area sampai {formatDate(shiftRentalDate(item.endDate, CLEANING_DAYS))}
                           </p>
                         </div>
                         <span className="bg-[#855300] text-white text-[11px] px-2.5 py-1 rounded-full font-bold">
@@ -602,7 +454,7 @@ export default function DetailSpotView({
                             {formatDate(item.startDate)} s/d {formatDate(item.endDate)}
                           </p>
                           <p className="text-[11px] text-[#855300]">
-                            Cleaning area sampai {formatDate(addDaysForDate(item.endDate, 3))}
+                            Cleaning area sampai {formatDate(shiftRentalDate(item.endDate, CLEANING_DAYS))}
                           </p>
                         </div>
                         <span className="bg-[#eaedff] text-[#003466] text-[11px] px-2.5 py-1 rounded-full border border-[#003466]/20">
@@ -672,7 +524,7 @@ export default function DetailSpotView({
                 </div>
                 <div className={`px-3 py-1 rounded-full text-[12px] font-bold ${spot.status === "tersedia" ? "bg-[#6ffbbe] text-[#002113]" : "bg-[#ffddb8] text-[#2a1700]"
                   }`}>
-                  {spot.status === "tersedia" ? "✓ Tersedia" : "Dipesan"}
+                  {{ tersedia: "✓ Tersedia", dipesan: "Dipesan", pemeliharaan: "Pemeliharaan" }[spot.status]}
                 </div>
               </div>
 
@@ -728,13 +580,13 @@ export default function DetailSpotView({
                   </div>
 
                   {/* Tanggal Terisi Khusus Spot Ini */}
-                  {(jadwalList.length > 0 || bookingScheduleList.length > 0) && (
+                  {unavailableRanges.length > 0 && (
                     <div className="rounded-xl bg-[#ffddb8]/30 p-3 border border-[#ffddb8] text-[11px] text-[#855300]">
                       <span className="font-bold block mb-1">Tanggal terpakai dan masa cleaning spot ini:</span>
                       <ul className="list-disc pl-4 space-y-0.5">
-                        {jadwalList.map((s) => (
-                          <li key={s.id}>
-                            {formatDate(s.startDate)}–{formatDate(s.endDate)} ({s.penjual}); cleaning sampai {formatDate(addDaysForDate(s.endDate, 3))}
+                        {unavailableRanges.map((range) => (
+                          <li key={range.startDate + range.endDate}>
+                            {formatDate(range.startDate)} – {formatDate(range.endDate)} · Pembersihan sampai {formatDate(shiftRentalDate(range.endDate, CLEANING_DAYS))}
                           </li>
                         ))}
                       </ul>
@@ -785,14 +637,14 @@ export default function DetailSpotView({
                       {formatDate(startDate)} – {formatDate(endDateStr)}
                     </p>
                     <p className="mt-2 rounded-lg border border-[#ffddb8] bg-[#ffddb8]/30 p-2.5 text-[11px] leading-relaxed text-[#855300]">
-                      Masa cleaning area berlangsung 3 hari setelah sewa: {formatDate(cleaningStart.toISOString().slice(0, 10))}–{formatDate(cleaningEnd.toISOString().slice(0, 10))}. Tanggal tersebut tidak tersedia untuk pesanan baru. Jika tanggal yang dipilih berbenturan dengan jadwal lain, pemesanan tidak dapat dilanjutkan.
+                      Masa cleaning area berlangsung 3 hari setelah sewa: {formatDate(cleaningStart)}–{formatDate(cleaningEnd)}. Tanggal tersebut tidak tersedia untuk pesanan baru. Jika tanggal yang dipilih berbenturan dengan jadwal lain, pemesanan tidak dapat dilanjutkan.
                     </p>
                   </div>
 
                   {/* Peringatan Tanggal Bentrok */}
                   {isConflicted && (
                     <div className="rounded-lg bg-red-50 p-2.5 text-[12px] text-red-600 border border-red-200">
-                      Tanggal pilihan berbenturan dengan jadwal sewa atau masa pembersihan{conflictingSchedule && "penjual" in conflictingSchedule ? <> milik <strong>{conflictingSchedule.penjual}</strong></> : null}. Silakan pilih tanggal lain.
+                      Tanggal bertabrakan dengan jadwal sewa atau masa pembersihan. Silakan pilih tanggal lain.
                     </div>
                   )}
 
@@ -813,33 +665,6 @@ export default function DetailSpotView({
                       <option value="jasa">Jasa & Konsultasi</option>
                       <option value="bazar">Bazar Umum</option>
                     </select>
-                  </div>
-
-                  {/* Metode Pembayaran */}
-                  <div>
-                    <label className="block text-[12px] font-semibold text-[#424750] mb-1.5 uppercase tracking-wide">
-                      Metode Pembayaran
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {[
-                        { id: "qris", label: "QRIS Barcode" },
-                        { id: "transfer-bni", label: "BNI Transfer" },
-                        { id: "transfer-bri", label: "BRI Transfer" },
-                        { id: "transfer-bca", label: "BCA Transfer" },
-                      ].map((method) => (
-                        <button
-                          key={method.id}
-                          type="button"
-                          onClick={() => setMetodePembayaran(method.id)}
-                          className={`px-3 py-2 rounded-lg text-[12px] font-semibold transition-all border ${metodePembayaran === method.id
-                              ? "bg-[#003466] text-white border-[#003466]"
-                              : "bg-[#f2f3ff] text-[#424750] border-[#e2e7ff] hover:bg-[#eaedff]"
-                            }`}
-                        >
-                          {method.label}
-                        </button>
-                      ))}
-                    </div>
                   </div>
 
                   {/* Catatan / Spesifikasi Produk */}
@@ -1122,9 +947,7 @@ export default function DetailSpotView({
                                 platform atau melalui pengelola.
                               </p>
                               <p>
-                                2. Setiap permohonan akan ditinjau berdasarkan
-                                status pemesanan, waktu pengajuan, dan ketentuan
-                                operasional yang berlaku.
+                                2. Ajukan pembatalan maksimal 24 jam setelah lunas dan paling lambat 24 jam sebelum sewa mulai (08.00 WITA). Admin meninjau setiap pengajuan.
                               </p>
                               <p>
                                 3. Pengembalian dana, apabila memenuhi persyaratan,

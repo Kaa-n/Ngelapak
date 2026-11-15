@@ -4,21 +4,19 @@ import { Suspense, useState, useCallback, useEffect } from "react";
 import HomeView from "../components/views/HomeView";
 import KatalogView from "../components/views/KatalogView";
 import DetailSpotView from "../components/views/DetailSpotView";
-import DasborView from "../components/views/DasborView";
-import VerifikasiView from "../components/views/VerifikasiView";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import Navbar from "../components/layout/Navbar";
 import MobileNav from "../components/layout/MobileNav";
 import Footer from "../components/ui-custom/Footer";
 import Toast from "../components/ui-custom/Toast";
-import MasukView from "../components/views/MasukView";
 import PesananView from "../components/views/PesananView";
 import EditProfileView from "../components/views/EditProfileView";
 import DetailPesananView from "../components/views/DetailPesananView";
-import { useDemo, demoLogin, demoLogout } from "../lib/demo-store";
+import { useDemo, demoLogout } from "../lib/demo-store";
 import { canAccess } from "../lib/types";
 import { MOCK_SPOTS, type Spot } from "../lib/mock-data";
 import type { PageView, ToastMessage } from "../lib/types";
-import DaftarView from "../components/views/DaftarView";
 import {
   getCurrentSupabaseProfile,
   signOutSupabase,
@@ -46,6 +44,10 @@ export default function Home() {
 }
 
 function DemoHome() {
+  const router = useRouter();
+  const requestedOrder = useSearchParams().get("pesanan");
+  const returningOrder = /^MT-[a-f0-9]{32}$/.test(requestedOrder ?? "") ? requestedOrder : null;
+  const [sessionLoaded, setSessionLoaded] = useState(false);
   const [supabaseProfile, setSupabaseProfile] =
     useState<SupabaseProfile | null>(null);
 
@@ -53,7 +55,7 @@ function DemoHome() {
     setSupabaseProfile(updatedProfile);
   }
   const { user: demoUser } = useDemo();
-  const user = demoUser ?? supabaseProfile;
+  const user = supabaseProfile ?? (demoUser?.role === "penyewa" ? demoUser : null);
   // Memulihkan sesi Supabase ketika halaman dibuka atau di-refresh.
   useEffect(() => {
     let isMounted = true;
@@ -71,6 +73,8 @@ function DemoHome() {
         if (isMounted) {
           setSupabaseProfile(null);
         }
+      } finally {
+        if (isMounted) setSessionLoaded(true);
       }
     }
 
@@ -81,22 +85,31 @@ function DemoHome() {
     };
   }, []);
   // Default tampilan awal saat aplikasi dibuka: "home" (Halaman Home / Beranda)
-  const [currentView, setCurrentView] = useState<PageView>("home");
+  const [currentView, setCurrentView] = useState<PageView>(() => returningOrder ? "detail-pesanan" : "home");
   const [selectedSpot, setSelectedSpot] = useState<Spot>(MOCK_SPOTS[0]);
   const [detailInitialTab, setDetailInitialTab] = useState<"detail" | "operasional" | "fasilitas" | "ulasan">("detail");
-  const [orderId, setOrderId] = useState<string | null>(null);
+  const [orderId, setOrderId] = useState<string | null>(returningOrder);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const navigate = useCallback((view: PageView, spot?: Spot, initialTab?: "detail" | "operasional" | "fasilitas" | "ulasan") => {
+    if (view === "masuk" || view === "daftar") {
+      router.push(view === "masuk" ? "/masuk" : "/daftar");
+      return;
+    }
     if (!canAccess(view, user?.role)) {
-      setCurrentView(user ? "katalog" : "masuk");
+      if (user) setCurrentView("katalog");
+      else router.push("/masuk");
+      return;
+    }
+    if (view === "dasbor" || view === "verifikasi") {
+      router.push(view === "dasbor" ? "/admin" : "/admin/pembayaran");
       return;
     }
     setCurrentView(view);
     if (spot) setSelectedSpot(spot);
     setDetailInitialTab(initialTab ?? "detail");
     window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [user]);
+  }, [user, router]);
 
   const showToast = useCallback((toast: Omit<ToastMessage, "id">) => {
     const id = Date.now().toString();
@@ -148,37 +161,6 @@ function DemoHome() {
           />
         )}
         {currentView === "help-center" && <HelpCenterView />}
-        {currentView === "masuk" && (
-          <MasukView
-            onLoginDemo={async (id) => {
-            try {
-              await signOutSupabase();
-              setSupabaseProfile(null);
-              demoLogin(id);
-              setCurrentView("katalog");
-            } catch (error) {
-              console.error("Gagal beralih ke akun demo:", error);
-              showToast({
-                type: "error",
-                message: "Gagal masuk menggunakan akun demo.",
-              });
-            }   
-          }}
-          onLoginSupabase={(profile) => {
-            demoLogout();
-            setSupabaseProfile(profile);
-            setCurrentView("katalog");
-          }}
-          onNavigateToRegister={() => navigate("daftar")}
-        />
-      )}
-
-        {currentView === "daftar" && (
-          <DaftarView
-          onNavigateToLogin={() => navigate("masuk")}
-        />
-      )}
-
         {currentView === "pesanan" && user?.role === "penyewa" && (
           <PesananView
             user={user}
@@ -188,9 +170,19 @@ function DemoHome() {
         )}
         {currentView === "detail-pesanan" && user?.role === "penyewa" && orderId && (
           <DetailPesananView
+            key={orderId}
             bookingId={orderId}
+            useSupabase={!!supabaseProfile}
             onBack={() => navigate("katalog")}
           />
+        )}
+        {currentView === "detail-pesanan" && !user && (
+          <div className="mx-auto max-w-md px-4 py-10 text-sm">
+            {sessionLoaded ? (
+              <Link className="font-semibold text-[#003466] underline"
+                href={returningOrder ? `/masuk?pesanan=${returningOrder}` : "/masuk"}>Masuk untuk melihat pesanan</Link>
+            ) : <p role="status">Memuat pesanan…</p>}
+          </div>
         )}
         {currentView === "edit-profile" && user && (
           <EditProfileView
@@ -202,6 +194,7 @@ function DemoHome() {
         )}
         {currentView === "katalog" && (
           <KatalogView
+            demoMode={!!demoUser && !supabaseProfile}
             onNavigateToDetail={(spot) => navigate("detail", spot, "detail")}
             onShowToast={showToast}
           />
@@ -220,12 +213,6 @@ function DemoHome() {
             }}
             onShowToast={showToast}
           />
-        )}
-        {currentView === "dasbor" && user?.role === "admin" && (
-          <DasborView onShowToast={showToast} />
-        )}
-        {currentView === "verifikasi" && user?.role === "admin" && (
-          <VerifikasiView onShowToast={showToast} />
         )}
       </main>
 
