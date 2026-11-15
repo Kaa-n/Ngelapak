@@ -27,7 +27,8 @@ export default function LoginPage() {
         }}
         onLoginSupabase={(user) => {
           demoLogout();
-          router.replace(user.role === "admin" ? "/admin" : "/");
+          const id = new URLSearchParams(window.location.search).get("pesanan") ?? "";
+          router.replace(user.role === "admin" ? "/admin" : /^MT-[a-f0-9]{32}$/.test(id) ? `/?pesanan=${id}` : "/");
         }}
         onNavigateToRegister={() => router.push("/daftar")}
       />

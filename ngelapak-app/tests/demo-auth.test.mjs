@@ -35,6 +35,44 @@ test("guest, tenant, and admin navigation follow role authority", () => {
   }
 });
 
+test("Midtrans demo confirms payment and releases a date on cancellation approval before recording refund", () => {
+  const { store, localStorage } = setup();
+  const read = (id) => JSON.parse(localStorage.getItem("ngelapak-demo-bookings-v1")).find(booking => booking.id === id);
+  const date = new Date(Date.parse(store.today() + "T00:00:00Z") + 10 * 86400000).toISOString().slice(0, 10);
+  const start = Date.parse(date + "T08:00:00+08:00");
+  const input = { spotId: "spot-001", tanggalMulai: date, jumlahHari: 1, jenisUsaha: "Kopi", catatan: "", metodePembayaran: "midtrans" };
+  const form = { nama: "Ayu", nim: "220000001", telepon: "08123456789", bank: "Bank Demo", nomorRekening: "123456789", namaRekening: "Ayu", alasan: "Perubahan jadwal" };
+
+  store.demoLogin("ayu");
+  const id = store.createDemoBooking(input);
+  assert.equal(Date.parse(read(id).paymentExpiresAt) - Date.parse(read(id).createdAt), 3600000);
+  assert.equal(store.canCancelBooking(read(id)), false);
+  store.demoLogin("bayu");
+  assert.throws(() => store.completeDemoPayment(id), /tidak tersedia/);
+  store.demoLogin("ayu");
+  store.completeDemoPayment(id);
+  const paid = read(id);
+  assert.equal(paid.status, "aktif");
+  const h1 = { ...paid, paidAt: new Date(start - 25 * 3600000).toISOString() };
+  assert.equal(store.canCancelBooking(h1, start - 24 * 3600000), true);
+  assert.equal(store.canCancelBooking(h1, start - 24 * 3600000 + 1), false);
+  const nightBefore = { ...paid, paidAt: new Date(start - (8 * 60 + 1) * 60000).toISOString() };
+  assert.equal(store.canCancelBooking(nightBefore, Date.parse(nightBefore.paidAt)), false);
+
+  store.cancelDemoBooking(id, form);
+  store.demoLogin("bayu");
+  assert.throws(() => store.createDemoBooking(input), /bertabrakan/);
+  store.demoLogin("admin");
+  store.reviewDemoCancellation(id, "disetujui");
+  assert.equal(read(id).status, "dibatalkan");
+  assert.equal(read(id).pembatalan.refundCompleted, false);
+  store.demoLogin("bayu");
+  assert.ok(store.createDemoBooking(input));
+  store.demoLogin("admin");
+  store.reviewDemoCancellation(id, "refund");
+  assert.equal(read(id).pembatalan.refundCompleted, true);
+});
+
 test("tenant bookings persist, isolate identities, prevent overlaps, and accept admin decisions", () => {
   const { store, fixtures, localStorage } = setup();
   const input = { spotId: "spot-001", tanggalMulai: store.today(), jumlahHari: 2, jenisUsaha: "Kopi", catatan: "", metodePembayaran: "QRIS" };

@@ -167,13 +167,13 @@ export default function HomeView({
                 step: "03",
                 icon: "payments",
                 title: "Pembayaran Mudah",
-                desc: "Kirim bukti bayar via Transfer Bank (BNI, BRI, Mandiri) atau QRIS resmi kampus.",
+                desc: "Bayar lewat Midtrans dalam satu jam sejak pesanan dibuat.",
               },
               {
                 step: "04",
                 icon: "verified",
                 title: "Verifikasi Admin",
-                desc: "Pembayaran tercatat. Selama 1x24 jam dan belum diverifikasi admin, pembatalan bisa diajukan di detail pesanan.",
+                desc: "Pembayaran terkonfirmasi otomatis. Unduh MOU dan cek batas pengajuan batal di Detail Pesanan.",
               },
             ].map((step, idx) => (
               <div

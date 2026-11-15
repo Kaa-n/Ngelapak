@@ -1,3 +1,5 @@
-import { DemoVerification } from "@/components/admin/DemoAdminViews";
+import { redirect } from "next/navigation";
 
-export default DemoVerification;
+export default function OldDemoPaymentPage() {
+  redirect("/demo/admin/pembayaran");
+}

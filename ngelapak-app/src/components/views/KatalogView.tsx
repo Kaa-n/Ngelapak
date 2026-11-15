@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { KatalogHero } from "@/components/katalog";
 import type { ZonaFilter, UkuranFilter, SortOption } from "@/components/katalog";
-import type { Spot } from "@/lib/mock-data";
+import { MOCK_SPOTS, type Spot } from "@/lib/mock-data";
 import { getSupabaseSpots } from "@/lib/supabase/spots";
 import type { ToastMessage } from "@/lib/types";
 import { today } from "@/lib/demo-store";
@@ -24,11 +24,12 @@ const InteractiveMap = dynamic(
 interface KatalogViewProps {
   onNavigateToDetail: (spot: Spot) => void;
   onShowToast: (toast: Omit<ToastMessage, "id">) => void;
+  demoMode?: boolean;
 }
 
 const ITEMS_PER_PAGE = 6;
 
-export default function KatalogView({ onNavigateToDetail, onShowToast }: KatalogViewProps) {
+export default function KatalogView({ onNavigateToDetail, onShowToast, demoMode = false }: KatalogViewProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [zonaFilter, setZonaFilter] = useState<ZonaFilter>("all");
   const [ukuranFilter, setUkuranFilter] = useState<UkuranFilter>("all");
@@ -47,6 +48,12 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
     let isMounted = true;
 
     async function loadSpots() {
+      if (demoMode) {
+        setSpots(MOCK_SPOTS);
+        setIsLoadingSpots(false);
+        setSpotError(null);
+        return;
+      }
       try {
         setIsLoadingSpots(true);
         setSpotError(null);
@@ -77,7 +84,7 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
     return () => {
       isMounted = false;
     };
-  }, [period]);
+  }, [period, demoMode]);
   
 
   const toggleChip = useCallback((chipId: string) => {

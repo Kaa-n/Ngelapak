@@ -9,6 +9,7 @@ import type { SupabaseProfile } from "@/lib/supabase/auth";
 import { createSupabaseBooking } from "@/lib/supabase/bookings";
 import { createClient } from "@/lib/supabase/client";
 import { createDemoBooking, today } from "@/lib/demo-store";
+import { CANCELLATION_WINDOW_MS, PAYMENT_WINDOW_MS, rentalStart, formatRentalTime } from "@/lib/rental-policy";
 
 const emptySubscribe = () => () => { };
 
@@ -51,11 +52,9 @@ export default function DetailSpotView({
   const [namaUsaha, setNamaUsaha] = useState("");
   const [jenisUsaha, setJenisUsaha] = useState("");
   const [catatanTambahan, setCatatanTambahan] = useState("");
-  const [metodePembayaran, setMetodePembayaran] = useState("qris");
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [paymentProof, setPaymentProof] = useState<File | null>(null);
   const [reservedDates, setReservedDates] = useState<{ startDate: string; endDate: string }[]>([]);
   const demoAccount = user?.id === "ayu" || user?.id === "bayu";
   const spotId = spot?.id;
@@ -75,8 +74,8 @@ export default function DetailSpotView({
   }, [spotId, demoAccount]);
 
   // State Alur Pembayaran Interaktif
-  const [showPaymentStep, setShowPaymentStep] = useState(false); // Modal Barcode QRIS & Token
-  const [bookingSuccess, setBookingSuccess] = useState(false);   // Ringkasan Halaman Sukses
+  const [showPaymentStep, setShowPaymentStep] = useState(false);
+  const [checkoutOpenedAt, setCheckoutOpenedAt] = useState(0);
   const [reservationId, setReservationId] = useState("");
 
   const [activeTab, setActiveTab] = useState<"detail" | "operasional" | "fasilitas" | "ulasan">(initialTab);
@@ -169,220 +168,72 @@ export default function DetailSpotView({
       return;
     }
 
-    // Generate Token / ID Transaksi Unik
-    const generatedToken = `TXN-${Math.random().toString(36).substring(2, 8).toUpperCase()}-2026`;
-    setReservationId(generatedToken);
-    setShowPaymentStep(true); // Buka modal pembayaran
-  };
-
-  // LANGKAH 2: Konfirmasi Pembayaran Selesai -> Diteruskan ke Halaman Ringkasan Sukses
-  
-  const handleConfirmPayment = async () => {
-    if (!user || user.role !== "penyewa") {
-      onShowToast({
-        type: "error",
-        message: "Akun tidak memiliki akses untuk melakukan pemesanan.",
-      });
+    const now = Date.now();
+    if (now + PAYMENT_WINDOW_MS > rentalStart(startDate)) {
+      onShowToast({ type: "error", message: "Pemesanan ditutup satu jam sebelum sewa mulai (08.00 WITA)." });
       return;
     }
 
+    // Keep the same checkout ID when the request is retried.
+    if (!reservationId) setReservationId("MT-" + crypto.randomUUID().replaceAll("-", ""));
+    setCheckoutOpenedAt(now);
+    setShowPaymentStep(true);
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!user || user.role !== "penyewa" || isSubmitting) return;
     setIsSubmitting(true);
-
     try {
-      let id: string;
-
-      // Akun demo tetap menggunakan penyimpanan localStorage.
-      if (user.id === "ayu" || user.id === "bayu") {
-        id = createDemoBooking({
-          spotId: spot.id,
-          tanggalMulai: startDate,
-          jumlahHari: selectedDays,
-          jenisUsaha,
-          catatan: catatanTambahan,
-          metodePembayaran,
-          ...({ namaUsaha, kategoriPenjual } as Record<string, unknown>),
+      if (demoAccount) {
+        const id = createDemoBooking({
+          spotId: spot.id, tanggalMulai: startDate, jumlahHari: selectedDays,
+          jenisUsaha, catatan: catatanTambahan, metodePembayaran: "midtrans",
         });
-      } else {
-        if (!paymentProof) throw new Error("Unggah bukti transfer terlebih dahulu.");
-        id = await createSupabaseBooking({
-          spotKode: spot.kode,
-          tanggalMulai: startDate,
-          jumlahHari: selectedDays,
-          totalBayar,
-          metodePembayaran,
-          jenisUsaha,
-          namaUsaha,
-          kategoriPenjual,
-          catatan: catatanTambahan,
-          buktiBayar: paymentProof,
-        });
+        onOrderDetail(id);
+        return;
       }
-
-      setReservationId(id);
-      setShowPaymentStep(false);
-      setBookingSuccess(true);
-
-      onShowToast({
-        type: "success",
-        message: "Pengajuan pemesanan berhasil",
-        description:
-          "Pesanan berhasil dicatat dan sedang menunggu verifikasi admin.",
+      const checkout = await createSupabaseBooking({
+        id: reservationId, spotKode: spot.kode, tanggalMulai: startDate, jumlahHari: selectedDays,
+        totalBayar, jenisUsaha, namaUsaha, kategoriPenjual, catatan: catatanTambahan, setuju: agreeTerms,
       });
+      if (checkout.checkoutUrl) window.location.assign(checkout.checkoutUrl);
+      else onOrderDetail(checkout.id);
     } catch (error) {
-      console.error("Gagal menyimpan pemesanan:", error);
-
       onShowToast({
-        type: "error",
-        message: "Pengajuan gagal disimpan",
-        description:
-          error instanceof Error
-            ? error.message
-            : "Terjadi kesalahan saat menyimpan pemesanan.",
+        type: "error", message: "Pembayaran gagal dibuka",
+        description: error instanceof Error ? error.message : "Coba lagi.",
       });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-
-  // TAHAP 1: MODAL PEMBAYARAN INTERAKTIF (BARCODE & TOKEN TRANSAKSI)
   if (showPaymentStep) {
+    const cutoff = rentalStart(startDate) - CANCELLATION_WINDOW_MS;
     return (
-      <div className="min-h-screen bg-black/50 fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-        <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-[#e2e7ff] relative animate-in fade-in zoom-in duration-200">
-          <button
-            onClick={() => setShowPaymentStep(false)}
-            className="absolute top-4 right-4 text-[#737781] hover:text-black text-sm font-bold"
-          >
-            ✕ Batal
-          </button>
-
-          <div className="text-center mb-5">
-            <span className="material-symbols-outlined text-[#003466] text-[40px] mb-1">qr_code_2</span>
-            <h3 className="text-[20px] font-bold text-[#131b2e]">Instruksi Pembayaran</h3>
-            <p className="text-[12px] text-[#737781]">Selesaikan pembayaran untuk memvalidasi sewa lapak</p>
-          </div>
-
-          {/* Token Transaksi */}
-          <div className="bg-[#f2f3ff] rounded-xl p-3 text-center mb-5 border border-[#e2e7ff]">
-            <span className="text-[11px] text-[#737781] uppercase font-semibold block mb-0.5">Token / ID Transaksi</span>
-            <span className="text-[16px] font-mono font-bold text-[#003466] tracking-wider">{reservationId}</span>
-          </div>
-
-          {/* Barcode QRIS / Virtual Account */}
-          {user?.id !== "ayu" && user?.id !== "bayu" ? (
-            <p className="mb-5 rounded-lg bg-[#f2f3ff] p-3 text-sm">
-              Gunakan instruksi pembayaran dari pengelola kampus, lalu unggah bukti transfer untuk diperiksa admin.
-            </p>
-          ) : metodePembayaran === "qris" ? (
-            <div className="flex flex-col items-center justify-center bg-[#faf8ff] p-4 rounded-xl border border-[#e2e7ff] mb-5">
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${reservationId}`}
-                alt="Barcode Pembayaran QRIS"
-                className="w-44 h-44 border-4 border-white shadow-md rounded-lg mb-2"
-              />
-              <p className="text-[12px] font-semibold text-[#131b2e]">Pindai QRIS Menggunakan e-Wallet / Mobile Banking</p>
-            </div>
-          ) : (
-            <div className="bg-[#eaedff] p-4 rounded-xl mb-5 text-center border border-[#003466]/20 space-y-1.5">
-              <span className="text-[12px] font-bold text-[#003466] uppercase block">{metodePembayaran.replace("-", " ")}</span>
-              <p className="text-[11px] text-[#737781]">Nomor Virtual Account Bank:</p>
-              <div className="text-[20px] font-mono font-bold text-[#131b2e] tracking-wide">8821 0812 3456 7890</div>
-            </div>
-          )}
-
-          {/* Rincian Biaya */}
-          <div className="border-t border-[#e2e7ff] pt-3 mb-5 space-y-1.5 text-[13px]">
-            <div className="flex justify-between text-[#424750]">
-              <span>Spot Lapak</span>
-              <span className="font-semibold text-[#131b2e]">{spot.nama}</span>
-            </div>
-            <div className="flex justify-between text-[#424750]">
-              <span>Durasi Sewa</span>
-              <span className="font-semibold text-[#131b2e]">{selectedDays} Hari</span>
-            </div>
-            <div className="flex justify-between text-[#424750]">
-              <span>Total Tagihan</span>
-              <span className="font-bold text-[#003466]">{formatRupiah(totalBayar)}</span>
-            </div>
-          </div>
-
-          {user?.id !== "ayu" && user?.id !== "bayu" && (
-            <label className="mb-4 grid gap-1 text-sm font-semibold">
-              Bukti transfer (JPG, PNG, PDF, maks. 6 MB)
-              <input type="file" accept="image/jpeg,image/png,application/pdf" className="w-full text-sm"
-                disabled={isSubmitting} onChange={(event) => setPaymentProof(event.target.files?.[0] ?? null)} />
-            </label>
-          )}
-          <div className="flex gap-2">
-            <button
-              onClick={() => setShowPaymentStep(false)}
-              className="flex-1 h-11 rounded-xl bg-[#eaedff] text-[#131b2e] text-[13px] font-semibold hover:bg-[#dae2fd] transition-colors"
-            >
-              Ubah Opsi
-            </button>
-            <button
-              onClick={handleConfirmPayment}
-              disabled={isSubmitting || (user?.id !== "ayu" && user?.id !== "bayu" && !paymentProof)}
-              className="flex-1 h-11 rounded-xl bg-[#003466] text-white text-[13px] font-bold hover:bg-[#1a4b84] transition-colors flex items-center justify-center gap-1 shadow-md"
-            >
-              {isSubmitting ? "Memverifikasi..." : "Saya Sudah Bayar ✓"}
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <section role="dialog" aria-modal="true" aria-labelledby="checkout-title" className="w-full max-w-md space-y-4 rounded-2xl bg-white p-6 shadow-xl">
+          <h3 id="checkout-title" className="text-xl font-bold text-[#131b2e]">{demoAccount ? "Pembayaran demo" : "Bayar lewat Midtrans"}</h3>
+          <p className="text-sm text-[#424750]">{spot.nama} · {formatDate(startDate)} – {formatDate(endDateStr)}</p>
+          <p className="text-xl font-bold text-[#003466]">{formatRupiah(totalBayar)}</p>
+          <p className="text-sm text-[#424750]">Bayar dalam 1 jam sejak pesanan dibuat. Jadwal ditahan selama menunggu pembayaran.</p>
+          <p className="rounded-lg bg-[#f2f3ff] p-3 text-sm text-[#003466]">{checkoutOpenedAt >= cutoff
+            ? "Batas pengajuan batal untuk jadwal ini sudah lewat. Pastikan tanggal sewa sebelum membayar."
+            : `Pengajuan batal tersedia maksimal 24 jam setelah lunas, paling lambat ${formatRentalTime(cutoff)}.`}</p>
+          {demoAccount && <p className="text-sm text-[#424750]">Simulasikan pembayaran dari Detail Pesanan.</p>}
+          <div className="flex flex-wrap justify-end gap-2">
+            <button type="button" disabled={isSubmitting} onClick={() => { setShowPaymentStep(false); setReservationId(""); }}
+              className="rounded-lg px-4 py-2 text-sm font-semibold text-[#003466]">Kembali</button>
+            <button type="button" disabled={isSubmitting} onClick={handleConfirmPayment}
+              className="rounded-lg bg-[#003466] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+              {isSubmitting ? "Menyiapkan…" : demoAccount ? "Buat pesanan demo" : "Lanjut ke Midtrans"}
             </button>
           </div>
-        </div>
+        </section>
       </div>
     );
   }
 
-  // TAHAP 2: RINGKASAN SETELAH VERIFIKASI PEMBAYARAN SUKSES
-  if (bookingSuccess) {
-    return (
-      <div className="max-w-lg mx-auto px-4 py-16 flex flex-col items-center text-center">
-        <div className="w-20 h-20 rounded-full bg-[#6ffbbe]/20 flex items-center justify-center mb-6">
-          <span className="material-symbols-outlined text-[#003c27] text-[48px]">check_circle</span>
-        </div>
-        <h2 className="text-[24px] font-bold text-[#131b2e] mb-3">Pengajuan Terkirim</h2>
-        <p className="text-[14px] text-[#424750] mb-2 leading-relaxed max-w-sm">
-          Pembayaran sewa Spot <strong>{spot.nama}</strong> untuk <strong>{namaUsaha}</strong> ({kategoriPenjual}) selama <strong>{selectedDays} hari</strong> sudah tercatat.
-        </p>
-        <p className="text-[13px] text-[#737781] mb-8">
-          Total: <strong className="text-[#003466]">{formatRupiah(totalBayar)}</strong>. Admin belum memverifikasi. Pembatalan tersedia 1x24 jam di detail pesanan.
-        </p>
-
-        <div className="w-full bg-[#f2f3ff] rounded-xl p-4 mb-6 text-left space-y-2.5">
-          {[
-            { icon: "confirmation_number", label: "ID RESERVASI", value: reservationId },
-            { icon: "storefront", label: "NAMA USAHA", value: `${namaUsaha} (${kategoriPenjual})` },
-            { icon: "calendar_today", label: "PERIODE", value: `${formatDate(startDate)} – ${formatDate(endDateStr)}` },
-            { icon: "payments", label: "TOTAL BAYAR", value: formatRupiah(totalBayar) },
-          ].map((item) => (
-            <div key={item.label} className="flex items-start gap-3">
-              <span className="material-symbols-outlined text-[16px] text-[#003466] mt-0.5">{item.icon}</span>
-              <div>
-                <span className="text-[11px] text-[#737781] uppercase font-medium tracking-wide block">{item.label}</span>
-                <span className="text-[13px] font-semibold text-[#131b2e]">{item.value}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex gap-3 w-full">
-          <button
-            onClick={onBack}
-            className="flex-1 h-11 rounded-xl bg-[#eaedff] text-[#131b2e] text-[14px] font-semibold hover:bg-[#dae2fd] transition-colors"
-          >
-            Kembali ke Katalog
-          </button>
-          <button
-            onClick={() => onOrderDetail(reservationId)}
-            className="flex-1 h-11 rounded-xl bg-[#003466] text-white text-[14px] font-semibold hover:bg-[#1a4b84] transition-colors"
-          >
-            Detail Pesanan
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   // TAMPILAN UTAMA (KATALOG DETAIL SPOT & FORM PEMESANAN)
   return (
@@ -796,33 +647,6 @@ export default function DetailSpotView({
                     </select>
                   </div>
 
-                  {/* Metode Pembayaran */}
-                  <div>
-                    <label className="block text-[12px] font-semibold text-[#424750] mb-1.5 uppercase tracking-wide">
-                      Metode Pembayaran
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {[
-                        { id: "qris", label: "QRIS Barcode" },
-                        { id: "transfer-bni", label: "BNI Transfer" },
-                        { id: "transfer-bri", label: "BRI Transfer" },
-                        { id: "transfer-bca", label: "BCA Transfer" },
-                      ].map((method) => (
-                        <button
-                          key={method.id}
-                          type="button"
-                          onClick={() => setMetodePembayaran(method.id)}
-                          className={`px-3 py-2 rounded-lg text-[12px] font-semibold transition-all border ${metodePembayaran === method.id
-                              ? "bg-[#003466] text-white border-[#003466]"
-                              : "bg-[#f2f3ff] text-[#424750] border-[#e2e7ff] hover:bg-[#eaedff]"
-                            }`}
-                        >
-                          {method.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
                   {/* Catatan / Spesifikasi Produk */}
                   <div>
                     <label className="block text-[12px] font-semibold text-[#424750] mb-1.5 uppercase tracking-wide">
@@ -1103,9 +927,7 @@ export default function DetailSpotView({
                                 platform atau melalui pengelola.
                               </p>
                               <p>
-                                2. Setiap permohonan akan ditinjau berdasarkan
-                                status pemesanan, waktu pengajuan, dan ketentuan
-                                operasional yang berlaku.
+                                2. Ajukan pembatalan maksimal 24 jam setelah lunas dan paling lambat 24 jam sebelum sewa mulai (08.00 WITA). Admin meninjau setiap pengajuan.
                               </p>
                               <p>
                                 3. Pengembalian dana, apabila memenuhi persyaratan,

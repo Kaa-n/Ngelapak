@@ -24,12 +24,13 @@ async function VerificationData({ searchParams }: VerificationPageProps) {
   const offset = (currentPage - 1) * 25;
   const { data: queue, error, count } = await supabase.from("bookings")
     .select("id, spot_nama, penyewa_nama, tanggal_mulai, tanggal_selesai, total_bayar", { count: "exact" })
+    .or("metode_pembayaran.is.null,metode_pembayaran.neq.midtrans")
     .eq("status", "menunggu").eq("status_verifikasi", "menunggu")
     .order("created_at", { ascending: true }).order("id").range(offset, offset + 24);
   if (error) throw new Error("Antrean gagal dimuat.");
 
   const { data: booking, error: detailError } = id
-    ? await supabase.from("bookings").select().eq("id", id).maybeSingle()
+    ? await supabase.from("bookings").select().eq("id", id).or("metode_pembayaran.is.null,metode_pembayaran.neq.midtrans").maybeSingle()
     : { data: null, error: null };
   if (detailError) throw new Error("Detail pesanan gagal dimuat.");
 
@@ -53,7 +54,8 @@ async function VerificationData({ searchParams }: VerificationPageProps) {
 
   return (
     <>
-      <AdminHeading title="Verifikasi Pembayaran" description="Cocokkan data pesanan dengan bukti transfer sebelum membuat keputusan." />
+      <AdminHeading title="Verifikasi Transfer Manual" description="Tinjau bukti transfer dari pesanan lama." />
+      <Link className={actionLinkClass} href="/admin/pembayaran">Kembali ke Riwayat Pembayaran</Link>
       {booking && (
         <section className="space-y-4">
           <div className="grid min-w-0 gap-4 md:grid-cols-2">

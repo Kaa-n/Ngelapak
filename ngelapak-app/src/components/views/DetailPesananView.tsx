@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { canCancelBooking, cancelDemoBooking, useDemo } from "@/lib/demo-store";
+import { canCancelBooking, cancelDemoBooking, completeDemoPayment, useDemo } from "@/lib/demo-store";
 import { formatDate, formatRupiah, type Booking } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
 import { printKuitansi } from "@/lib/pdf/generateKuitansi";
 import { printSPPLA } from "@/lib/pdf/generateSPPLA";
-import { getSupabaseBookingDetail, requestSupabaseCancellation } from "@/lib/supabase/bookings";
+import { getSupabaseBookingDetail, refreshPayment, requestSupabaseCancellation, resumePayment } from "@/lib/supabase/bookings";
 import { createClient } from "@/lib/supabase/client";
+import { cancellationDeadline, formatRentalTime, paymentLabel } from "@/lib/rental-policy";
 
 // ============================================================
 // TYPES
@@ -94,6 +95,10 @@ function getStepIndex(booking: Booking): number {
 
 function StatusStepper({ booking }: { booking: Booking }) {
   const current = getStepIndex(booking);
+  const steps = booking.metodePembayaran === "midtrans" ? [
+    STEPS[0], { label: "Menunggu pembayaran", icon: "pending_actions" },
+    { label: "Konfirmasi pembayaran", icon: "fact_check" }, STEPS[3],
+  ] : STEPS;
   const isRejected =
     booking.statusVerifikasi === "ditolak" || booking.status === "dibatalkan";
 
@@ -103,7 +108,7 @@ function StatusStepper({ booking }: { booking: Booking }) {
         Status Pesanan
       </h3>
       <div className="flex items-start">
-        {STEPS.map((step, idx) => {
+        {steps.map((step, idx) => {
           const done = idx < current;
           const active = idx === current;
           const rejected = isRejected && idx === 2;
@@ -273,8 +278,10 @@ function CancellationForm({
         <h3 className="font-bold text-sm text-red-800">Form Pembatalan Pesanan</h3>
       </div>
       <p className="text-xs text-[#737781] mb-4 pl-7">
-        Pembatalan hanya tersedia dalam 1×24 jam selama admin belum memverifikasi.
-        Isi data rekening untuk proses pengembalian dana jika berlaku.
+        {booking.metodePembayaran === "midtrans"
+          ? "Admin akan meninjau pengajuan. Jadwal tetap ditahan sampai pembatalan disetujui."
+          : "Untuk transfer lama, pembatalan hanya tersedia dalam 1×24 jam selama admin belum memverifikasi."}
+        {" "}Isi data rekening untuk proses refund.
       </p>
 
       <form onSubmit={handleSubmit} className="space-y-3">
@@ -356,6 +363,9 @@ export default function DetailPesananView({
   const [loadError, setLoadError] = useState("");
   const [version, setVersion] = useState(0);
   const [proofError, setProofError] = useState("");
+  const [paymentError, setPaymentError] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const booking = useSupabase ? detail?.booking : bookings.find((b) => b.id === bookingId);
   const cancellation = useSupabase ? detail?.cancellation : null;
   const [showCancelForm, setShowCancelForm] = useState(false);
@@ -371,6 +381,36 @@ export default function DetailPesananView({
     });
     return () => { active = false; };
   }, [bookingId, useSupabase, version]);
+
+  useEffect(() => {
+    if (!useSupabase || !/^MT-[a-f0-9]{32}$/.test(bookingId)) return;
+    let active = true;
+    void refreshPayment(bookingId).then(() => {
+      if (active) setVersion((value) => value + 1);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [bookingId, useSupabase]);
+
+  const waitingForPayment = booking?.metodePembayaran === "midtrans" && booking.status === "menunggu"
+    && booking.paymentStatus !== "perlu_ditinjau";
+  const expiresAt = booking?.paymentExpiresAt;
+  useEffect(() => {
+    if (!waitingForPayment) return;
+    const timer = window.setInterval(() => {
+      setNow(Date.now());
+      setVersion((value) => value + 1);
+    }, 8000);
+    return () => window.clearInterval(timer);
+  }, [waitingForPayment]);
+
+  useEffect(() => {
+    if (!waitingForPayment || !useSupabase || !expiresAt) return;
+    const delay = Math.max(0, Date.parse(expiresAt) + 120000 - Date.now());
+    const timer = window.setTimeout(() => {
+      void refreshPayment(bookingId).then(() => setVersion((value) => value + 1)).catch(() => undefined);
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [bookingId, expiresAt, useSupabase, waitingForPayment]);
 
   if (useSupabase && loadError) return (
     <div className="mx-auto max-w-lg p-6">
@@ -412,13 +452,64 @@ export default function DetailPesananView({
 
   const currentBooking = booking;
   const statusInfo = getStatusInfo(currentBooking);
-  const bolehBatal = canCancelBooking(currentBooking) && (!cancellation || cancellation.status === "ditolak");
+  const isMidtrans = booking.metodePembayaran === "midtrans";
+  const cancellationStatus = cancellation?.status ?? booking.pembatalan?.status;
+  const bolehBatal = canCancelBooking(currentBooking, now) && (!cancellation || (!isMidtrans && cancellation.status === "ditolak"));
   const isApproved = currentBooking.statusVerifikasi === "disetujui" && currentBooking.status !== "dibatalkan";
+  const canDownloadAgreement = isApproved && cancellationStatus !== "menunggu" && cancellationStatus !== "disetujui";
+  const canContinuePayment = useSupabase && Date.parse(expiresAt ?? "") > now;
+
+  async function checkPayment() {
+    setPaymentError("");
+    setChecking(true);
+    try {
+      if (useSupabase) await refreshPayment(bookingId);
+      else completeDemoPayment(bookingId);
+      setVersion((value) => value + 1);
+    } catch (error) {
+      setPaymentError(error instanceof Error ? error.message : "Pembayaran belum dapat diperiksa.");
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  async function continuePayment() {
+    setPaymentError("");
+    setChecking(true);
+    try {
+      window.location.assign(await resumePayment(bookingId));
+    } catch (error) {
+      setPaymentError(error instanceof Error ? error.message : "Tautan pembayaran belum tersedia.");
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  async function downloadDemoAgreement() {
+    if (!currentBooking.paidAt) return;
+    setPaymentError("");
+    try {
+      const { rentalAgreementPdf } = await import("@/lib/pdf/rentalAgreement");
+      const pdf = await rentalAgreementPdf({
+        id: currentBooking.id, tenant: currentBooking.penyewa.nama, spot: currentBooking.spotNama,
+        start: currentBooking.tanggalMulai, end: currentBooking.tanggalSelesai,
+        amount: currentBooking.totalBayar, paidAt: currentBooking.paidAt,
+      });
+      const url = URL.createObjectURL(new Blob([new Uint8Array(pdf)], { type: "application/pdf" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `MOU-${currentBooking.id}.pdf`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setPaymentError("PDF MOU gagal dibuat. Coba lagi.");
+    }
+  }
 
   async function submitCancellation(form: CancelForm) {
     if (!useSupabase) {
       cancelDemoBooking(bookingId, form);
-      return "Pembatalan berhasil diajukan. Pesanan telah dibatalkan.";
+      return isMidtrans ? "Pengajuan pembatalan menunggu keputusan admin." : "Pesanan telah dibatalkan.";
     }
     await requestSupabaseCancellation({
       p_booking_id: bookingId, p_nama: form.nama, p_nim: form.nim, p_telepon: form.telepon,
@@ -445,7 +536,7 @@ export default function DetailPesananView({
     setCancelNote(msg);
     onShowToast?.({
       type: "success",
-      message: useSupabase ? "Pembatalan diajukan" : "Pesanan dibatalkan",
+      message: useSupabase || isMidtrans ? "Pembatalan diajukan" : "Pesanan dibatalkan",
       description: msg,
     });
   }
@@ -499,7 +590,7 @@ export default function DetailPesananView({
             <span className="material-symbols-outlined text-[14px]">
               {statusInfo.icon}
             </span>
-            {statusInfo.label}
+            {isMidtrans && booking.status !== "dibatalkan" ? paymentLabel(booking.statusVerifikasi, booking.paymentStatus) : statusInfo.label}
           </span>
         </div>
         <p className="text-xs text-[#737781] font-mono mt-1">{booking.id}</p>
@@ -545,7 +636,7 @@ export default function DetailPesananView({
       <SectionCard title="Informasi Pembayaran" icon="payments">
         <DetailRow
           label="Metode Pembayaran"
-          value={booking.metodePembayaran}
+          value={isMidtrans ? "Midtrans" : booking.metodePembayaran}
         />
         <DetailRow
           label="Total Pembayaran"
@@ -559,7 +650,7 @@ export default function DetailPesananView({
           <DetailRow label="Bukti Bayar" value={useSupabase ? "Tercatat" : booking.buktiBayar} />
         )}
         <div className="mt-3 pt-3 border-t border-[#f0f2fa] flex items-center justify-between">
-          <span className="text-xs text-[#737781]">Status Verifikasi</span>
+          <span className="text-xs text-[#737781]">{isMidtrans ? "Status pembayaran" : "Status Verifikasi"}</span>
           <span
             className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${
               booking.statusVerifikasi === "disetujui"
@@ -569,13 +660,32 @@ export default function DetailPesananView({
                   : "bg-amber-50 text-amber-700 border-amber-200"
             }`}
           >
-            {booking.statusVerifikasi === "disetujui"
+            {isMidtrans ? paymentLabel(booking.statusVerifikasi, booking.paymentStatus) : booking.statusVerifikasi === "disetujui"
               ? "Disetujui"
               : booking.statusVerifikasi === "ditolak"
                 ? "Ditolak"
                 : "Menunggu"}
           </span>
         </div>
+        {booking.paidAt && isMidtrans && <DetailRow label="Waktu lunas" value={formatRentalTime(Date.parse(booking.paidAt))} />}
+        {waitingForPayment && booking.paymentExpiresAt && (
+          <DetailRow label="Batas pembayaran" value={formatRentalTime(Date.parse(booking.paymentExpiresAt))} />
+        )}
+        {waitingForPayment && (
+          <div className="mt-3 flex flex-wrap gap-3">
+            {canContinuePayment && booking.checkoutUrl && (
+              <a className="rounded-lg bg-[#003466] px-3 py-2 text-sm font-semibold text-white" href={booking.checkoutUrl}>Lanjutkan pembayaran</a>
+            )}
+            {canContinuePayment && !booking.checkoutUrl && (
+              <button type="button" disabled={checking} onClick={continuePayment}
+                className="rounded-lg bg-[#003466] px-3 py-2 text-sm font-semibold text-white">Lanjutkan pembayaran</button>
+            )}
+            <button type="button" disabled={checking} onClick={checkPayment} className="rounded-lg border border-[#d7def5] px-3 py-2 text-sm font-semibold text-[#003466]">
+              {checking ? "Memeriksa…" : useSupabase ? "Periksa status pembayaran" : "Simulasikan pembayaran berhasil"}
+            </button>
+          </div>
+        )}
+        {paymentError && <p role="alert" className="mt-2 text-sm text-red-700">{paymentError}</p>}
       </SectionCard>
 
       {cancellation && (
@@ -584,6 +694,7 @@ export default function DetailPesananView({
           <DetailRow label="Alasan" value={cancellation.alasan ?? "—"} />
           {cancellation.admin_catatan && <DetailRow label="Catatan admin" value={cancellation.admin_catatan} />}
           {cancellation.status === "menunggu" && <p className="mt-3 text-sm">Jadwal tetap ditahan sampai admin memproses pengajuan.</p>}
+          {cancellation.status === "disetujui" && !cancellation.bukti_refund && <DetailRow label="Refund" value="Sedang diproses" />}
           {cancellation.bukti_refund && cancellation.status === "disetujui" && (
             <button type="button" className="mt-3 text-sm font-semibold text-[#003466] underline"
               onClick={() => showRefundProof(cancellation.bukti_refund!)}>
@@ -599,7 +710,11 @@ export default function DetailPesananView({
         <SectionCard title="Detail Pembatalan" icon="cancel">
           <div className="bg-red-50 rounded-xl px-3 py-2 mb-3 text-xs text-red-700 flex items-center gap-2">
             <span className="material-symbols-outlined text-[16px]">info</span>
-            Pesanan ini telah dibatalkan.
+            {booking.pembatalan.status === "menunggu" ? "Pengajuan menunggu keputusan admin. Jadwal tetap ditahan."
+              : booking.pembatalan.status === "ditolak" ? "Pengajuan ditolak dan sewa masih berlaku."
+              : booking.pembatalan.refundCompleted ? "Pesanan dibatalkan dan refund selesai."
+              : booking.pembatalan.status === "disetujui" ? "Pesanan dibatalkan. Refund sedang diproses."
+              : "Pesanan ini telah dibatalkan."}
           </div>
           <DetailRow label="Diajukan oleh" value={booking.pembatalan.nama} />
           <DetailRow label="NIM" value={booking.pembatalan.nim} mono />
@@ -647,6 +762,12 @@ export default function DetailPesananView({
         <h3 className="text-xs font-semibold text-[#737781] uppercase tracking-widest mb-4">
           Tindakan
         </h3>
+        {isMidtrans && booking.paidAt && !cancellationStatus && booking.status === "aktif" && (
+          <p className="mb-3 text-sm text-[#424750]">
+            {bolehBatal ? `Batas pengajuan batal ${formatRentalTime(cancellationDeadline(booking.tanggalMulai, booking.paidAt))}.`
+              : "Batas pengajuan batal sudah lewat."}
+          </p>
+        )}
 
         <div className="flex flex-col sm:flex-row gap-3">
           {/* Batalkan Pesanan */}
@@ -656,10 +777,10 @@ export default function DetailPesananView({
               onClick={() => setShowCancelForm(true)}
               className="flex items-center justify-center gap-2 border border-red-300 text-red-700 hover:bg-red-50 font-semibold text-sm px-4 py-3 rounded-xl transition-colors"
             >
-              <span className="material-symbols-outlined text-[18px]">
+              <span aria-hidden="true" className="material-symbols-outlined text-[18px]">
                 cancel
               </span>
-              Batalkan Pesanan
+              Ajukan Pembatalan
             </button>
           )}
 
@@ -678,7 +799,7 @@ export default function DetailPesananView({
           )}
 
           {/* Unduh Kontrak SPPLA */}
-          {isApproved && (
+          {canDownloadAgreement && !isMidtrans && (
             <button
               type="button"
               onClick={handlePrintSPPLA}
@@ -690,9 +811,16 @@ export default function DetailPesananView({
               Unduh Kontrak SPPLA
             </button>
           )}
+          {canDownloadAgreement && isMidtrans && (useSupabase ? (
+            <a href={`/api/pesanan/${encodeURIComponent(bookingId)}/mou`}
+              className="rounded-xl bg-[#003466] px-4 py-3 text-center text-sm font-semibold text-white">Unduh PDF MOU</a>
+          ) : (
+            <button type="button" onClick={downloadDemoAgreement}
+              className="rounded-xl bg-[#003466] px-4 py-3 text-sm font-semibold text-white">Unduh PDF MOU</button>
+          ))}
 
           {/* No actions available */}
-          {!bolehBatal && !isApproved && (
+          {!isMidtrans && !bolehBatal && !isApproved && (
             <div className="flex items-center gap-2 text-sm text-[#737781]">
               <span className="material-symbols-outlined text-[18px]">
                 info

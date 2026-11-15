@@ -16,6 +16,7 @@ export default function RevenueBars({ weeks }: {
             type="button"
             aria-label={`Minggu mulai ${week.label}, ${week.value}`}
             onPointerEnter={(event) => { if (event.pointerType === "mouse") setActive(week.date); }}
+            onPointerMove={(event) => { if (event.pointerType === "mouse") setActive(week.date); }}
             onPointerLeave={(event) => { if (event.pointerType === "mouse") setActive(null); }}
             onFocus={() => setActive(week.date)}
             onBlur={() => setActive((current) => current === week.date ? null : current)}

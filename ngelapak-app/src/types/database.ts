@@ -34,6 +34,10 @@ type bookings = {
   nama_usaha: string | null;
   kategori_penjual: string | null;
   verified_at: string | null;
+  payment_expires_at: string | null;
+  midtrans_checkout_url: string | null;
+  midtrans_status: string | null;
+  midtrans_transaction_id: string | null;
 };
 
 type cancellations = {
@@ -141,8 +145,24 @@ export type Database = {
         Returns: { tanggal_mulai: string; tanggal_selesai: string }[];
       };
       review_booking_payment: { Args: { p_booking_id: string; p_approve: boolean }; Returns: undefined };
+      reserve_midtrans_booking: {
+        Args: {
+          p_booking_id: string; p_owner: string; p_spot_kode: string; p_tanggal_mulai: string;
+          p_jumlah_hari: number; p_total_bayar: number; p_jenis_usaha: string;
+          p_nama_usaha: string; p_kategori_penjual: string; p_catatan: string;
+        };
+        Returns: bookings;
+      };
+      apply_midtrans_status: {
+        Args: { p_booking_id: string; p_amount: number; p_transaction_id: string | null; p_status: string; p_paid_at: string | null };
+        Returns: boolean;
+      };
       review_booking_cancellation: {
         Args: { p_cancellation_id: string; p_approve: boolean; p_proof: string | null; p_note: string | null };
+        Returns: undefined;
+      };
+      record_booking_refund: {
+        Args: { p_cancellation_id: string; p_proof: string };
         Returns: undefined;
       };
       submit_booking_with_payment: {

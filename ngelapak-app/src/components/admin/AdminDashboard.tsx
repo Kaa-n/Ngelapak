@@ -92,7 +92,7 @@ export default function AdminDashboard({ metrics, paymentCount, refundCount, met
           </div>
         </section>
         <QueueCard title="Pembayaran menunggu" count={paymentCount} icon={ReceiptText}
-          tone="bg-[#fff0dd] text-[#855300]" href={basePath + "/verifikasi"} linkLabel="Buka verifikasi" />
+          tone="bg-[#fff0dd] text-[#855300]" href={basePath + "/pembayaran"} linkLabel="Buka riwayat pembayaran" />
         <QueueCard title="Pembatalan menunggu" count={refundCount} icon={Undo2}
           tone="bg-[#e7efff] text-[#003466]" href={basePath + "/refund"} linkLabel="Buka pembatalan & refund" />
       </div>
@@ -100,7 +100,7 @@ export default function AdminDashboard({ metrics, paymentCount, refundCount, met
         <section className={`${panelClass} min-w-0 space-y-4`}>
           <div>
             <h2 className="font-bold text-[#131b2e]">Tren pendapatan mingguan</h2>
-            <p className="mt-1 text-sm text-[#424750]">8 minggu berdasarkan tanggal verifikasi (WITA).</p>
+            <p className="mt-1 text-sm text-[#424750]">8 minggu berdasarkan tanggal konfirmasi pembayaran (WITA).</p>
           </div>
           {!metrics?.trend.some((week) => week.amount > 0) ? (
             <AdminEmptyState icon="bar_chart" title={metrics ? "Belum ada pendapatan terverifikasi pada periode ini" : "Data tren belum tersedia"} />

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { canCancelBooking, useDemo } from "@/lib/demo-store";
+import { paymentLabel } from "@/lib/rental-policy";
 import { formatDate, formatRupiah } from "@/lib/mock-data";
 import type { Booking } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
@@ -35,18 +36,19 @@ function getStatusBadge(booking: Booking): {
     };
   if (booking.statusVerifikasi === "disetujui")
     return {
-      label: booking.status === "selesai" ? "Selesai" : "Disetujui",
+      label: booking.status === "selesai" ? "Selesai"
+        : booking.metodePembayaran === "midtrans" ? "Lunas" : "Disetujui",
       cls: "bg-emerald-50 text-emerald-700 border-emerald-200",
       icon: "check_circle",
     };
   if (booking.statusVerifikasi === "ditolak")
     return {
-      label: "Ditolak",
+      label: booking.metodePembayaran === "midtrans" ? paymentLabel(booking.statusVerifikasi, booking.paymentStatus) : "Ditolak",
       cls: "bg-red-50 text-red-700 border-red-200",
       icon: "do_not_disturb_on",
     };
   return {
-    label: "Menunggu",
+    label: booking.metodePembayaran === "midtrans" ? paymentLabel(booking.statusVerifikasi, booking.paymentStatus) : "Menunggu",
     cls: "bg-amber-50 text-amber-700 border-amber-200",
     icon: "schedule",
   };
@@ -79,13 +81,17 @@ function getStepIndex(booking: Booking): number {
 
 function StatusStepper({ booking }: { booking: Booking }) {
   const current = getStepIndex(booking);
+  const steps = booking.metodePembayaran === "midtrans" ? [
+    STEPS[0], { label: "Menunggu pembayaran", icon: "pending_actions" },
+    { label: "Konfirmasi pembayaran", icon: "fact_check" }, STEPS[3],
+  ] : STEPS;
   const isRejected =
     booking.statusVerifikasi === "ditolak" ||
     booking.status === "dibatalkan";
 
   return (
     <div className="flex items-start gap-0 w-full mt-4">
-      {STEPS.map((step, idx) => {
+      {steps.map((step, idx) => {
         const done = idx < current;
         const active = idx === current;
         const rejected = isRejected && idx === 2;

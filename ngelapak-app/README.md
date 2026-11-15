@@ -2,22 +2,24 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Panel admin dan Supabase
 
-Isi `NEXT_PUBLIC_SUPABASE_URL` dan `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` di `.env.local`. Untuk proyek Supabase baru, jalankan migrasi `001` sampai `006` secara berurutan. Untuk proyek tim yang sudah punya tabel, bandingkan skema aktual dengan [audit](AUDIT-TAHAP-1.md), lalu terapkan migrasi `002` sampai `006` setelah diuji di proyek pengembangan. Migrasi `002` mengganti RPC pemesanan lama dengan `submit_booking_with_payment`. Rilis perubahan database dan aplikasi secara terkoordinasi.
+Isi `NEXT_PUBLIC_SUPABASE_URL` dan `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` di `.env.local`. Untuk proyek Supabase baru, jalankan migrasi `001` sampai `008` secara berurutan. Untuk proyek tim, cocokkan skema dengan [audit](AUDIT-TAHAP-1.md) dan terapkan migrasi yang belum terpasang setelah diuji di proyek pengembangan. Rilis perubahan database dan aplikasi secara terkoordinasi.
 
 | Akses | Tamu | Penyewa | Admin |
 | --- | --- | --- | --- |
 | Katalog dan detail lapak | Ya | Ya | Ya |
 | Mengajukan sewa | Masuk dahulu | Ya | Tidak |
 | Pesanan Saya | Tidak | Milik sendiri | Tidak |
-| Kelola Lapak dan Verifikasi | Tidak | Tidak | Ya |
+| Kelola Lapak, Riwayat Pembayaran, dan Refund | Tidak | Tidak | Ya |
 
 Tambahkan URL aplikasi dan `/auth/callback` ke konfigurasi redirect Supabase Auth untuk konfirmasi email. Gunakan akun yang sudah diberikan role `admin` oleh pengelola database untuk mengakses `/admin`. Pendaftaran umum membuat akun penyewa.
 
-Untuk mencoba verifikasi, buat pesanan dengan akun penyewa dan unggah bukti transfer uji. Masuk dengan akun admin, buka **Verifikasi Pembayaran**, dan setujui atau tolak. Buat pesanan lain untuk mencoba pengajuan pembatalan sebelum verifikasi. Selama pengajuan menunggu, tanggal tetap ditahan. Persetujuan dengan bukti refund melepas tanggal. Penolakan menyimpan catatan yang terlihat di detail pesanan penyewa.
+Untuk menguji Midtrans, gunakan Server Key dari Sandbox sebagai `MIDTRANS_SERVER_KEY`. Isi `SUPABASE_SERVICE_ROLE_KEY` dengan kredensial proyek pengembangan, `NGELAPAK_APP_URL` dengan URL aplikasi, dan `MIDTRANS_IS_PRODUCTION=false`. Simpan kedua kunci hanya di server. Pasang URL publik HTTPS `/api/midtrans/notification` sebagai Payment Notification URL di dashboard Midtrans Sandbox. Uji pembayaran lalu periksa status **Lunas** dan unduh PDF MOU di Detail Pesanan. Dokumen yang dihasilkan adalah draf berbasis data pesanan.
 
-Pembayaran dan transfer refund dilakukan di luar aplikasi. Panel admin menyimpan bukti serta statusnya. Total pendapatan dasbor adalah pendapatan bruto dari pembayaran yang terverifikasi. Tren memakai tanggal verifikasi, sehingga pembayaran lama tanpa tanggal verifikasi hanya masuk ke total. Okupansi dihitung untuk hari ini di WITA.
+Pesanan Midtrans menahan slot selama batas bayar satu jam. Jika notifikasi kedaluwarsa tidak diterima, pemeriksaan ulang dilakukan dari Detail Pesanan atau ketika ada percobaan pemesanan pada tanggal yang bertabrakan. Mulai sewa pukul 08.00 WITA dan checkout ditutup satu jam sebelumnya. Pengajuan batal dibuka setelah lunas dan ditutup pada waktu yang lebih awal antara 24 jam setelah lunas atau 24 jam sebelum sewa mulai. Admin menyetujui atau menolak pembatalan. Persetujuan membuka slot dan admin mencatat bukti refund setelah transfer dilakukan.
 
-**Masuk dengan Akun Demo** menyediakan Ayu dan Bayu untuk mencoba alur penyewa, serta **Masuk sebagai Admin** untuk membuka `/demo/admin`. Dasbor demo menampilkan metrik, lapak, antrean pembayaran, dan refund contoh. Keputusan verifikasi demo mengubah pesanan di `localStorage`; inventaris dan refund demo adalah contoh baca saja. Panel demo tidak memerlukan data admin Supabase.
+Riwayat Pembayaran menampilkan status Midtrans serta tautan ke bukti pesanan transfer lama yang masih menunggu. Pendapatan dasbor adalah pembayaran bruto, dengan tren berdasarkan waktu konfirmasi dan okupansi berdasarkan tanggal WITA.
+
+**Masuk dengan Akun Demo** menyediakan Ayu dan Bayu untuk mencoba alur penyewa. Buat pesanan, buka Detail Pesanan, lalu pilih **Simulasikan pembayaran berhasil**. Pilih **Masuk sebagai Admin** untuk melihat transaksi browser yang sama di `/demo/admin/pembayaran` dan memproses pengajuan pembatalan demo. Data demo disimpan di browser.
 
 Pemeriksaan: `npm test`, `npx tsc --noEmit`, `npm run lint`, dan `npm run build`.
 

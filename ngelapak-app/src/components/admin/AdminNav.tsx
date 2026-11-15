@@ -7,7 +7,7 @@ import { LayoutDashboard, Menu, ReceiptText, Store, Undo2 } from "lucide-react";
 const pages = [
   { segment: null, label: "Dasbor", icon: LayoutDashboard },
   { segment: "spots", label: "Kelola Lapak", icon: Store },
-  { segment: "verifikasi", label: "Verifikasi Pembayaran", icon: ReceiptText },
+  { segment: "pembayaran", label: "Riwayat Pembayaran", icon: ReceiptText },
   { segment: "refund", label: "Pembatalan & Refund", icon: Undo2 },
 ];
 
@@ -15,7 +15,7 @@ export default function AdminNav({ basePath, mobile = false }: { basePath: strin
   const segment = useSelectedLayoutSegment();
   const links = pages.map(({ segment: pageSegment, label, icon: Icon }) => {
     const href = pageSegment ? `${basePath}/${pageSegment}` : basePath;
-    const active = pageSegment === segment;
+    const active = pageSegment === segment || (pageSegment === "pembayaran" && segment === "verifikasi");
     return (
       <Link
         key={href}

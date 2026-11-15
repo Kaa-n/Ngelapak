@@ -1,58 +1,47 @@
 import { createClient } from "@/lib/supabase/client";
-import { getUploadPath, proofMimeTypes } from "@/lib/supabase/storage";
 import type { Booking, BookingStatus, TransactionStatus } from "@/lib/mock-data";
 import type { Database } from "@/types/database";
 
 interface CreateBookingInput {
+  id: string;
   spotKode: string;
   tanggalMulai: string;
   jumlahHari: number;
   totalBayar: number;
-  metodePembayaran: string;
   jenisUsaha: string;
   namaUsaha: string;
   kategoriPenjual: string;
   catatan: string;
-  buktiBayar: File;
+  setuju: boolean;
 }
 
-export async function createSupabaseBooking(
-  input: CreateBookingInput
-): Promise<string> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Silakan masuk kembali untuk mengirim pembayaran.");
-  const path = getUploadPath(input.buktiBayar, proofMimeTypes, user.id);
-  const bucket = supabase.storage.from("payment-proofs");
-  const { error: uploadError } = await bucket.upload(path, input.buktiBayar);
-  if (uploadError) throw new Error("Bukti transfer gagal diunggah.");
-
-  const { data, error } = await supabase.rpc(
-    "submit_booking_with_payment",
-    {
-      p_spot_kode: input.spotKode,
-      p_tanggal_mulai: input.tanggalMulai,
-      p_jumlah_hari: input.jumlahHari,
-      p_total_bayar: input.totalBayar,
-      p_metode_pembayaran: input.metodePembayaran,
-      p_jenis_usaha: input.jenisUsaha,
-      p_nama_usaha: input.namaUsaha,
-      p_kategori_penjual: input.kategoriPenjual,
-      p_catatan: input.catatan,
-      p_bukti_bayar: path,
-    }
-  );
-
-  if (error) {
-    await bucket.remove([path]);
-    throw new Error(error.message);
+export async function createSupabaseBooking(input: CreateBookingInput) {
+  const response = await fetch("/api/pembayaran/checkout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const result = await response.json();
+  if (!response.ok || typeof result.bookingId !== "string") {
+    throw new Error(result.error ?? "Pembayaran tidak dapat dimulai.");
   }
+  return { id: result.bookingId as string, checkoutUrl: result.checkoutUrl as string | null };
+}
 
-  if (!data) {
-    throw new Error("ID pemesanan tidak diterima dari server.");
-  }
+export async function refreshPayment(id: string) {
+  const response = await fetch("/api/pembayaran/status", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }),
+  });
+  if (!response.ok) throw new Error("Status pembayaran belum dapat diperiksa. Coba lagi.");
+}
 
-  return data;
+export async function resumePayment(id: string) {
+  const response = await fetch("/api/pembayaran/checkout", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, resume: true }),
+  });
+  const result = await response.json();
+  if (!response.ok || typeof result.checkoutUrl !== "string") throw new Error("Tautan pembayaran belum tersedia. Periksa status pesanan atau coba lagi.");
+  return result.checkoutUrl as string;
 }
 
 type SupabaseBookingRow = Database["public"]["Tables"]["bookings"]["Row"];
@@ -98,6 +87,10 @@ function mapSupabaseBooking(row: SupabaseBookingRow): Booking {
     catatan: row.catatan ?? undefined,
     jenisUsaha: row.jenis_usaha ?? "",
     createdAt: row.created_at,
+    paidAt: row.verified_at ?? undefined,
+    paymentExpiresAt: row.payment_expires_at ?? undefined,
+    paymentStatus: row.midtrans_status ?? undefined,
+    checkoutUrl: row.midtrans_checkout_url ?? undefined,
   };
 }
 

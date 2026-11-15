@@ -30,7 +30,7 @@ export function AdminEmptyState({ icon, title, detail }: {
   );
 }
 
-export function StatusPill({ status }: { status: string }) {
+export function StatusPill({ status, label }: { status: string; label?: string }) {
   const colors: Record<string, string> = {
     tersedia: "bg-[#e2faef] text-[#005639]",
     dipesan: "bg-[#e7efff] text-[#003466]",
@@ -42,7 +42,7 @@ export function StatusPill({ status }: { status: string }) {
   return (
     <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${colors[status] ?? "bg-[#edf0f5] text-[#424750]"}`}>
       <span aria-hidden="true" className="size-1.5 rounded-full bg-current" />
-      {status}
+      {label ?? status}
     </span>
   );
 }

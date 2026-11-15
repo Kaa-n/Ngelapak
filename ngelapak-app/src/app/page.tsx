@@ -4,7 +4,8 @@ import { Suspense, useState, useCallback, useEffect } from "react";
 import HomeView from "../components/views/HomeView";
 import KatalogView from "../components/views/KatalogView";
 import DetailSpotView from "../components/views/DetailSpotView";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import Navbar from "../components/layout/Navbar";
 import MobileNav from "../components/layout/MobileNav";
 import Footer from "../components/ui-custom/Footer";
@@ -44,6 +45,9 @@ export default function Home() {
 
 function DemoHome() {
   const router = useRouter();
+  const requestedOrder = useSearchParams().get("pesanan");
+  const returningOrder = /^MT-[a-f0-9]{32}$/.test(requestedOrder ?? "") ? requestedOrder : null;
+  const [sessionLoaded, setSessionLoaded] = useState(false);
   const [supabaseProfile, setSupabaseProfile] =
     useState<SupabaseProfile | null>(null);
 
@@ -69,6 +73,8 @@ function DemoHome() {
         if (isMounted) {
           setSupabaseProfile(null);
         }
+      } finally {
+        if (isMounted) setSessionLoaded(true);
       }
     }
 
@@ -79,10 +85,10 @@ function DemoHome() {
     };
   }, []);
   // Default tampilan awal saat aplikasi dibuka: "home" (Halaman Home / Beranda)
-  const [currentView, setCurrentView] = useState<PageView>("home");
+  const [currentView, setCurrentView] = useState<PageView>(() => returningOrder ? "detail-pesanan" : "home");
   const [selectedSpot, setSelectedSpot] = useState<Spot>(MOCK_SPOTS[0]);
   const [detailInitialTab, setDetailInitialTab] = useState<"detail" | "operasional" | "fasilitas" | "ulasan">("detail");
-  const [orderId, setOrderId] = useState<string | null>(null);
+  const [orderId, setOrderId] = useState<string | null>(returningOrder);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const navigate = useCallback((view: PageView, spot?: Spot, initialTab?: "detail" | "operasional" | "fasilitas" | "ulasan") => {
@@ -96,7 +102,7 @@ function DemoHome() {
       return;
     }
     if (view === "dasbor" || view === "verifikasi") {
-      router.push(view === "dasbor" ? "/admin" : "/admin/verifikasi");
+      router.push(view === "dasbor" ? "/admin" : "/admin/pembayaran");
       return;
     }
     setCurrentView(view);
@@ -170,6 +176,14 @@ function DemoHome() {
             onBack={() => navigate("katalog")}
           />
         )}
+        {currentView === "detail-pesanan" && !user && (
+          <div className="mx-auto max-w-md px-4 py-10 text-sm">
+            {sessionLoaded ? (
+              <Link className="font-semibold text-[#003466] underline"
+                href={returningOrder ? `/masuk?pesanan=${returningOrder}` : "/masuk"}>Masuk untuk melihat pesanan</Link>
+            ) : <p role="status">Memuat pesanan…</p>}
+          </div>
+        )}
         {currentView === "edit-profile" && user && (
           <EditProfileView
             user={user}
@@ -180,6 +194,7 @@ function DemoHome() {
         )}
         {currentView === "katalog" && (
           <KatalogView
+            demoMode={!!demoUser && !supabaseProfile}
             onNavigateToDetail={(spot) => navigate("detail", spot, "detail")}
             onShowToast={showToast}
           />

@@ -3,9 +3,10 @@
 import { useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import AdminDashboard, { type RentalMetrics } from "@/components/admin/AdminDashboard";
-import { AdminEmptyState, AdminHeading, StatusPill } from "@/components/admin/AdminPresentation";
+import { AdminHeading, StatusPill } from "@/components/admin/AdminPresentation";
 import { actionLinkClass, panelClass, primaryLinkClass } from "@/components/admin/styles";
-import { useDemo, verifyDemoBooking } from "@/lib/demo-store";
+import { useDemo, reviewDemoCancellation } from "@/lib/demo-store";
+import PaymentHistory from "@/components/admin/PaymentHistory";
 import { MOCK_SPOTS, type Booking } from "@/lib/mock-data";
 
 const currency = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
@@ -75,7 +76,7 @@ export function DemoDashboard() {
   return <AdminDashboard
     metrics={user?.role === "admin" ? getDemoMetrics(bookings) : null}
     paymentCount={pendingPayments(bookings).length}
-    refundCount={refunds.filter((item) => item.status === "menunggu").length}
+    refundCount={refunds.filter((item) => item.status === "menunggu").length + bookings.filter((item) => item.pembatalan?.status === "menunggu").length}
     basePath="/demo/admin"
   />;
 }
@@ -98,51 +99,52 @@ export function DemoSpots() {
   );
 }
 
-export function DemoVerification() {
+export function DemoPayments() {
   const { bookings } = useDemo();
-  const pending = pendingPayments(bookings);
-  const [feedback, setFeedback] = useState("");
-
-  function review(booking: Booking, decision: "disetujui" | "ditolak") {
-    try {
-      verifyDemoBooking(booking.id, decision);
-      setFeedback(`Pembayaran demo ${booking.id} ${decision}.`);
-    } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Pembayaran demo gagal diperbarui.");
-    }
-  }
-
-  return (
-    <>
-      <AdminHeading title="Verifikasi Pembayaran" description="Coba tinjau pesanan dan verifikasi pembayaran simulasi." />
-      {feedback && <p role="status" className={panelClass}>{feedback}</p>}
-      <section className={`${panelClass} space-y-2`}>
-        <h2 className="mb-4 font-bold text-[#131b2e]">Menunggu verifikasi ({pending.length})</h2>
-        {pending.map((booking) => (
-          <DemoRecord key={booking.id} title={`${booking.penyewa.nama} · ${booking.spotNama}`} status={booking.statusVerifikasi}
-            subtitle={`${booking.id} · ${booking.tanggalMulai} – ${booking.tanggalSelesai} · ${currency.format(booking.totalBayar)}`}>
-            <p className="rounded-lg bg-[#f2f3ff] p-3">
-              <strong className="block text-[#003466]">Contoh bukti pembayaran</strong>
-              {booking.metodePembayaran} · {currency.format(booking.totalBayar)}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" className={primaryLinkClass} onClick={() => review(booking, "disetujui")}>Setujui pembayaran demo</button>
-              <button type="button" className={actionLinkClass} onClick={() => review(booking, "ditolak")}>Tolak pembayaran demo</button>
-            </div>
-          </DemoRecord>
-        ))}
-        {!pending.length && <AdminEmptyState icon="receipt_long" title="Tidak ada pembayaran demo yang menunggu." />}
-      </section>
-    </>
-  );
+  return <PaymentHistory total={bookings.length} rows={bookings.map((booking) => ({
+    id: booking.id, spot: booking.spotNama, tenant: booking.penyewa.nama,
+    amount: booking.totalBayar, status: booking.statusVerifikasi, providerStatus: booking.paymentStatus,
+    method: "midtrans", paidAt: booking.paidAt,
+  }))} />;
 }
 
 export function DemoRefunds() {
+  const { bookings } = useDemo();
+  const requests = bookings.filter((item) => item.pembatalan?.status);
+  const [feedback, setFeedback] = useState("");
+
+  function review(id: string, decision: "disetujui" | "ditolak" | "refund") {
+    try {
+      reviewDemoCancellation(id, decision);
+      setFeedback(decision === "disetujui" ? "Pembatalan disetujui. Jadwal tersedia kembali." :
+        decision === "refund" ? "Refund selesai." : "Pengajuan ditolak.");
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Pengajuan belum bisa diproses.");
+    }
+  }
   return (
     <>
       <AdminHeading title="Kelola Pembatalan & Refund" description="Lihat contoh alasan pembatalan, rekening tujuan, dan status refund." />
       <section className={`${panelClass} space-y-2`}>
-        <h2 className="mb-4 font-bold text-[#131b2e]">Pengajuan pembatalan ({refunds.length})</h2>
+        <h2 className="mb-4 font-bold text-[#131b2e]">Pengajuan pembatalan ({refunds.length + requests.length})</h2>
+        {feedback && <p role="status" className="py-2 text-sm">{feedback}</p>}
+        {requests.map((booking) => {
+          const request = booking.pembatalan!;
+          return (
+            <DemoRecord key={booking.id} title={booking.penyewa.nama + " · " + booking.spotNama}
+              status={request.status ?? "menunggu"} subtitle={booking.id + " · " + currency.format(booking.totalBayar)}>
+              <p>Alasan: {request.alasan}</p>
+              <p>Rekening tujuan: {request.bank} · {request.nomorRekening}</p>
+              {request.status === "menunggu" && <div className="flex flex-wrap gap-2">
+                <button type="button" className={primaryLinkClass} onClick={() => review(booking.id, "disetujui")}>Setujui pembatalan</button>
+                <button type="button" className={actionLinkClass} onClick={() => review(booking.id, "ditolak")}>Tolak pembatalan</button>
+              </div>}
+              {request.status === "disetujui" && (request.refundCompleted ? <p>Refund selesai.</p> : (
+                <button type="button" className={actionLinkClass} onClick={() => review(booking.id, "refund")}>Catat refund selesai</button>
+              ))}
+            </DemoRecord>
+          );
+        })}
         {refunds.map((request) => (
           <DemoRecord key={request.id} title={`${request.nama} · ${request.lapak}`} status={request.status}
             subtitle={`${request.id} · ${currency.format(request.jumlah)}`}>

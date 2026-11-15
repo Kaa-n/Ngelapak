@@ -6,8 +6,9 @@ import { AdminEmptyState, AdminHeading, StatusPill } from "@/components/admin/Ad
 import ProofPreview from "@/components/admin/ProofPreview";
 import { actionLinkClass, inputClass, panelClass } from "@/components/admin/styles";
 import { requireAdmin } from "@/lib/supabase/admin";
+import { formatRupiah } from "@/lib/mock-data";
 import { getProofPreview } from "@/lib/supabase/proof-preview";
-import { reviewCancellation } from "./actions";
+import { recordRefund, reviewCancellation } from "./actions";
 
 type RefundPageProps = { searchParams: Promise<{ id?: string; page?: string }> };
 
@@ -31,7 +32,7 @@ async function RefundData({ searchParams }: RefundPageProps) {
   if (requestError && requestError.code !== "22P02") throw new Error("Pengajuan gagal dimuat.");
 
   const { data: booking, error: bookingError } = request
-    ? await supabase.from("bookings").select("id, spot_nama, bukti_bayar").eq("id", request.booking_id).maybeSingle()
+    ? await supabase.from("bookings").select().eq("id", request.booking_id).maybeSingle()
     : { data: null, error: null };
   const { data: payment, error: paymentError } = booking
     ? await supabase.from("payments").select("bukti_url").eq("booking_id", booking.id)
@@ -43,6 +44,8 @@ async function RefundData({ searchParams }: RefundPageProps) {
     getProofPreview(supabase, "payment-proofs", payment?.bukti_url || booking?.bukti_bayar || null),
     getProofPreview(supabase, "refund-proofs", request?.bukti_refund || null),
   ]);
+  const isMidtrans = booking?.metode_pembayaran === "midtrans";
+  const needsRefund = request?.status === "disetujui" && !request.bukti_refund;
 
   return (
     <>
@@ -59,6 +62,7 @@ async function RefundData({ searchParams }: RefundPageProps) {
                 ["Alasan", request.alasan], ["Nama bank", request.bank], ["Nomor rekening", request.nomor_rekening],
                 ["Pemilik rekening", request.nama_rekening], ["Status", request.status],
                 ["Catatan admin", request.admin_catatan],
+                ["Refund", request.status === "disetujui" ? (request.bukti_refund ? "Selesai" : "Sedang diproses") : null],
               ].map(([label, value]) => (
                 <div key={label} className="contents">
                   <dt className="text-[#424750]">{label}</dt>
@@ -69,9 +73,10 @@ async function RefundData({ searchParams }: RefundPageProps) {
             {request.status === "menunggu" && (
               <div className="space-y-4 border-t border-[#e2e7ff] pt-4">
                 <ActionForm action={reviewCancellation.bind(null, request.id, true)} label="Setujui pembatalan">
+                  {isMidtrans ? <p className="text-sm text-[#424750]">Jadwal akan tersedia kembali. Catat bukti transfer setelah refund diproses.</p> :
                   <label className="grid gap-1 text-sm">Bukti refund (JPG, PNG, PDF, maks. 6 MB)
                     <input type="file" name="bukti_refund" className={inputClass} accept="image/jpeg,image/png,application/pdf" required />
-                  </label>
+                  </label>}
                 </ActionForm>
                 <ActionForm action={reviewCancellation.bind(null, request.id, false)} label="Tolak pembatalan" danger>
                   <label className="grid gap-1 text-sm">Catatan untuk penyewa
@@ -80,10 +85,21 @@ async function RefundData({ searchParams }: RefundPageProps) {
                 </ActionForm>
               </div>
             )}
+            {needsRefund && (
+              <ActionForm action={recordRefund.bind(null, request.id)} label="Catat refund selesai">
+                <label className="grid gap-1 text-sm">Bukti refund (JPG, PNG, PDF, maks. 6 MB)
+                  <input type="file" name="bukti_refund" className={inputClass} accept="image/jpeg,image/png,application/pdf" required />
+                </label>
+              </ActionForm>
+            )}
           </section>
           <div className="min-w-0 space-y-4">
-            <ProofPreview proof={paymentProof} title="Bukti pembayaran asli" />
-            {request.status === "disetujui" && <ProofPreview proof={refundProof} title="Bukti refund" />}
+            {isMidtrans ? <section className={panelClass}>
+              <h2 className="font-semibold">Pembayaran Midtrans</h2>
+              <p className="mt-2 break-words text-sm">ID transaksi {booking?.midtrans_transaction_id ?? "—"}</p>
+              {booking?.total_bayar != null && <p className="mt-1 text-sm">Pembayaran tercatat {formatRupiah(booking.total_bayar)}</p>}
+            </section> : <ProofPreview proof={paymentProof} title="Bukti pembayaran asli" />}
+            {request.bukti_refund && <ProofPreview proof={refundProof} title="Bukti refund" />}
           </div>
         </div>
       )}
