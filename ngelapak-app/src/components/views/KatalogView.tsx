@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { KatalogHero } from "@/components/katalog";
 import type { ZonaFilter, UkuranFilter, SortOption } from "@/components/katalog";
-import type { Spot } from "@/lib/mock-data";
+import { MOCK_SPOTS, type Spot } from "@/lib/mock-data";
 import { getSupabaseSpots } from "@/lib/supabase/spots";
 import type { ToastMessage } from "@/lib/types";
 import { today } from "@/lib/demo-store";
@@ -35,8 +35,8 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
   const [sortBy, setSortBy] = useState<SortOption>("populer");
   const [activeChips, setActiveChips] = useState<Set<string>>(new Set(["listrik"]));
   const [currentPage, setCurrentPage] = useState(1);
-  const [dateStart, setDateStart] = useState(today);
-  const [dateEnd, setDateEnd] = useState(today);
+  const [dateStart, setDateStart] = useState(() => today());
+  const [dateEnd, setDateEnd] = useState(() => today());
   const [isFiltering, setIsFiltering] = useState(false);
   const [customLokasi, setCustomLokasi] = useState<string | null>(null);
   const [spots, setSpots] = useState<Spot[]>([]);
@@ -54,10 +54,12 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
         const data = await getSupabaseSpots();
 
         if (isMounted) {
-        setSpots(data);
+          // Keep the catalog usable in demo/dev environments before spots are seeded.
+          setSpots(data.length > 0 ? data : MOCK_SPOTS);
         }
       } catch (error) {
         if (isMounted) {
+          setSpots(MOCK_SPOTS);
           setSpotError(
             error instanceof Error
               ? error.message
@@ -179,8 +181,8 @@ export default function KatalogView({ onNavigateToDetail, onShowToast }: Katalog
     setActiveChips(new Set());
     setCustomLokasi(null);
     setCurrentPage(1);
-    setDateStart("2025-10-25");
-    setDateEnd("2025-10-27");
+    setDateStart(today());
+    setDateEnd(today());
   };
 
   const availableSpotsCount = useMemo(

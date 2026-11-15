@@ -81,6 +81,16 @@ function parseBookings(raw: string): Booking[] {
   return MOCK_BOOKINGS;
 }
 
+export function getAllDemoBookings() {
+  return parseBookings(read(BOOKINGS));
+}
+
+function addDays(date: string, days: number) {
+  const result = new Date(`${date}T00:00:00Z`);
+  result.setUTCDate(result.getUTCDate() + days);
+  return result.toISOString().slice(0, 10);
+}
+
 function currentUser() {
   return getDemoUsers().find(
     (user) => user.id === read(SESSION, true),
@@ -344,6 +354,13 @@ export function createDemoBooking(input: {
 
   const bookings = parseBookings(read(BOOKINGS));
 
+  if (spot.jadwalOperasional?.some((schedule) =>
+    (input.tanggalMulai <= addDays(schedule.endDate, 3) && end >= schedule.startDate) ||
+    (input.tanggalMulai <= schedule.endDate && addDays(end, 3) >= schedule.startDate)
+  )) {
+    throw new Error("Jadwal bertabrakan dengan masa sewa atau pembersihan spot. Pilih tanggal berbeda.");
+  }
+
   // Periksa bentrok jadwal dengan pesanan lain.
   if (
     bookings.some(
@@ -351,8 +368,10 @@ export function createDemoBooking(input: {
         booking.spotId === spot.id &&
         booking.status !== "dibatalkan" &&
         booking.statusVerifikasi !== "ditolak" &&
-        booking.tanggalMulai <= end &&
-        booking.tanggalSelesai >= input.tanggalMulai,
+        (
+          (input.tanggalMulai <= addDays(booking.tanggalSelesai, 3) && end >= booking.tanggalMulai) ||
+          (input.tanggalMulai <= booking.tanggalSelesai && addDays(end, 3) >= booking.tanggalMulai)
+        ),
     )
   ) {
     throw new Error(

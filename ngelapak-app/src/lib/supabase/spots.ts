@@ -40,3 +40,4 @@ export async function getSupabaseSpots(): Promise<Spot[]> {
     jadwalOperasional: [],
   }));
 }
+

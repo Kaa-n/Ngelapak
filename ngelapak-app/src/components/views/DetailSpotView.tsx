@@ -7,8 +7,13 @@ import { formatRupiah, formatDate } from "@/lib/mock-data";
 import type { ToastMessage, DemoUser } from "@/lib/types";
 import type { SupabaseProfile } from "@/lib/supabase/auth";
 import { createSupabaseBooking } from "@/lib/supabase/bookings";
-import { createDemoBooking, today } from "@/lib/demo-store";
+import { createDemoBooking, getAllDemoBookings, today } from "@/lib/demo-store";
 
+const addDaysForDate = (date: string, days: number) => {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+};
 const emptySubscribe = () => () => { };
 
 // Dynamic import InteractiveMap buatan rekan tim (mencegah error window is not defined)
@@ -43,9 +48,10 @@ export default function DetailSpotView({
   onOrderDetail,
   onShowToast,
 }: DetailSpotViewProps) {
+  const bookings = getAllDemoBookings();
   // State Form Booking & Pendaftaran Penjual (Jobdesk FE 3)
-  const [selectedDays, setSelectedDays] = useState(1);
   const [startDate, setStartDate] = useState(() => today());
+  const [endDateStr, setEndDateStr] = useState(() => today());
   const [kategoriPenjual, setKategoriPenjual] = useState<"Mahasiswa Wirausaha" | "UMKM Umum">("Mahasiswa Wirausaha");
   const [namaUsaha, setNamaUsaha] = useState("");
   const [jenisUsaha, setJenisUsaha] = useState("");
@@ -91,32 +97,64 @@ export default function DetailSpotView({
   }
 
   // BACA DATA JADWAL OPERASIONAL UNIK PER SPOT (Dinamis dari mock-data.ts)
-  const jadwalList = spot.jadwalOperasional || [];
+  const fixtureJadwalList = spot.jadwalOperasional || [];
+  const bookingScheduleList = bookings.filter((booking) =>
+    booking.spotId === spot.id &&
+    booking.status !== "dibatalkan" &&
+    booking.statusVerifikasi !== "ditolak" &&
+    addDaysForDate(booking.tanggalSelesai, 3) >= today() &&
+    (!booking.createdAt || Date.now() - Date.parse(booking.createdAt) < 24 * 60 * 60 * 1000 || booking.statusVerifikasi !== "menunggu")
+  ).map((booking) => ({
+    id: `booking-${booking.id}`,
+    penjual: booking.penyewa.nama,
+    kategori: "UMKM Umum" as const,
+    startDate: booking.tanggalMulai,
+    endDate: booking.tanggalSelesai,
+    status: booking.tanggalMulai <= today() ? "Active" as const : "Upcoming" as const,
+    statusVerifikasi: booking.statusVerifikasi,
+    isCleaning: booking.tanggalSelesai < today(),
+  }));
+  const jadwalList = [...fixtureJadwalList, ...bookingScheduleList];
+  const unavailableRanges = [
+    ...jadwalList.map((schedule) => {
+      const to = new Date(`${schedule.endDate}T00:00:00`);
+      to.setDate(to.getDate() + 3);
+      return { from: new Date(`${schedule.startDate}T00:00:00`), to };
+    }),
+  ];
 
   // Perhitungan Tarif & Durasi
   const tarif = spot.tarifPerHari || 160000;
+  const selectedDays = Math.max(1, Math.round((Date.parse(`${endDateStr}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86400000) + 1);
   const totalBayar = tarif * selectedDays;
-
-  const endDate = new Date((startDate || today()) + "T00:00:00Z");
-  endDate.setUTCDate(endDate.getUTCDate() + selectedDays - 1);
-  const endDateStr = Number.isFinite(endDate.getTime()) ? endDate.toISOString().split("T")[0] : today();
+  const maxEndDate = new Date(`${startDate}T00:00:00Z`);
+  maxEndDate.setUTCDate(maxEndDate.getUTCDate() + 29);
+  const maxEndDateStr = maxEndDate.toISOString().slice(0, 10);
+  const cleaningStart = new Date(`${endDateStr}T00:00:00Z`);
+  cleaningStart.setUTCDate(cleaningStart.getUTCDate() + 1);
+  const cleaningEnd = new Date(`${endDateStr}T00:00:00Z`);
+  cleaningEnd.setUTCDate(cleaningEnd.getUTCDate() + 3);
 
   // Logika Validasi Tanggal Bentrok dengan Jadwal Operasional
-  const checkOverlap = (startInput: string, days: number) => {
+  const checkOverlap = (startInput: string) => {
     try {
-      const sTime = new Date(startInput).getTime();
-      const eTime = sTime + (days - 1) * 86400000;
-      return jadwalList.find((sched) => {
-        const start = new Date(sched.startDate).getTime();
-        const end = new Date(sched.endDate).getTime();
-        return sTime <= end && eTime >= start;
-      });
+      const cleaningEnd = new Date(`${endDateStr}T00:00:00Z`);
+      cleaningEnd.setUTCDate(cleaningEnd.getUTCDate() + 3);
+      const cleaningEndDate = cleaningEnd.toISOString().slice(0, 10);
+      const conflicts = (occupiedStart: string, occupiedEnd: string) => {
+        const requestedCleaningEnd = addDaysForDate(endDateStr, 3);
+        const occupiedCleaningEnd = addDaysForDate(occupiedEnd, 3);
+        // Sewa yang diminta juga memakai area selama 3 hari pembersihan.
+        return startInput <= occupiedCleaningEnd && requestedCleaningEnd >= occupiedStart;
+      };
+
+      return jadwalList.find((schedule) => conflicts(schedule.startDate, schedule.endDate)) ?? null;
     } catch {
       return null;
     }
   };
 
-  const conflictingSchedule = checkOverlap(startDate, selectedDays);
+  const conflictingSchedule = checkOverlap(startDate);
   const isConflicted = !!conflictingSchedule;
 
   const ULASAN_MOCK = [
@@ -210,13 +248,14 @@ export default function DetailSpotView({
     } catch (error) {
       console.error("Gagal menyimpan pemesanan:", error);
 
+      const rawMessage = error instanceof Error ? error.message : "Terjadi kesalahan saat menyimpan pemesanan.";
+      const conflictMessage = /no_overlapping_bookings|conflict|overlap/i.test(rawMessage)
+        ? "Tanggal yang dipilih baru saja terisi oleh pesanan lain. Muat ulang jadwal dan pilih tanggal berbeda."
+        : rawMessage;
       onShowToast({
         type: "error",
         message: "Pengajuan gagal disimpan",
-        description:
-          error instanceof Error
-            ? error.message
-            : "Terjadi kesalahan saat menyimpan pemesanan.",
+        description: conflictMessage,
       });
     } finally {
       setIsSubmitting(false);
@@ -528,9 +567,16 @@ export default function DetailSpotView({
                           <p className="text-[11px] text-[#737781]">
                             Tanggal Selesai: <strong>{formatDate(item.endDate)}</strong>
                           </p>
+                          <p className="text-[11px] text-[#855300]">
+                            Cleaning area sampai {formatDate(addDaysForDate(item.endDate, 3))}
+                          </p>
                         </div>
                         <span className="bg-[#855300] text-white text-[11px] px-2.5 py-1 rounded-full font-bold">
-                          Sedang Beroperasi
+                          {"statusVerifikasi" in item && item.statusVerifikasi === "menunggu"
+                            ? "Menunggu Verifikasi"
+                            : "isCleaning" in item && item.isCleaning
+                              ? "Masa Cleaning"
+                              : "Sedang Beroperasi"}
                         </span>
                       </div>
                     ))
@@ -555,9 +601,12 @@ export default function DetailSpotView({
                           <p className="text-[11px] text-[#737781]">
                             {formatDate(item.startDate)} s/d {formatDate(item.endDate)}
                           </p>
+                          <p className="text-[11px] text-[#855300]">
+                            Cleaning area sampai {formatDate(addDaysForDate(item.endDate, 3))}
+                          </p>
                         </div>
                         <span className="bg-[#eaedff] text-[#003466] text-[11px] px-2.5 py-1 rounded-full border border-[#003466]/20">
-                          Tervalidasi
+                          {"statusVerifikasi" in item && item.statusVerifikasi === "menunggu" ? "Menunggu Verifikasi" : "Tervalidasi"}
                         </span>
                       </div>
                     ))
@@ -679,13 +728,13 @@ export default function DetailSpotView({
                   </div>
 
                   {/* Tanggal Terisi Khusus Spot Ini */}
-                  {jadwalList.length > 0 && (
+                  {(jadwalList.length > 0 || bookingScheduleList.length > 0) && (
                     <div className="rounded-xl bg-[#ffddb8]/30 p-3 border border-[#ffddb8] text-[11px] text-[#855300]">
-                      <span className="font-bold block mb-1">Tanggal Terisi (Jadwal Operasional Spot Ini):</span>
+                      <span className="font-bold block mb-1">Tanggal terpakai dan masa cleaning spot ini:</span>
                       <ul className="list-disc pl-4 space-y-0.5">
                         {jadwalList.map((s) => (
                           <li key={s.id}>
-                            {formatDate(s.startDate)} - {formatDate(s.endDate)} ({s.penjual})
+                            {formatDate(s.startDate)}–{formatDate(s.endDate)} ({s.penjual}); cleaning sampai {formatDate(addDaysForDate(s.endDate, 3))}
                           </li>
                         ))}
                       </ul>
@@ -700,48 +749,50 @@ export default function DetailSpotView({
                     <input
                       type="date"
                       value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
                       min={today()}
+                      onChange={(e) => {
+                        const nextStart = e.target.value;
+                        if (!nextStart) return;
+                        setStartDate(nextStart);
+                        if (endDateStr < nextStart) setEndDateStr(nextStart);
+                        else {
+                          const limit = new Date(`${nextStart}T00:00:00Z`);
+                          limit.setUTCDate(limit.getUTCDate() + 29);
+                          if (endDateStr > limit.toISOString().slice(0, 10)) setEndDateStr(limit.toISOString().slice(0, 10));
+                        }
+                      }}
                       className={`w-full h-10 px-3 text-[14px] rounded-lg outline-none transition-all ${isConflicted
-                          ? "bg-red-50 text-red-900 border border-red-500"
-                          : "bg-[#f2f3ff] text-[#131b2e] focus:bg-white focus:ring-2 focus:ring-[#003466]/20"
-                        }`}
+                        ? "bg-red-50 text-red-900 border border-red-500"
+                        : "bg-[#f2f3ff] text-[#131b2e] focus:bg-white focus:ring-2 focus:ring-[#003466]/20"
+                      }`}
                     />
                   </div>
 
-                  {/* Durasi Sewa */}
+                  {/* Tanggal Selesai dan Durasi Sewa */}
                   <div>
                     <label className="block text-[12px] font-semibold text-[#424750] mb-1.5 uppercase tracking-wide">
-                      Durasi Sewa
+                      Tanggal Selesai *
                     </label>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedDays((d) => Math.max(d - 1, 1))}
-                        className="w-9 h-9 rounded-lg bg-[#eaedff] text-[#131b2e] flex items-center justify-center font-bold hover:bg-[#dae2fd] transition-colors"
-                      >
-                        −
-                      </button>
-                      <div className="flex-1 text-center py-2 bg-[#f2f3ff] rounded-lg text-[14px] font-bold text-[#131b2e]">
-                        {selectedDays} hari
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedDays((d) => Math.min(d + 1, 30))}
-                        className="w-9 h-9 rounded-lg bg-[#eaedff] text-[#131b2e] flex items-center justify-center font-bold hover:bg-[#dae2fd] transition-colors"
-                      >
-                        +
-                      </button>
+                    <input type="date" value={endDateStr} min={startDate} max={maxEndDateStr}
+                      onChange={(e) => {
+                        if (e.target.value) setEndDateStr(e.target.value);
+                      }}
+                      className="w-full h-10 px-3 bg-[#f2f3ff] text-[#131b2e] text-[14px] rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-[#003466]/20 transition-all" />
+                    <div className="mt-2 text-center py-2 bg-[#f2f3ff] rounded-lg text-[14px] font-bold text-[#131b2e]">
+                      Durasi sewa : {selectedDays} hari
                     </div>
                     <p className="text-[11px] text-[#737781] mt-1.5">
                       {formatDate(startDate)} – {formatDate(endDateStr)}
+                    </p>
+                    <p className="mt-2 rounded-lg border border-[#ffddb8] bg-[#ffddb8]/30 p-2.5 text-[11px] leading-relaxed text-[#855300]">
+                      Masa cleaning area berlangsung 3 hari setelah sewa: {formatDate(cleaningStart.toISOString().slice(0, 10))}–{formatDate(cleaningEnd.toISOString().slice(0, 10))}. Tanggal tersebut tidak tersedia untuk pesanan baru. Jika tanggal yang dipilih berbenturan dengan jadwal lain, pemesanan tidak dapat dilanjutkan.
                     </p>
                   </div>
 
                   {/* Peringatan Tanggal Bentrok */}
                   {isConflicted && (
                     <div className="rounded-lg bg-red-50 p-2.5 text-[12px] text-red-600 border border-red-200">
-                      Tanggal ini sudah terisi oleh <strong>{conflictingSchedule?.penjual}</strong>. Silakan pilih tanggal lain.
+                      Tanggal pilihan berbenturan dengan jadwal sewa atau masa pembersihan{conflictingSchedule && "penjual" in conflictingSchedule ? <> milik <strong>{conflictingSchedule.penjual}</strong></> : null}. Silakan pilih tanggal lain.
                     </div>
                   )}
 
