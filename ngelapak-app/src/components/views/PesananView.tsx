@@ -1,524 +1,486 @@
 "use client";
 
-import { useState } from "react";
-import { cancelDemoBooking, useDemo } from "@/lib/demo-store";
+import { useState, useEffect } from "react";
+import { canCancelBooking, useDemo } from "@/lib/demo-store";
 import { formatDate, formatRupiah } from "@/lib/mock-data";
 import type { Booking } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
+import type { SupabaseProfile } from "@/lib/supabase/auth";
+import { getSupabaseBookings } from "@/lib/supabase/bookings";
+import DetailPesananView from "./DetailPesananView";
 
-export default function PesananView({
-  onExplore,
-  onShowToast,
+// ============================================================
+// TYPES & HELPERS
+// ============================================================
+
+type FilterTab = "semua" | "menunggu" | "disetujui" | "ditolak" | "dibatalkan";
+
+function getEffectiveStatus(booking: Booking): FilterTab {
+  if (booking.status === "dibatalkan") return "dibatalkan";
+  if (booking.statusVerifikasi === "disetujui") return "disetujui";
+  if (booking.statusVerifikasi === "ditolak") return "ditolak";
+  return "menunggu";
+}
+
+function getStatusBadge(booking: Booking): {
+  label: string;
+  cls: string;
+  icon: string;
+} {
+  if (booking.status === "dibatalkan")
+    return {
+      label: "Dibatalkan",
+      cls: "bg-red-50 text-red-700 border-red-200",
+      icon: "cancel",
+    };
+  if (booking.statusVerifikasi === "disetujui")
+    return {
+      label: booking.status === "selesai" ? "Selesai" : "Disetujui",
+      cls: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      icon: "check_circle",
+    };
+  if (booking.statusVerifikasi === "ditolak")
+    return {
+      label: "Ditolak",
+      cls: "bg-red-50 text-red-700 border-red-200",
+      icon: "do_not_disturb_on",
+    };
+  return {
+    label: "Menunggu",
+    cls: "bg-amber-50 text-amber-700 border-amber-200",
+    icon: "schedule",
+  };
+}
+
+// ============================================================
+// STEPPER TIMELINE
+// ============================================================
+
+const STEPS = [
+  { label: "Pesanan Dibuat", icon: "receipt_long" },
+  { label: "Menunggu Verifikasi", icon: "pending_actions" },
+  { label: "Disetujui / Ditolak", icon: "fact_check" },
+  { label: "Sewa Aktif / Selesai", icon: "store" },
+];
+
+function getStepIndex(booking: Booking): number {
+  if (booking.status === "selesai") return 4;
+  if (booking.status === "aktif") return 3;
+  if (
+    booking.statusVerifikasi === "disetujui" ||
+    booking.statusVerifikasi === "ditolak" ||
+    booking.status === "dibatalkan"
+  )
+    return 2;
+  if (booking.statusVerifikasi === "menunggu" && booking.status === "menunggu")
+    return 1;
+  return 0;
+}
+
+function StatusStepper({ booking }: { booking: Booking }) {
+  const current = getStepIndex(booking);
+  const isRejected =
+    booking.statusVerifikasi === "ditolak" ||
+    booking.status === "dibatalkan";
+
+  return (
+    <div className="flex items-start gap-0 w-full mt-4">
+      {STEPS.map((step, idx) => {
+        const done = idx < current;
+        const active = idx === current;
+        const rejected = isRejected && idx === 2;
+
+        let dotCls = "bg-[#e2e7ff] border-[#c5cbe0]";
+        let lineCls = "bg-[#e2e7ff]";
+        let textCls = "text-[#9ba4b5]";
+
+        if (done) {
+          dotCls = "bg-[#4edea3] border-[#4edea3]";
+          lineCls = "bg-[#4edea3]";
+          textCls = "text-[#003466]";
+        } else if (active && rejected) {
+          dotCls = "bg-red-500 border-red-500";
+          textCls = "text-red-700";
+        } else if (active) {
+          dotCls = "bg-[#003466] border-[#003466]";
+          textCls = "text-[#003466] font-semibold";
+        }
+
+        return (
+          <div key={idx} className="flex-1 flex flex-col items-center">
+            <div className="flex items-center w-full">
+              {/* Left connector */}
+              {idx > 0 && (
+                <div
+                  className={`flex-1 h-0.5 ${idx <= current ? lineCls : "bg-[#e2e7ff]"}`}
+                />
+              )}
+              {/* Dot */}
+              <div
+                className={`w-7 h-7 rounded-full border-2 flex items-center justify-center shrink-0 ${dotCls}`}
+              >
+                {done ? (
+                  <span className="material-symbols-outlined text-white text-[14px]">
+                    check
+                  </span>
+                ) : (
+                  <span
+                    className={`material-symbols-outlined text-[14px] ${active && !rejected ? "text-white" : active && rejected ? "text-white" : "text-[#c5cbe0]"}`}
+                  >
+                    {step.icon}
+                  </span>
+                )}
+              </div>
+              {/* Right connector */}
+              {idx < STEPS.length - 1 && (
+                <div
+                  className={`flex-1 h-0.5 ${idx < current ? lineCls : "bg-[#e2e7ff]"}`}
+                />
+              )}
+            </div>
+            <p className={`text-[10px] mt-1 text-center leading-tight ${textCls}`}>
+              {step.label}
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ============================================================
+// BOOKING CARD
+// ============================================================
+
+function BookingCard({
+  booking,
+  onViewDetail,
 }: {
-  onExplore: () => void;
-  onShowToast: (toast: Omit<ToastMessage, "id">) => void;
+  booking: Booking;
+  onViewDetail: (id: string) => void;
 }) {
-  const { user, bookings } = useDemo();
-  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
-  const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
+  const badge = getStatusBadge(booking);
+  const eligible = canCancelBooking(booking);
 
-  const canCancel = (booking: Booking) =>
-    booking.status !== "dibatalkan" &&
-    booking.status !== "selesai" &&
-    booking.tanggalMulai >= new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Makassar",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date());
+  return (
+    <article className="bg-white rounded-2xl border border-[#e2e7ff] hover:shadow-md transition-shadow flex flex-col">
+      {/* Card Header */}
+      <div className="p-4 pb-0 flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="font-bold text-base text-[#131b2e] leading-tight truncate">
+            {booking.spotNama}
+          </h2>
+          <p className="text-xs text-[#737781] mt-0.5">{booking.spotKode}</p>
+        </div>
+        <span
+          className={`shrink-0 flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border ${badge.cls}`}
+        >
+          <span className="material-symbols-outlined text-[13px]">
+            {badge.icon}
+          </span>
+          {badge.label}
+        </span>
+      </div>
 
-  const confirmCancellation = () => {
-    if (!cancelTarget) return;
-    try {
-      cancelDemoBooking(cancelTarget.id);
-      setSelectedBooking(null);
-      onShowToast({
-        type: "success",
-        message: "Pesanan berhasil dibatalkan",
-        description: `Pesanan ${cancelTarget.id} tidak lagi memblokir jadwal lapak.`,
-      });
-    } catch (error) {
-      onShowToast({
-        type: "error",
-        message: error instanceof Error ? error.message : "Pembatalan pesanan gagal",
-      });
-    } finally {
-      setCancelTarget(null);
-    }
-  };
+      {/* Stepper */}
+      <div className="px-4 pt-1">
+        <StatusStepper booking={booking} />
+      </div>
 
-  if (user?.role !== "penyewa") return null;
+      {/* Divider */}
+      <div className="mx-4 my-3 border-t border-[#f0f2fa]" />
 
-  const getVerificationStyle = (status: Booking["statusVerifikasi"]) => {
-    switch (status) {
-      case "menunggu":
-        return "bg-amber-50 text-amber-800 border-amber-200";
-      case "disetujui":
-        return "bg-green-50 text-green-800 border-green-200";
-      case "ditolak":
-        return "bg-red-50 text-red-800 border-red-200";
-      default:
-        return "bg-gray-50 text-gray-700 border-gray-200";
-    }
-  };
+      {/* Meta grid */}
+      <div className="px-4 pb-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs text-[#737781]">
+        <div>
+          <p className="font-medium text-[#424750]">Periode</p>
+          <p>{formatDate(booking.tanggalMulai)}</p>
+          <p>s.d. {formatDate(booking.tanggalSelesai)}</p>
+        </div>
+        <div>
+          <p className="font-medium text-[#424750]">Durasi</p>
+          <p>{booking.jumlahHari} hari</p>
+        </div>
+        <div>
+          <p className="font-medium text-[#424750]">Jenis Usaha</p>
+          <p className="truncate">{booking.jenisUsaha}</p>
+        </div>
+        <div>
+          <p className="font-medium text-[#424750]">Pembayaran</p>
+          <p className="truncate">{booking.metodePembayaran}</p>
+        </div>
+      </div>
 
-  const getVerificationLabel = (status: Booking["statusVerifikasi"]) => {
-    switch (status) {
-      case "menunggu":
-        return "Menunggu verifikasi";
-      case "disetujui":
-        return "Berhasil";
-      case "ditolak":
-        return "Ditolak";
-      default:
-        return status;
-    }
-  };
+      {/* Total */}
+      <div className="px-4 pb-3">
+        <div className="bg-[#f4f6ff] rounded-xl px-3 py-2 flex items-center justify-between">
+          <span className="text-xs text-[#737781]">Total bayar</span>
+          <span className="font-bold text-sm text-[#003466]">
+            {formatRupiah(booking.totalBayar)}
+          </span>
+        </div>
+      </div>
 
-  const getBookingStatusLabel = (status: Booking["status"]) => {
-    switch (status) {
-      case "menunggu":
-        return "Menunggu";
-      case "aktif":
-        return "Aktif";
-      case "selesai":
-        return "Selesai";
-      case "dibatalkan":
-        return "Dibatalkan";
-      default:
-        return status;
-    }
-  };
+      {/* Actions */}
+      <div className="px-4 pb-4 flex gap-2 mt-auto">
+        <button
+          onClick={() => onViewDetail(booking.id)}
+          className="flex-1 flex items-center justify-center gap-1.5 bg-[#003466] hover:bg-[#004785] text-white text-xs font-semibold py-2.5 rounded-xl transition-colors"
+        >
+          <span className="material-symbols-outlined text-[15px]">
+            open_in_new
+          </span>
+          Lihat Detail
+        </button>
+        {eligible && (
+          <button
+            onClick={() => onViewDetail(booking.id)}
+            className="flex items-center gap-1 border border-red-200 text-red-600 hover:bg-red-50 text-xs font-semibold px-3 py-2.5 rounded-xl transition-colors"
+          >
+            <span className="material-symbols-outlined text-[15px]">
+              cancel
+            </span>
+            Batalkan
+          </button>
+        )}
+      </div>
+    </article>
+  );
+}
 
-  const getBookingStatusStyle = (status: Booking["status"]) => {
-    switch (status) {
-      case "aktif":
-        return "bg-blue-50 text-blue-800";
-      case "selesai":
-        return "bg-gray-100 text-gray-700";
-      case "dibatalkan":
-        return "bg-red-50 text-red-800";
-      case "menunggu":
-        return "bg-amber-50 text-amber-800";
-      default:
-        return "bg-gray-100 text-gray-700";
-    }
-  };
+// ============================================================
+// FILTER TABS
+// ============================================================
 
-  const formatCreatedAt = (date: string) => {
-    return new Date(date).toLocaleString("id-ID", {
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone: "Asia/Makassar",
-    });
+const TABS: { key: FilterTab; label: string }[] = [
+  { key: "semua", label: "Semua" },
+  { key: "menunggu", label: "Menunggu" },
+  { key: "disetujui", label: "Disetujui" },
+  { key: "ditolak", label: "Ditolak" },
+  { key: "dibatalkan", label: "Dibatalkan" },
+];
+
+// ============================================================
+// MAIN VIEW
+// ============================================================
+
+  export default function PesananView({
+    user,
+    onExplore,
+    onShowToast,
+  }: {
+    user: ReturnType<typeof useDemo>["user"] | SupabaseProfile | null;
+    onExplore: () => void;
+    onShowToast: (toast: Omit<ToastMessage, "id">) => void;
+  }) {
+    const { bookings: demoBookings } = useDemo();
+
+    const [supabaseBookings, setSupabaseBookings] = useState<Booking[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [loadError, setLoadError] = useState("");
+
+    const isDemoUser = user?.id === "ayu" || user?.id === "bayu";
+
+    useEffect(() => {
+      if (!user || user.role !== "penyewa" || isDemoUser) return;
+
+      let mounted = true;
+
+      async function loadBookings() {
+        setLoading(true);
+        setLoadError("");
+
+        try {
+          const data = await getSupabaseBookings();
+
+          if (mounted) {
+            setSupabaseBookings(data);
+          }
+        } catch (error) {
+          if (mounted) {
+            setLoadError(
+              error instanceof Error
+                ? error.message
+                : "Gagal mengambil data pesanan."
+            );
+          }
+        } finally {
+          if (mounted) {
+            setLoading(false);
+          }
+        }
+      }
+
+      loadBookings();
+
+      return () => {
+        mounted = false;
+      };
+    }, [user?.id, user?.role, isDemoUser]);
+
+    const bookings = isDemoUser ? demoBookings : supabaseBookings;
+
+    const [activeTab, setActiveTab] = useState<FilterTab>("semua");
+    const [detailId, setDetailId] = useState<string | null>(null);
+
+    if (user?.role !== "penyewa") return null;
+
+  // If viewing detail, render DetailPesananView
+  if (detailId) {
+    return (
+      <DetailPesananView
+        bookingId={detailId}
+        onBack={() => setDetailId(null)}
+        onShowToast={onShowToast}
+      />
+    );
+  }
+
+  // Filter bookings
+  const filtered =
+    activeTab === "semua"
+      ? bookings
+      : bookings.filter((b) => getEffectiveStatus(b) === activeTab);
+
+  // Counts for badges
+  const counts: Record<FilterTab, number> = {
+    semua: bookings.length,
+    menunggu: bookings.filter((b) => getEffectiveStatus(b) === "menunggu").length,
+    disetujui: bookings.filter((b) => getEffectiveStatus(b) === "disetujui").length,
+    ditolak: bookings.filter((b) => getEffectiveStatus(b) === "ditolak").length,
+    dibatalkan: bookings.filter((b) => getEffectiveStatus(b) === "dibatalkan").length,
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8 pb-24">
-      {/* HEADER */}
-      <div className="flex flex-wrap justify-between gap-4 mb-6">
+    <div
+      className="max-w-6xl mx-auto px-4 py-8 pb-28"
+      style={{ background: "#faf8ff", minHeight: "100vh" }}
+    >
+      {/* ── HEADER ── */}
+      <div className="flex flex-wrap justify-between items-start gap-4 mb-6">
         <div>
-          <p className="text-sm text-[#003466] font-semibold">
+          <p className="text-xs font-semibold text-[#855300] uppercase tracking-widest mb-1">
             Ruang Penyewa
           </p>
-
-          <h1 className="text-3xl font-bold mt-1">
-            Pesanan Saya
-          </h1>
-
-          <p className="text-[#424750] mt-2">
+          <h1 className="text-3xl font-bold text-[#131b2e]">Pesanan Saya</h1>
+          <p className="text-sm text-[#424750] mt-1">
             Pantau pengajuan dan riwayat sewa milik {user.nama}.
           </p>
         </div>
-
         <button
           onClick={onExplore}
-          className="self-center bg-[#003466] hover:bg-[#004785] text-white px-4 py-3 rounded-xl text-sm font-semibold transition-colors"
+          className="self-center flex items-center gap-2 bg-[#003466] hover:bg-[#004785] text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors"
         >
-          Cari lapak
+          <span className="material-symbols-outlined text-[18px]">search</span>
+          Cari Lapak
         </button>
       </div>
 
-      {/* SUMMARY */}
+      {/* ── SUMMARY CARDS ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <div className="bg-white border border-[#e2e7ff] rounded-xl p-4">
-          <p className="text-xs text-[#737781]">Total Pesanan</p>
-          <p className="text-2xl font-bold text-[#003466] mt-1">
-            {bookings.length}
-          </p>
-        </div>
-
-        <div className="bg-white border border-[#e2e7ff] rounded-xl p-4">
-          <p className="text-xs text-[#737781]">Menunggu</p>
-          <p className="text-2xl font-bold text-amber-600 mt-1">
-            {bookings.filter((b) => b.statusVerifikasi === "menunggu").length}
-          </p>
-        </div>
-
-        <div className="bg-white border border-[#e2e7ff] rounded-xl p-4">
-          <p className="text-xs text-[#737781]">Berhasil</p>
-          <p className="text-2xl font-bold text-green-600 mt-1">
-            {bookings.filter((b) => b.statusVerifikasi === "disetujui").length}
-          </p>
-        </div>
-
-        <div className="bg-white border border-[#e2e7ff] rounded-xl p-4">
-          <p className="text-xs text-[#737781]">Ditolak</p>
-          <p className="text-2xl font-bold text-red-600 mt-1">
-            {bookings.filter((b) => b.statusVerifikasi === "ditolak").length}
-          </p>
-        </div>
+        <SummaryCard
+          label="Total Pesanan"
+          value={bookings.length}
+          icon="receipt_long"
+          color="text-[#003466]"
+        />
+        <SummaryCard
+          label="Menunggu"
+          value={counts.menunggu}
+          icon="schedule"
+          color="text-amber-600"
+        />
+        <SummaryCard
+          label="Disetujui"
+          value={counts.disetujui}
+          icon="check_circle"
+          color="text-emerald-600"
+        />
+        <SummaryCard
+          label="Ditolak"
+          value={counts.ditolak + counts.dibatalkan}
+          icon="cancel"
+          color="text-red-500"
+        />
       </div>
 
-      {/* EMPTY STATE */}
-      {!bookings.length && (
-        <div className="p-10 text-center bg-white rounded-2xl border border-[#e2e7ff]">
-          <div className="text-4xl mb-3">📋</div>
+      {/* ── FILTER TABS ── */}
+      {bookings.length > 0 && (
+        <div className="flex gap-1.5 flex-wrap mb-6">
+          {TABS.map((tab) => {
+            const active = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-all border ${
+                  active
+                    ? "bg-[#003466] text-white border-[#003466] shadow-sm"
+                    : "bg-white text-[#424750] border-[#e2e7ff] hover:border-[#003466] hover:text-[#003466]"
+                }`}
+              >
+                {tab.label}
+                {counts[tab.key] > 0 && (
+                  <span
+                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center ${
+                      active
+                        ? "bg-white/20 text-white"
+                        : "bg-[#eef0ff] text-[#003466]"
+                    }`}
+                  >
+                    {counts[tab.key]}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
-          <h2 className="font-bold text-lg">
-            Belum ada pesanan
-          </h2>
-
-          <p className="text-sm text-[#737781] mt-2">
-            Temukan lapak dan ajukan sewa pertama Anda.
+      {/* ── EMPTY STATE ── */}
+      {bookings.length === 0 && (
+        <div className="bg-white rounded-2xl border border-[#e2e7ff] p-12 text-center">
+          <div className="w-16 h-16 rounded-full bg-[#eef0ff] flex items-center justify-center mx-auto mb-4">
+            <span className="material-symbols-outlined text-4xl text-[#003466]">
+              receipt_long
+            </span>
+          </div>
+          <h2 className="font-bold text-lg text-[#131b2e]">Belum ada pesanan</h2>
+          <p className="text-sm text-[#737781] mt-2 max-w-xs mx-auto">
+            Temukan lapak yang sesuai dan ajukan sewa pertama kamu di Ngelapak.
           </p>
-
           <button
             onClick={onExplore}
-            className="mt-5 bg-[#003466] hover:bg-[#004785] text-white px-5 py-3 rounded-xl text-sm font-semibold transition-colors"
+            className="mt-6 inline-flex items-center gap-2 bg-[#003466] hover:bg-[#004785] text-white px-6 py-3 rounded-xl text-sm font-semibold transition-colors"
           >
-            Jelajahi lapak
+            <span className="material-symbols-outlined text-[18px]">explore</span>
+            Jelajahi Lapak
           </button>
         </div>
       )}
 
-      {/* BOOKING LIST */}
-      <div className="space-y-4">
-        {bookings.map((booking) => (
-          <article
-            key={booking.id}
-            className="bg-white rounded-2xl border border-[#e2e7ff] p-5 hover:shadow-sm transition-shadow"
-          >
-            <div className="flex flex-wrap justify-between gap-3">
-              <div>
-                <p className="text-xs text-[#737781]">
-                  Kode pesanan
-                </p>
-
-                <p className="font-semibold text-sm mt-1 break-all">
-                  {booking.id}
-                </p>
-              </div>
-
-              <span
-                className={`h-fit text-xs rounded-full px-3 py-1.5 font-semibold border ${getVerificationStyle(
-                  booking.status === "dibatalkan" ? "ditolak" : booking.statusVerifikasi,
-                )}`}
-              >
-                {booking.status === "dibatalkan" ? "Dibatalkan" : getVerificationLabel(booking.statusVerifikasi)}
-              </span>
-            </div>
-
-            <div className="border-t border-[#eef0f5] my-4" />
-
-            <div className="flex flex-wrap justify-between gap-4">
-              <div>
-                <h2 className="font-bold text-lg">
-                  {booking.spotNama}
-                </h2>
-
-                <p className="text-sm text-[#737781] mt-1">
-                  Kode lapak: {booking.spotKode}
-                </p>
-
-                <p className="text-sm mt-3">
-                  {formatDate(booking.tanggalMulai)} –{" "}
-                  {formatDate(booking.tanggalSelesai)}
-                </p>
-
-                <p className="text-sm text-[#424750] mt-1">
-                  {booking.jumlahHari} hari · {booking.jenisUsaha}
-                </p>
-              </div>
-
-              <div className="sm:text-right">
-                <p className="text-xs text-[#737781]">
-                  Total pembayaran
-                </p>
-
-                <p className="font-bold text-xl text-[#003466] mt-1">
-                  {formatRupiah(booking.totalBayar)}
-                </p>
-
-                <p className="text-xs text-[#737781] mt-1">
-                  {booking.metodePembayaran}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap justify-between items-center gap-3 mt-5 pt-4 border-t border-[#eef0f5]">
-              <span
-                className={`text-xs font-semibold px-3 py-1.5 rounded-full ${getBookingStatusStyle(
-                  booking.status,
-                )}`}
-              >
-                Status: {getBookingStatusLabel(booking.status)}
-              </span>
-
-              <div className="flex items-center gap-4">
-                {canCancel(booking) && (
-                  <button
-                    onClick={() => setCancelTarget(booking)}
-                    className="text-sm font-semibold text-red-700 hover:text-red-900 transition-colors"
-                  >
-                    Batalkan pesanan
-                  </button>
-                )}
-                <button
-                  onClick={() => setSelectedBooking(booking)}
-                  className="text-sm font-semibold text-[#003466] hover:text-[#0061a8] transition-colors"
-                >
-                  Lihat detail →
-                </button>
-              </div>
-            </div>
-          </article>
-        ))}
-      </div>
-
-      {/* RECEIPT DETAIL MODAL */}
-      {selectedBooking && (
-        <div
-          className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4"
-          onClick={() => setSelectedBooking(null)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="receipt-title"
-            className="bg-white w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl shadow-xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            {/* MODAL HEADER */}
-            <div className="bg-[#003466] text-white p-5 rounded-t-2xl flex justify-between items-start gap-3">
-              <div>
-                <p className="text-xs text-blue-200 font-medium">
-                  NGELAPAK · BUKTI PESANAN
-                </p>
-
-                <h2
-                  id="receipt-title"
-                  className="text-xl font-bold mt-1"
-                >
-                  Detail Pesanan
-                </h2>
-
-                <p className="text-xs text-blue-100 mt-2 break-all">
-                  {selectedBooking.id}
-                </p>
-              </div>
-
-              <button
-                onClick={() => setSelectedBooking(null)}
-                aria-label="Tutup detail pesanan"
-                className="text-white hover:bg-white/15 rounded-lg p-2 transition-colors"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-5 space-y-5">
-              {/* VERIFICATION STATUS */}
-              <div className="flex flex-wrap justify-between items-center gap-2">
-                <span className="text-sm font-semibold">
-                  Status verifikasi
-                </span>
-
-                <span
-                  className={`text-xs rounded-full px-3 py-1.5 font-semibold border ${getVerificationStyle(
-                    selectedBooking.status === "dibatalkan" ? "ditolak" : selectedBooking.statusVerifikasi,
-                  )}`}
-                >
-                  {selectedBooking.status === "dibatalkan"
-                    ? "Dibatalkan"
-                    : getVerificationLabel(selectedBooking.statusVerifikasi)}
-                </span>
-              </div>
-
-              {/* TENANT INFORMATION */}
-              <section>
-                <h3 className="font-bold text-sm mb-3">
-                  Informasi Penyewa
-                </h3>
-
-                <div className="bg-[#f7f9fc] rounded-xl p-4 space-y-2 text-sm">
-                  <DetailRow
-                    label="Nama"
-                    value={selectedBooking.penyewa.nama}
-                  />
-
-                  <DetailRow
-                    label="NIM"
-                    value={selectedBooking.penyewa.nim || "-"}
-                  />
-
-                  <DetailRow
-                    label="Fakultas"
-                    value={selectedBooking.penyewa.fakultas || "-"}
-                  />
-
-                  <DetailRow
-                    label="Email"
-                    value={selectedBooking.penyewa.email}
-                  />
-
-                  <DetailRow
-                    label="Telepon"
-                    value={selectedBooking.penyewa.telepon || "-"}
-                  />
-                </div>
-              </section>
-
-              {/* SPOT INFORMATION */}
-              <section>
-                <h3 className="font-bold text-sm mb-3">
-                  Informasi Lapak
-                </h3>
-
-                <div className="bg-[#f7f9fc] rounded-xl p-4 space-y-2 text-sm">
-                  <DetailRow
-                    label="Nama lapak"
-                    value={selectedBooking.spotNama}
-                  />
-
-                  <DetailRow
-                    label="Kode lapak"
-                    value={selectedBooking.spotKode}
-                  />
-
-                  <DetailRow
-                    label="Jenis usaha"
-                    value={selectedBooking.jenisUsaha}
-                  />
-                </div>
-              </section>
-
-              {/* RENTAL PERIOD */}
-              <section>
-                <h3 className="font-bold text-sm mb-3">
-                  Periode Penyewaan
-                </h3>
-
-                <div className="bg-[#f7f9fc] rounded-xl p-4 space-y-2 text-sm">
-                  <DetailRow
-                    label="Tanggal mulai"
-                    value={formatDate(selectedBooking.tanggalMulai)}
-                  />
-
-                  <DetailRow
-                    label="Tanggal selesai"
-                    value={formatDate(selectedBooking.tanggalSelesai)}
-                  />
-
-                  <DetailRow
-                    label="Durasi"
-                    value={`${selectedBooking.jumlahHari} hari`}
-                  />
-                </div>
-              </section>
-
-              {/* PAYMENT INFORMATION */}
-              <section>
-                <h3 className="font-bold text-sm mb-3">
-                  Informasi Pembayaran
-                </h3>
-
-                <div className="bg-[#f7f9fc] rounded-xl p-4 space-y-2 text-sm">
-                  <DetailRow
-                    label="Metode pembayaran"
-                    value={selectedBooking.metodePembayaran}
-                  />
-
-                  <DetailRow
-                    label="Total pembayaran"
-                    value={formatRupiah(selectedBooking.totalBayar)}
-                  />
-
-                  <DetailRow
-                    label="Tanggal pemesanan"
-                    value={formatCreatedAt(selectedBooking.createdAt)}
-                  />
-                </div>
-              </section>
-
-              {/* NOTES */}
-              {selectedBooking.catatan && (
-                <section>
-                  <h3 className="font-bold text-sm mb-2">
-                    Catatan Penyewa
-                  </h3>
-
-                  <p className="text-sm text-[#424750] bg-[#f7f9fc] rounded-xl p-4">
-                    {selectedBooking.catatan}
-                  </p>
-                </section>
-              )}
-
-              {/* FOOTER STATUS */}
-              <div className="border-t border-dashed border-[#d5dbea] pt-4">
-                <p className="text-xs text-[#737781] text-center">
-                  Dokumen ini merupakan detail transaksi dari sistem
-                  demonstrasi Ngelapak.
-                </p>
-              </div>
-
-              <button
-                onClick={() => setSelectedBooking(null)}
-                className="w-full bg-[#003466] hover:bg-[#004785] text-white rounded-xl py-3 font-semibold text-sm transition-colors"
-              >
-                Tutup
-              </button>
-            </div>
-          </div>
+      {/* ── FILTERED EMPTY ── */}
+      {bookings.length > 0 && filtered.length === 0 && (
+        <div className="bg-white rounded-2xl border border-dashed border-[#c5cbe0] p-10 text-center">
+          <span className="material-symbols-outlined text-3xl text-[#c5cbe0]">
+            filter_list_off
+          </span>
+          <p className="text-sm text-[#737781] mt-2">
+            Tidak ada pesanan dengan status ini.
+          </p>
         </div>
       )}
 
-      {cancelTarget && (
-        <div
-          className="fixed inset-0 z-[110] bg-black/50 flex items-center justify-center p-4"
-          onClick={() => setCancelTarget(null)}
-        >
-          <section
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="cancel-booking-title"
-            className="bg-white w-full max-w-md rounded-2xl shadow-xl p-6"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h2 id="cancel-booking-title" className="text-lg font-bold">
-              Batalkan pesanan?
-            </h2>
-            <p className="text-sm text-[#424750] mt-2">
-              Pesanan untuk <strong>{cancelTarget.spotNama}</strong> pada {formatDate(cancelTarget.tanggalMulai)} akan dibatalkan. Lapak dapat dipesan kembali untuk tanggal tersebut.
-            </p>
-            <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => setCancelTarget(null)}
-                className="px-4 py-2 rounded-lg border border-[#d5dbea] text-sm font-semibold"
-              >
-                Kembali
-              </button>
-              <button
-                onClick={confirmCancellation}
-                className="px-4 py-2 rounded-lg bg-red-700 hover:bg-red-800 text-white text-sm font-semibold"
-              >
-                Ya, batalkan
-              </button>
-            </div>
-          </section>
+      {/* ── BOOKING GRID ── */}
+      {filtered.length > 0 && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {filtered.map((booking) => (
+            <BookingCard
+              key={booking.id}
+              booking={booking}
+              onViewDetail={setDetailId}
+            />
+          ))}
         </div>
       )}
     </div>
@@ -526,25 +488,31 @@ export default function PesananView({
 }
 
 // ============================================================
-// REUSABLE DETAIL ROW
+// SUMMARY CARD
 // ============================================================
 
-function DetailRow({
+function SummaryCard({
   label,
   value,
+  icon,
+  color,
 }: {
   label: string;
-  value: string;
+  value: number;
+  icon: string;
+  color: string;
 }) {
   return (
-    <div className="flex justify-between items-start gap-4">
-      <span className="text-[#737781] shrink-0">
-        {label}
-      </span>
-
-      <span className="text-right font-medium break-all">
-        {value}
-      </span>
+    <div className="bg-white border border-[#e2e7ff] rounded-2xl p-4 flex items-start gap-3">
+      <div className="w-9 h-9 rounded-xl bg-[#f0f2ff] flex items-center justify-center shrink-0">
+        <span className={`material-symbols-outlined text-[20px] ${color}`}>
+          {icon}
+        </span>
+      </div>
+      <div>
+        <p className="text-xs text-[#737781] leading-tight">{label}</p>
+        <p className={`text-2xl font-bold mt-0.5 ${color}`}>{value}</p>
+      </div>
     </div>
   );
 }

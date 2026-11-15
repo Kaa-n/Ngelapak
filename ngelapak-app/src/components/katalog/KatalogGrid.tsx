@@ -107,11 +107,10 @@ export default function KatalogGrid({
                 key={i}
                 type="button"
                 onClick={() => onPageChange(i + 1)}
-                className={`h-9 w-9 flex items-center justify-center rounded-lg text-[13px] font-semibold transition-colors ${
-                  currentPage === i + 1
-                    ? "bg-[#003466] text-white shadow-sm"
-                    : "bg-white text-[#424750] hover:bg-[#eaedff] border border-[#e2e7ff]"
-                }`}
+                className={`h-9 w-9 flex items-center justify-center rounded-lg text-[13px] font-semibold transition-colors ${currentPage === i + 1
+                  ? "bg-[#003466] text-white shadow-sm"
+                  : "bg-white text-[#424750] hover:bg-[#eaedff] border border-[#e2e7ff]"
+                  }`}
               >
                 {i + 1}
               </button>

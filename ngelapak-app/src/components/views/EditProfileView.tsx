@@ -1,51 +1,79 @@
-
 "use client";
 
 import { useState, type FormEvent } from "react";
 import type { DemoUser, ToastMessage } from "@/lib/types";
 import { updateDemoProfile } from "@/lib/demo-store";
+import {
+  updateCurrentSupabaseProfile,
+  type SupabaseProfile,
+} from "@/lib/supabase/auth";
 
 interface EditProfileViewProps {
-  user: DemoUser;
+  user: DemoUser | SupabaseProfile;
   onBack: () => void;
   onShowToast: (toast: Omit<ToastMessage, "id">) => void;
+  onProfileUpdated?: (profile: SupabaseProfile) => void;
 }
 
 export default function EditProfileView({
   user,
   onBack,
   onShowToast,
+  onProfileUpdated,
 }: EditProfileViewProps) {
   const [nama, setNama] = useState(user.nama);
   const [email, setEmail] = useState(user.email);
+  const [nim, setNim] = useState(user.nim ?? "");
+  const [fakultas, setFakultas] = useState(user.fakultas ?? "");
+  const [telepon, setTelepon] = useState(user.telepon ?? "");
   const [loading, setLoading] = useState(false);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  const isDemoUser = user.id === "ayu" || user.id === "bayu" || user.id === "admin";
 
-    try {
-      setLoading(true);
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  event.preventDefault();
 
-      updateDemoProfile({ nama, email });
+  try {
+    setLoading(true);
 
-      onShowToast({
-        type: "success",
-        message: "Profil berhasil diperbarui",
-        description: "Nama dan email akun kamu sudah disimpan.",
+    if (isDemoUser) {
+      updateDemoProfile({
+        nama,
+        email: user.email,
+        nim,
+        fakultas,
+        telepon,
       });
-    } catch (error) {
-      onShowToast({
-        type: "error",
-        message: "Gagal memperbarui profil",
-        description:
-          error instanceof Error
-            ? error.message
-            : "Terjadi kesalahan saat menyimpan profil.",
+
+    } else {
+      const updatedProfile = await updateCurrentSupabaseProfile({
+        nama,
+        nim,
+        fakultas,
+        telepon,
       });
-    } finally {
-      setLoading(false);
+
+      onProfileUpdated?.(updatedProfile);
     }
+
+    onShowToast({
+      type: "success",
+      message: "Profil berhasil diperbarui",
+      description: "Informasi profil kamu sudah berhasil disimpan.",
+    });
+  } catch (error) {
+    onShowToast({
+      type: "error",
+      message: "Gagal memperbarui profil",
+      description:
+        error instanceof Error
+          ? error.message
+          : "Terjadi kesalahan saat menyimpan profil.",
+    });
+  } finally {
+    setLoading(false);
   }
+}
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-10 pb-24">
@@ -82,7 +110,8 @@ export default function EditProfileView({
           <div>
             <p className="font-bold text-[#172033]">{user.nama}</p>
             <p className="text-sm text-[#737781]">
-              {user.role === "admin" ? "Admin" : "Penyewa"} · Akun Demo
+              {user.role === "admin" ? "Admin" : "Penyewa"} ·{" "}
+              {isDemoUser ? "Akun Demo" : "Akun Terdaftar"}
             </p>
           </div>
         </div>
@@ -114,14 +143,67 @@ export default function EditProfileView({
             >
               Alamat Email
             </label>
-            <input
+           <input
               id="profile-email"
               type="email"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              readOnly
+              className="w-full border border-[#d8deeb] rounded-xl px-4 py-3 bg-[#f4f6ff] text-[#737781] cursor-not-allowed outline-none"
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="profile-nim"
+              className="block text-sm font-semibold text-[#172033] mb-2"
+            >
+              NIM / NIK
+            </label>
+            <input
+              id="profile-nim"
+              type="text"
+              value={nim}
+              onChange={(event) => setNim(event.target.value)}
               required
-              maxLength={150}
-              placeholder="Masukkan alamat email"
+              maxLength={30}
+              placeholder="Masukkan NIM atau NIK"
+              className="w-full border border-[#d8deeb] rounded-xl px-4 py-3 outline-none focus:border-[#003466] focus:ring-2 focus:ring-[#003466]/10"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="profile-fakultas"
+              className="block text-sm font-semibold text-[#172033] mb-2"
+            >
+              Fakultas
+            </label>
+            <input
+              id="profile-fakultas"
+              type="text"
+              value={fakultas}
+              onChange={(event) => setFakultas(event.target.value)}
+              required
+              maxLength={100}
+              placeholder="Masukkan fakultas"
+              className="w-full border border-[#d8deeb] rounded-xl px-4 py-3 outline-none focus:border-[#003466] focus:ring-2 focus:ring-[#003466]/10"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="profile-telepon"
+              className="block text-sm font-semibold text-[#172033] mb-2"
+            >
+              Nomor Telepon / WhatsApp
+            </label>
+            <input
+              id="profile-telepon"
+              type="tel"
+              value={telepon}
+              onChange={(event) => setTelepon(event.target.value)}
+              required
+              maxLength={20}
+              placeholder="Contoh: 081234567890"
               className="w-full border border-[#d8deeb] rounded-xl px-4 py-3 outline-none focus:border-[#003466] focus:ring-2 focus:ring-[#003466]/10"
             />
           </div>

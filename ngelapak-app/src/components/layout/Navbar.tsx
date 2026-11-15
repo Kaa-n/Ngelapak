@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { navigationFor, type DemoUser, type PageView } from "@/lib/types";
+import type { SupabaseProfile } from "@/lib/supabase/auth";
 
 interface NavbarProps {
   currentView: PageView;
   onNavigate: (view: PageView) => void;
-  user: DemoUser | null;
+  user: DemoUser | SupabaseProfile | null;
   onLogout: () => void;
 }
 
@@ -26,6 +27,11 @@ export default function Navbar({
   function handleLogout() {
     setProfileMenuOpen(false);
     onLogout();
+  }
+  
+  function handleHelpCenterNavigate() {
+  setProfileMenuOpen(false);
+  onNavigate("help-center");
   }
 
   return (
@@ -83,7 +89,8 @@ export default function Navbar({
                     {user.nama}
                   </p>
                   <p className="text-xs text-[#855300]">
-                    {user.role === "admin" ? "Admin" : "Penyewa"} · Demo
+                    {user.role === "admin" ? "Admin" : "Penyewa"} ·{" "}
+                    {"nim" in user ? "Pengguna" : "Akun Demo"}
                   </p>
                 </div>
 
@@ -121,7 +128,17 @@ export default function Navbar({
                     </span>
                     Edit Profile
                   </button>
-
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleHelpCenterNavigate}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-[#172033] hover:bg-[#f4f6ff] text-left"
+                  >
+                    <span className="material-symbols-outlined text-lg text-[#003466]">
+                      help
+                    </span>
+                    Pusat Bantuan & FAQ
+                  </button>
                   <button
                     type="button"
                     role="menuitem"
