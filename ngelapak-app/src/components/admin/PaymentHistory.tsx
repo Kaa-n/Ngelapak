@@ -9,6 +9,7 @@ export type PaymentHistoryRow = {
   id: string; spot: string; tenant: string; amount: number | null; status: string;
   providerStatus?: string | null; reference?: string | null; paidAt?: string | null;
   method?: string | null; legacyReview?: boolean;
+  refundState?: "processing" | "completed";
 };
 
 export default function PaymentHistory({ rows, total }: { rows: PaymentHistoryRow[]; total: number }) {
@@ -27,6 +28,11 @@ export default function PaymentHistory({ rows, total }: { rows: PaymentHistoryRo
                     <p className="mt-1 break-words text-xs text-[#424750]">{row.id} · {row.method === "midtrans" ? "Midtrans" : row.method || "Transfer manual"}</p>
                     {row.paidAt && <p className="mt-1 text-xs text-[#424750]">Dikonfirmasi {formatRentalTime(Date.parse(row.paidAt))}</p>}
                     {row.reference && <p className="mt-1 break-words text-xs text-[#424750]">ID Midtrans {row.reference}</p>}
+                    {row.refundState && (
+                      <p className="mt-1 text-xs text-[#424750]">
+                        {row.refundState === "completed" ? "Refund selesai" : "Refund sedang diproses"}
+                      </p>
+                    )}
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
                     {row.amount != null && <span className="font-semibold tabular-nums">{currency.format(row.amount)}</span>}

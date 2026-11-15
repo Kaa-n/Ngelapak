@@ -20,6 +20,18 @@ async function HistoryData({ searchParams }: PageProps) {
     .select("*", { count: "exact" }).order("created_at", { ascending: false }).order("id").range(offset, offset + 24);
   if (error) throw new Error("Riwayat pembayaran gagal dimuat.");
 
+  const canceledPaidIds = data.filter((booking) => booking.status === "dibatalkan" && booking.status_verifikasi === "disetujui")
+    .map((booking) => booking.id);
+  const refunds = new Map<string, "processing" | "completed">();
+  if (canceledPaidIds.length) {
+    const { data: requests, error: refundError } = await supabase.from("cancellations")
+      .select("booking_id, bukti_refund").in("booking_id", canceledPaidIds).eq("status", "disetujui");
+    if (refundError) throw new Error("Status refund gagal dimuat.");
+    for (const request of requests) {
+      refunds.set(request.booking_id, request.bukti_refund ? "completed" : "processing");
+    }
+  }
+
   return (
     <>
       <PaymentHistory total={count ?? 0} rows={data.map((booking) => ({
@@ -27,6 +39,7 @@ async function HistoryData({ searchParams }: PageProps) {
         amount: booking.total_bayar, status: booking.status_verifikasi, providerStatus: booking.midtrans_status,
         reference: booking.midtrans_transaction_id, paidAt: booking.verified_at, method: booking.metode_pembayaran,
         legacyReview: booking.metode_pembayaran !== "midtrans" && booking.status === "menunggu" && booking.status_verifikasi === "menunggu",
+        refundState: refunds.get(booking.id),
       }))} />
       <nav aria-label="Halaman pembayaran" className="flex flex-wrap gap-3">
         {current > 1 && <Link className={actionLinkClass} href={`?page=${current - 1}`}>Sebelumnya</Link>}

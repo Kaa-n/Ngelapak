@@ -25,21 +25,14 @@ export default function AdminShell({ name, basePath, accountAction, children }: 
               <span className="hidden text-[10px] font-medium text-[#424750] sm:block">Universitas Udayana</span>
             </span>
           </Link>
-          <AdminNav basePath={basePath} mobile />
-          <div className="flex shrink-0 items-center gap-2 lg:ml-auto">
+          <AdminNav basePath={basePath} />
+          <div className="flex shrink-0 items-center gap-2">
             <span className="hidden max-w-20 truncate text-sm font-semibold text-[#283044] lg:block xl:max-w-40" title={name}>{name}</span>
             {accountAction}
           </div>
         </div>
       </header>
-      <div className="mx-auto flex w-full max-w-7xl flex-1 lg:px-6">
-        <aside className="hidden w-56 shrink-0 border-r border-[#e2e7ff] bg-white lg:block">
-          <div className="sticky top-16 p-3 pt-7">
-            <AdminNav basePath={basePath} />
-          </div>
-        </aside>
-        <main className="min-w-0 flex-1 space-y-6 px-4 py-7 sm:px-6 sm:py-9 lg:pr-0">{children}</main>
-      </div>
+      <main className="mx-auto w-full max-w-7xl min-w-0 flex-1 space-y-6 px-4 py-7 sm:px-6 sm:py-9">{children}</main>
       <Footer />
     </div>
   );

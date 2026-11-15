@@ -105,6 +105,9 @@ export function DemoPayments() {
     id: booking.id, spot: booking.spotNama, tenant: booking.penyewa.nama,
     amount: booking.totalBayar, status: booking.statusVerifikasi, providerStatus: booking.paymentStatus,
     method: "midtrans", paidAt: booking.paidAt,
+    refundState: booking.pembatalan?.status === "disetujui"
+      ? (booking.pembatalan.refundCompleted ? "completed" : "processing")
+      : undefined,
   }))} />;
 }
 
