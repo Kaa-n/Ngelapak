@@ -68,22 +68,72 @@ function read(key: string, session = false) {
   }
 }
 
+const sampleCancellations = [
+  { id: "DEMO-R01", ownerId: "ayu", status: "menunggu", alasan: "Jadwal kegiatan kampus berubah." },
+  { id: "DEMO-R02", ownerId: "bayu", status: "disetujui", alasan: "Jadwal tim usaha bentrok dengan perkuliahan." },
+] as const;
+
+function withSampleCancellations(bookings: Booking[], now: number): Booking[] {
+  const examples = sampleCancellations.flatMap(({ id, ownerId, status, alasan }) => {
+    if (bookings.some((booking) => booking.id === id)) return [];
+    const sample = MOCK_BOOKINGS.find((booking) => booking.ownerId === ownerId);
+    if (!sample) return [];
+    const nextFreeDay = bookings.reduce((date, existing) => {
+      if (existing.spotId !== sample.spotId || existing.status === "dibatalkan" ||
+          existing.statusVerifikasi === "ditolak") return date;
+      const end = Date.parse(existing.tanggalSelesai + "T00:00:00Z");
+      return Number.isFinite(end) ? Math.max(date, end + CANCELLATION_WINDOW_MS) : date;
+    }, now + 14 * CANCELLATION_WINDOW_MS);
+    const start = new Date(nextFreeDay).toISOString().slice(0, 10);
+    const paidAt = new Date(now - PAYMENT_WINDOW_MS).toISOString();
+    const booking: Booking = {
+      ...sample,
+      id,
+      tanggalMulai: start,
+      tanggalSelesai: start,
+      jumlahHari: 1,
+      totalBayar: sample.totalBayar / sample.jumlahHari,
+      createdAt: paidAt,
+      paidAt,
+      metodePembayaran: "midtrans",
+      status: status === "menunggu" ? "aktif" : "dibatalkan",
+      statusVerifikasi: "disetujui",
+      paymentStatus: "settlement",
+      pembatalan: {
+        nama: sample.penyewa.nama,
+        nim: sample.penyewa.nim,
+        telepon: sample.penyewa.telepon,
+        bank: "Bank Demo",
+        nomorRekening: "000002048",
+        namaRekening: sample.penyewa.nama,
+        alasan,
+        diajukanPada: new Date(now).toISOString(),
+        status,
+        refundCompleted: status === "disetujui",
+      },
+    };
+    return [booking];
+  });
+  return [...bookings, ...examples];
+}
+
 function parseBookings(raw: string): Booking[] {
+  const now = Date.now();
   try {
     const data = JSON.parse(raw);
 
     if (Array.isArray(data)) {
-      const now = Date.now();
-      return data.map((booking: Booking) =>
+      const bookings = data.map((booking: Booking): Booking =>
         booking.status === "menunggu" && booking.paymentExpiresAt && Date.parse(booking.paymentExpiresAt) <= now
           ? { ...booking, status: "dibatalkan", statusVerifikasi: "ditolak", paymentStatus: "expire" }
           : booking);
+      return withSampleCancellations(bookings, now);
     }
   } catch {
     // Use fixtures on first visit.
   }
 
-  return MOCK_BOOKINGS;
+  return withSampleCancellations(MOCK_BOOKINGS, now);
 }
 
 function currentUser() {
@@ -164,11 +214,9 @@ export function useDemo() {
     (user) => user.id === userId,
   ) ?? null;
 
-  const all = parseBookings(raw);
-
   return {
     user,
-    bookings: visibleBookings(user, all),
+    bookings: user ? visibleBookings(user, parseBookings(raw)) : [],
   };
 }
 
@@ -554,7 +602,7 @@ export function verifyDemoBooking(
   );
 }
 
-export function reviewDemoCancellation(id: string, decision: "disetujui" | "ditolak" | "refund") {
+export function reviewDemoCancellation(id: string, decision: "disetujui" | "ditolak" | "refund", note = "") {
   requireRole("admin");
   const bookings = parseBookings(read(BOOKINGS));
   const booking = bookings.find((entry) => entry.id === id);
@@ -567,9 +615,18 @@ export function reviewDemoCancellation(id: string, decision: "disetujui" | "dito
   if (decision === "disetujui" && Date.now() >= rentalStart(booking.tanggalMulai)) {
     throw new Error("Pembatalan hanya dapat disetujui sebelum sewa mulai.");
   }
+  const adminNote = note.trim();
+  if (decision === "ditolak" && (!adminNote || adminNote.length > 1000)) {
+    throw new Error("Isi catatan penolakan maksimal 1.000 karakter.");
+  }
   save(bookings.map((item) => item.id === id ? {
     ...item,
     status: decision === "disetujui" ? "dibatalkan" : item.status,
-    pembatalan: { ...request, status: decision === "refund" ? "disetujui" : decision, refundCompleted: decision === "refund" },
+    pembatalan: {
+      ...request,
+      status: decision === "refund" ? "disetujui" : decision,
+      refundCompleted: decision === "refund",
+      adminNote: decision === "ditolak" ? adminNote : request.adminNote,
+    },
   } : item));
 }

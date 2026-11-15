@@ -92,6 +92,7 @@ export interface Booking {
     diajukanPada: string;
     status?: TransactionStatus;
     refundCompleted?: boolean;
+    adminNote?: string;
   };
 }
 

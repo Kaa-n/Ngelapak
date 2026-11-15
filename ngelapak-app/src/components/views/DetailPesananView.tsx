@@ -730,6 +730,7 @@ export default function DetailPesananView({
             value={booking.pembatalan.namaRekening}
           />
           <DetailRow label="Alasan" value={booking.pembatalan.alasan} />
+          {booking.pembatalan.adminNote && <DetailRow label="Catatan admin" value={booking.pembatalan.adminNote} />}
           <DetailRow
             label="Diajukan pada"
             value={formatDateTime(booking.pembatalan.diajukanPada)}

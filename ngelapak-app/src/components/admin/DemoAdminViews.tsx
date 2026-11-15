@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import AdminDashboard, { type RentalMetrics } from "@/components/admin/AdminDashboard";
-import { AdminHeading, StatusPill } from "@/components/admin/AdminPresentation";
-import { actionLinkClass, panelClass, primaryLinkClass } from "@/components/admin/styles";
+import { AdminEmptyState, AdminHeading, StatusPill } from "@/components/admin/AdminPresentation";
+import { actionLinkClass, inputClass, panelClass, primaryLinkClass } from "@/components/admin/styles";
 import { useDemo, reviewDemoCancellation } from "@/lib/demo-store";
 import PaymentHistory from "@/components/admin/PaymentHistory";
 import { MOCK_SPOTS, type Booking } from "@/lib/mock-data";
@@ -12,10 +12,6 @@ import { MOCK_SPOTS, type Booking } from "@/lib/mock-data";
 const currency = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
 const dateFormat = new Intl.DateTimeFormat("en", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Makassar" });
 const weeklyRevenue = [240000, 415000, 375000, 540000, 620000, 460000, 780000, 150000];
-const refunds = [
-  { id: "DEMO-R01", nama: "Ni Kadek Ayu Maharani", lapak: "Spot Rektorat A-01", jumlah: 150000, status: "menunggu", bank: "Bank Mandiri · •••• 2048", alasan: "Jadwal kegiatan kampus berubah." },
-  { id: "DEMO-R02", nama: "I Wayan Bayu Pratama", lapak: "Spot Kuliner Corner B-02", jumlah: 85000, status: "disetujui", bank: "Bank BNI · •••• 3910", alasan: "Jadwal tim usaha bentrok dengan perkuliahan." },
-];
 
 function getDemoMetrics(bookings: Booking[]): RentalMetrics {
   const parts = Object.fromEntries(dateFormat.formatToParts().map(({ type, value }) => [type, value]));
@@ -76,7 +72,7 @@ export function DemoDashboard() {
   return <AdminDashboard
     metrics={user?.role === "admin" ? getDemoMetrics(bookings) : null}
     paymentCount={pendingPayments(bookings).length}
-    refundCount={refunds.filter((item) => item.status === "menunggu").length + bookings.filter((item) => item.pembatalan?.status === "menunggu").length}
+    refundCount={bookings.filter((item) => item.pembatalan?.status === "menunggu").length}
     basePath="/demo/admin"
   />;
 }
@@ -113,49 +109,64 @@ export function DemoPayments() {
 
 export function DemoRefunds() {
   const { bookings } = useDemo();
-  const requests = bookings.filter((item) => item.pembatalan?.status);
-  const [feedback, setFeedback] = useState("");
+  const requests = bookings.flatMap((booking) => {
+    const request = booking.pembatalan;
+    return request?.status ? [{ booking, request, status: request.status }] : [];
+  }).sort((left, right) => Number(right.status === "menunggu") - Number(left.status === "menunggu"));
+  const [feedback, setFeedback] = useState<{ message: string; error?: boolean }>();
 
-  function review(id: string, decision: "disetujui" | "ditolak" | "refund") {
+  function review(id: string, decision: "disetujui" | "ditolak" | "refund", note?: string) {
     try {
-      reviewDemoCancellation(id, decision);
-      setFeedback(decision === "disetujui" ? "Pembatalan disetujui. Jadwal tersedia kembali." :
-        decision === "refund" ? "Refund selesai." : "Pengajuan ditolak.");
+      reviewDemoCancellation(id, decision, note);
+      setFeedback({ message: decision === "disetujui" ? "Pembatalan disetujui. Jadwal tersedia kembali." :
+        decision === "refund" ? "Refund selesai." : "Pengajuan ditolak dan catatan tersimpan." });
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Pengajuan belum bisa diproses.");
+      setFeedback({ message: error instanceof Error ? error.message : "Pengajuan belum bisa diproses.", error: true });
     }
   }
+
+  function reject(event: FormEvent<HTMLFormElement>, id: string) {
+    event.preventDefault();
+    const note = new FormData(event.currentTarget).get("catatan");
+    review(id, "ditolak", typeof note === "string" ? note : "");
+  }
+
   return (
     <>
-      <AdminHeading title="Kelola Pembatalan & Refund" description="Lihat contoh alasan pembatalan, rekening tujuan, dan status refund." />
+      <AdminHeading title="Kelola Pembatalan & Refund" description="Tinjau pengajuan pembatalan dan catat refund simulasi." />
       <section className={`${panelClass} space-y-2`}>
-        <h2 className="mb-4 font-bold text-[#131b2e]">Pengajuan pembatalan ({refunds.length + requests.length})</h2>
-        {feedback && <p role="status" className="py-2 text-sm">{feedback}</p>}
-        {requests.map((booking) => {
-          const request = booking.pembatalan!;
-          return (
-            <DemoRecord key={booking.id} title={booking.penyewa.nama + " · " + booking.spotNama}
-              status={request.status ?? "menunggu"} subtitle={booking.id + " · " + currency.format(booking.totalBayar)}>
-              <p>Alasan: {request.alasan}</p>
-              <p>Rekening tujuan: {request.bank} · {request.nomorRekening}</p>
-              {request.status === "menunggu" && <div className="flex flex-wrap gap-2">
-                <button type="button" className={primaryLinkClass} onClick={() => review(booking.id, "disetujui")}>Setujui pembatalan</button>
-                <button type="button" className={actionLinkClass} onClick={() => review(booking.id, "ditolak")}>Tolak pembatalan</button>
-              </div>}
-              {request.status === "disetujui" && (request.refundCompleted ? <p>Refund selesai.</p> : (
-                <button type="button" className={actionLinkClass} onClick={() => review(booking.id, "refund")}>Catat refund selesai</button>
-              ))}
-            </DemoRecord>
-          );
-        })}
-        {refunds.map((request) => (
-          <DemoRecord key={request.id} title={`${request.nama} · ${request.lapak}`} status={request.status}
-            subtitle={`${request.id} · ${currency.format(request.jumlah)}`}>
+        <h2 className="mb-4 font-bold text-[#131b2e]">Pengajuan pembatalan ({requests.length})</h2>
+        {feedback && <p role={feedback.error ? "alert" : "status"} className="py-2 text-sm">{feedback.message}</p>}
+        {requests.map(({ booking, request, status }) => (
+          <article key={booking.id} className="space-y-3 rounded-xl border border-[#e2e7ff] p-4 text-sm">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h3 className="break-words font-semibold text-[#131b2e]">{booking.penyewa.nama} · {booking.spotNama}</h3>
+                <p className="mt-1 break-words text-xs text-[#424750]">{booking.id} · {currency.format(booking.totalBayar)}</p>
+              </div>
+              <StatusPill status={status} />
+            </div>
             <p>Alasan: {request.alasan}</p>
-            <p>Rekening tujuan: {request.bank}</p>
-            {request.status === "disetujui" && <p>Bukti refund: transfer simulasi tercatat.</p>}
-          </DemoRecord>
+            <p>Rekening tujuan: {request.bank} · {request.nomorRekening}</p>
+            {status === "menunggu" && (
+              <form onSubmit={(event) => reject(event, booking.id)} className="space-y-3 border-t border-[#e2e7ff] pt-3">
+                <label className="grid max-w-lg gap-1">
+                  Catatan untuk penyewa jika ditolak
+                  <textarea name="catatan" rows={2} maxLength={1000} className={inputClass} required />
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className={primaryLinkClass} onClick={() => review(booking.id, "disetujui")}>Setujui pembatalan</button>
+                  <button type="submit" className="rounded-lg bg-red-700 px-4 py-2.5 font-semibold text-white hover:bg-red-800">Tolak pembatalan</button>
+                </div>
+              </form>
+            )}
+            {status === "ditolak" && request.adminNote && <p>Catatan admin: {request.adminNote}</p>}
+            {status === "disetujui" && (request.refundCompleted ? <p>Refund selesai.</p> : (
+              <button type="button" className={actionLinkClass} onClick={() => review(booking.id, "refund")}>Catat refund selesai</button>
+            ))}
+          </article>
         ))}
+        {!requests.length && <AdminEmptyState icon="assignment_return" title="Belum ada pengajuan pembatalan." />}
       </section>
     </>
   );

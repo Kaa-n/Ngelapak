@@ -4,7 +4,7 @@ import ActionForm from "@/components/admin/ActionForm";
 import AdminPageLoading from "@/components/admin/AdminPageLoading";
 import { AdminEmptyState, AdminHeading, StatusPill } from "@/components/admin/AdminPresentation";
 import ProofPreview from "@/components/admin/ProofPreview";
-import { actionLinkClass, inputClass, panelClass } from "@/components/admin/styles";
+import { actionLinkClass, inputClass, panelClass, primaryLinkClass } from "@/components/admin/styles";
 import { requireAdmin } from "@/lib/supabase/admin";
 import { formatRupiah } from "@/lib/mock-data";
 import { getProofPreview } from "@/lib/supabase/proof-preview";
@@ -23,7 +23,7 @@ async function RefundData({ searchParams }: RefundPageProps) {
   const offset = (currentPage - 1) * 25;
   const { data: requests, error, count } = await supabase.from("cancellations")
     .select("id, booking_id, nama, status, diajukan_pada", { count: "exact" })
-    .order("diajukan_pada", { ascending: false }).order("id").range(offset, offset + 24);
+    .order("status", { ascending: false }).order("diajukan_pada", { ascending: false }).order("id").range(offset, offset + 24);
   if (error) throw new Error("Daftar pembatalan gagal dimuat.");
 
   const { data: request, error: requestError } = id
@@ -34,7 +34,8 @@ async function RefundData({ searchParams }: RefundPageProps) {
   const { data: booking, error: bookingError } = request
     ? await supabase.from("bookings").select().eq("id", request.booking_id).maybeSingle()
     : { data: null, error: null };
-  const { data: payment, error: paymentError } = booking
+  const isMidtrans = booking?.metode_pembayaran === "midtrans";
+  const { data: payment, error: paymentError } = booking && !isMidtrans
     ? await supabase.from("payments").select("bukti_url").eq("booking_id", booking.id)
       .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(1).maybeSingle()
     : { data: null, error: null };
@@ -44,7 +45,6 @@ async function RefundData({ searchParams }: RefundPageProps) {
     getProofPreview(supabase, "payment-proofs", payment?.bukti_url || booking?.bukti_bayar || null),
     getProofPreview(supabase, "refund-proofs", request?.bukti_refund || null),
   ]);
-  const isMidtrans = booking?.metode_pembayaran === "midtrans";
   const needsRefund = request?.status === "disetujui" && !request.bukti_refund;
 
   return (
@@ -52,7 +52,7 @@ async function RefundData({ searchParams }: RefundPageProps) {
       <AdminHeading title="Kelola Pembatalan & Refund" description="Tinjau alasan pembatalan, rekening tujuan, dan bukti refund." />
       {id && !request && <p role="status" className={panelClass}>Pengajuan tidak ditemukan.</p>}
       {request && (
-        <div className="grid min-w-0 gap-4 md:grid-cols-2">
+        <div id="tinjau-pengajuan" className="grid min-w-0 scroll-mt-4 gap-4 md:grid-cols-2">
           <section className={`${panelClass} min-w-0 space-y-4`}>
             <h2 className="font-semibold">Detail pengajuan</h2>
             <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
@@ -71,7 +71,8 @@ async function RefundData({ searchParams }: RefundPageProps) {
               ))}
             </dl>
             {request.status === "menunggu" && (
-              <div className="space-y-4 border-t border-[#e2e7ff] pt-4">
+              <section aria-label="Keputusan pembatalan" className="space-y-4 border-t border-[#e2e7ff] pt-4">
+                <h3 className="font-semibold">Keputusan pembatalan</h3>
                 <ActionForm action={reviewCancellation.bind(null, request.id, true)} label="Setujui pembatalan">
                   {isMidtrans ? <p className="text-sm text-[#424750]">Jadwal akan tersedia kembali. Catat bukti transfer setelah refund diproses.</p> :
                   <label className="grid gap-1 text-sm">Bukti refund (JPG, PNG, PDF, maks. 6 MB)
@@ -83,7 +84,7 @@ async function RefundData({ searchParams }: RefundPageProps) {
                     <textarea name="catatan" className={inputClass} rows={3} maxLength={1000} required />
                   </label>
                 </ActionForm>
-              </div>
+              </section>
             )}
             {needsRefund && (
               <ActionForm action={recordRefund.bind(null, request.id)} label="Catat refund selesai">
@@ -115,8 +116,10 @@ async function RefundData({ searchParams }: RefundPageProps) {
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                   <StatusPill status={row.status} />
-                  <Link className={actionLinkClass} href={{ pathname: "/admin/refund", query: { id: row.id, page: currentPage } }}>
-                    Lihat pengajuan <span className="sr-only">pesanan {row.booking_id}</span>
+                  <Link className={row.status === "menunggu" ? primaryLinkClass : actionLinkClass}
+                    href={{ pathname: "/admin/refund", query: { id: row.id, page: currentPage }, hash: "tinjau-pengajuan" }}>
+                    {row.status === "menunggu" ? "Tinjau pengajuan" : "Lihat pengajuan"}
+                    <span className="sr-only">pesanan {row.booking_id}</span>
                   </Link>
                 </div>
               </li>

@@ -13,7 +13,7 @@ export default function AdminShell({ name, basePath, accountAction, children }: 
   children: ReactNode;
 }) {
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-[#faf8ff]">
+    <div className="fixed inset-0 flex min-h-0 flex-col overflow-hidden overscroll-none bg-[#faf8ff]">
       <header className="relative z-30 shrink-0 border-b border-[#e2e7ff] bg-white shadow-sm">
         <div className="mx-auto flex h-16 max-w-7xl items-center gap-2 px-4 sm:gap-3 sm:px-6">
           <Link href={basePath} aria-label="Ngelapak, Dasbor Admin" className="flex shrink-0 items-center gap-2 text-sm font-bold text-[#003466]">
@@ -37,7 +37,7 @@ export default function AdminShell({ name, basePath, accountAction, children }: 
           <AdminNav basePath={basePath} />
         </aside>
         <main aria-label="Konten admin" tabIndex={0}
-          className="min-w-0 flex-1 space-y-6 overflow-y-auto overscroll-y-contain px-4 py-7 focus-visible:-outline-offset-2 focus-visible:outline-[#003466] sm:px-6 sm:py-9 lg:pr-3">
+          className="min-w-0 flex-1 space-y-6 overflow-y-auto overscroll-y-none px-4 py-7 focus-visible:-outline-offset-2 focus-visible:outline-[#003466] sm:px-6 sm:py-9 lg:pr-3">
           {children}
         </main>
       </div>
