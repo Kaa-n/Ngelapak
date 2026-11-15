@@ -13,8 +13,8 @@ export default function AdminShell({ name, basePath, accountAction, children }: 
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen flex-col bg-[#faf8ff]">
-      <header className="sticky top-0 z-30 border-b border-[#e2e7ff] bg-white/95 shadow-sm backdrop-blur-md">
+    <div className="flex h-dvh flex-col overflow-hidden bg-[#faf8ff]">
+      <header className="relative z-30 shrink-0 border-b border-[#e2e7ff] bg-white shadow-sm">
         <div className="mx-auto flex h-16 max-w-7xl items-center gap-2 px-4 sm:gap-3 sm:px-6">
           <Link href={basePath} aria-label="Ngelapak, Dasbor Admin" className="flex shrink-0 items-center gap-2 text-sm font-bold text-[#003466]">
             <span aria-hidden="true" className="grid size-9 place-items-center rounded-lg bg-[#003466] text-white">
@@ -25,15 +25,23 @@ export default function AdminShell({ name, basePath, accountAction, children }: 
               <span className="hidden text-[10px] font-medium text-[#424750] sm:block">Universitas Udayana</span>
             </span>
           </Link>
-          <AdminNav basePath={basePath} />
-          <div className="flex shrink-0 items-center gap-2">
+          <AdminNav basePath={basePath} mobile />
+          <div className="flex shrink-0 items-center gap-2 lg:ml-auto">
             <span className="hidden max-w-20 truncate text-sm font-semibold text-[#283044] lg:block xl:max-w-40" title={name}>{name}</span>
             {accountAction}
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-7xl min-w-0 flex-1 space-y-6 px-4 py-7 sm:px-6 sm:py-9">{children}</main>
-      <Footer />
+      <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 lg:px-6">
+        <aside className="hidden w-56 shrink-0 overflow-y-auto border-r border-[#e2e7ff] bg-white p-3 pt-7 lg:block">
+          <AdminNav basePath={basePath} />
+        </aside>
+        <main aria-label="Konten admin" tabIndex={0}
+          className="min-w-0 flex-1 space-y-6 overflow-y-auto overscroll-y-contain px-4 py-7 focus-visible:-outline-offset-2 focus-visible:outline-[#003466] sm:px-6 sm:py-9 lg:pr-3">
+          {children}
+        </main>
+      </div>
+      <Footer compact />
     </div>
   );
 }
