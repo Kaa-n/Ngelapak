@@ -1,7 +1,8 @@
 import Link from "next/link";
 import ActionForm from "@/components/admin/ActionForm";
+import { AdminEmptyState, AdminHeading, StatusPill } from "@/components/admin/AdminPresentation";
 import ProofPreview from "@/components/admin/ProofPreview";
-import { inputClass, panelClass } from "@/components/admin/styles";
+import { actionLinkClass, inputClass, panelClass } from "@/components/admin/styles";
 import { requireAdmin } from "@/lib/supabase/admin";
 import { getProofPreview } from "@/lib/supabase/proof-preview";
 import { reviewCancellation } from "./actions";
@@ -39,7 +40,7 @@ export default async function RefundPage({ searchParams }: {
 
   return (
     <>
-      <h1 className="text-2xl font-bold text-[#003466]">Kelola Pembatalan & Refund</h1>
+      <AdminHeading title="Kelola Pembatalan & Refund" description="Tinjau alasan pembatalan, rekening tujuan, dan bukti refund." />
       {id && !request && <p role="status" className={panelClass}>Pengajuan tidak ditemukan.</p>}
       {request && (
         <div className="grid min-w-0 gap-4 md:grid-cols-2">
@@ -81,22 +82,25 @@ export default async function RefundPage({ searchParams }: {
         </div>
       )}
       <section className={panelClass}>
-        <h2 className="mb-3 font-semibold">Pengajuan pembatalan ({count ?? 0})</h2>
+        <h2 className="mb-4 font-bold">Pengajuan pembatalan ({count ?? 0})</h2>
         {requests.length ? (
-          <ul className="divide-y divide-[#e2e7ff]">
+          <ul className="space-y-2">
             {requests.map((row) => (
-              <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
-                <div className="min-w-0">
-                  <p className="break-words font-semibold">{row.nama ?? "Penyewa"} · {row.booking_id}</p>
-                  <p className="capitalize text-[#424750]">{row.status}</p>
+              <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#e2e7ff] px-3 py-3 text-sm sm:px-4">
+                <div className="min-w-0 flex-1 basis-52">
+                  <p className="break-words font-semibold">{row.nama ?? "Penyewa"}</p>
+                  <p className="mt-0.5 break-words text-xs text-[#424750]">{row.booking_id}</p>
                 </div>
-                <Link className="font-semibold text-[#003466] underline" href={{ pathname: "/admin/refund", query: { id: row.id, page: currentPage } }}>
-                  Lihat pengajuan <span className="sr-only">pesanan {row.booking_id}</span>
-                </Link>
+                <div className="flex flex-wrap items-center gap-3">
+                  <StatusPill status={row.status} />
+                  <Link className={actionLinkClass} href={{ pathname: "/admin/refund", query: { id: row.id, page: currentPage } }}>
+                    Lihat pengajuan <span className="sr-only">pesanan {row.booking_id}</span>
+                  </Link>
+                </div>
               </li>
             ))}
           </ul>
-        ) : <p className="text-sm text-[#424750]">Belum ada pengajuan di halaman ini.</p>}
+        ) : <AdminEmptyState icon="assignment_return" title="Belum ada pengajuan di halaman ini." />}
         <nav aria-label="Halaman pengajuan" className="mt-3 flex flex-wrap gap-4 text-sm font-semibold text-[#003466]">
           {currentPage > 1 && <Link href={`?page=${currentPage - 1}`}>← Sebelumnya</Link>}
           {(count ?? 0) > currentPage * 25 && <Link href={`?page=${currentPage + 1}`}>Berikutnya →</Link>}

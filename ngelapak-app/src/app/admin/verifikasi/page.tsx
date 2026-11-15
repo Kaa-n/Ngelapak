@@ -1,7 +1,8 @@
 import Link from "next/link";
 import ActionForm from "@/components/admin/ActionForm";
+import { AdminEmptyState, AdminHeading, StatusPill } from "@/components/admin/AdminPresentation";
 import ProofPreview from "@/components/admin/ProofPreview";
-import { panelClass } from "@/components/admin/styles";
+import { actionLinkClass, panelClass } from "@/components/admin/styles";
 import { requireAdmin } from "@/lib/supabase/admin";
 import { getProofPreview } from "@/lib/supabase/proof-preview";
 import { reviewPayment } from "./actions";
@@ -46,11 +47,11 @@ export default async function VerificationPage({ searchParams }: {
 
   return (
     <>
-      <h1 className="text-2xl font-bold text-[#003466]">Verifikasi Pembayaran</h1>
+      <AdminHeading title="Verifikasi Pembayaran" description="Cocokkan data pesanan dengan bukti transfer sebelum membuat keputusan." />
       {booking && (
         <section className="space-y-4">
           <div className="grid min-w-0 gap-4 md:grid-cols-2">
-            <section className={panelClass}>
+            <section className={`${panelClass} min-w-0`}>
               <h2 className="font-semibold">Data penyewa</h2>
               <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
                 {[
@@ -82,22 +83,26 @@ export default async function VerificationPage({ searchParams }: {
       )}
       {id && !booking && <p role="status" className={panelClass}>Pesanan tidak ditemukan.</p>}
       <section className={panelClass}>
-        <h2 className="mb-3 font-semibold">Menunggu verifikasi ({count ?? 0})</h2>
+        <h2 className="mb-4 font-bold">Menunggu verifikasi ({count ?? 0})</h2>
         {queue.length ? (
-          <ul className="divide-y divide-[#e2e7ff]">
+          <ul className="space-y-2">
             {queue.map((row) => (
-              <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
-                <div className="min-w-0">
+              <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#e2e7ff] px-3 py-3 text-sm sm:px-4">
+                <div className="min-w-0 flex-1 basis-52">
                   <p className="break-words font-semibold">{row.penyewa_nama ?? "Penyewa"} · {row.spot_nama ?? "Lapak"}</p>
-                  <p className="break-words text-[#424750]">{row.id} · {row.tanggal_mulai} – {row.tanggal_selesai}</p>
+                  <p className="mt-0.5 break-words text-xs text-[#424750]">{row.id} · {row.tanggal_mulai} – {row.tanggal_selesai}</p>
                 </div>
-                <Link className="font-semibold text-[#003466] underline" href={{ pathname: "/admin/verifikasi", query: { id: row.id, page: currentPage } }}>
-                  Periksa bukti <span className="sr-only">pesanan {row.id}</span>
-                </Link>
+                <div className="flex flex-wrap items-center gap-3">
+                  {row.total_bayar != null && <span className="font-semibold tabular-nums">{currency.format(row.total_bayar)}</span>}
+                  <StatusPill status="menunggu" />
+                  <Link className={actionLinkClass} href={{ pathname: "/admin/verifikasi", query: { id: row.id, page: currentPage } }}>
+                    Periksa bukti <span className="sr-only">pesanan {row.id}</span>
+                  </Link>
+                </div>
               </li>
             ))}
           </ul>
-        ) : <p className="text-sm text-[#424750]">Tidak ada pesanan menunggu verifikasi di halaman ini.</p>}
+        ) : <AdminEmptyState icon="receipt_long" title="Tidak ada pesanan menunggu verifikasi di halaman ini." />}
         <nav aria-label="Halaman antrean" className="mt-3 flex flex-wrap gap-4 text-sm font-semibold text-[#003466]">
           {currentPage > 1 && <Link href={`?page=${currentPage - 1}`}>← Sebelumnya</Link>}
           {(count ?? 0) > currentPage * 25 && <Link href={`?page=${currentPage + 1}`}>Berikutnya →</Link>}
