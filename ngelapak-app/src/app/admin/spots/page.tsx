@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+import AdminPageLoading from "@/components/admin/AdminPageLoading";
 import SpotForm from "@/components/admin/SpotForm";
 import { AdminEmptyState, AdminHeading, StatusPill } from "@/components/admin/AdminPresentation";
 import { panelClass, primaryLinkClass } from "@/components/admin/styles";
@@ -5,7 +7,13 @@ import { requireAdmin } from "@/lib/supabase/admin";
 
 const currency = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
 
-export default async function SpotsPage({ searchParams }: { searchParams: Promise<{ tambah?: string }> }) {
+type SpotsPageProps = { searchParams: Promise<{ tambah?: string }> };
+
+export default function SpotsPage(props: SpotsPageProps) {
+  return <Suspense fallback={<AdminPageLoading />}><SpotsData {...props} /></Suspense>;
+}
+
+async function SpotsData({ searchParams }: SpotsPageProps) {
   const { supabase } = await requireAdmin();
   const { tambah } = await searchParams;
   const { data: spots, error } = await supabase.from("spots").select().order("zona").order("kode");
@@ -14,7 +22,7 @@ export default async function SpotsPage({ searchParams }: { searchParams: Promis
   return (
     <>
       <AdminHeading title="Kelola Lapak" description="Atur tarif, daya listrik, foto, dan status lapak kampus." />
-      <details id="tambah-lapak" open={tambah === "1" || undefined} className={panelClass}>
+      <details id="tambah-lapak" open={tambah === "1" || undefined} className={`${panelClass} scroll-mt-20`}>
         <summary className={`${primaryLinkClass} w-fit cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
           <span aria-hidden="true" className="material-symbols-outlined text-xl">add</span>
           Tambah lapak

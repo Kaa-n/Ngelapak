@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import ActionForm from "@/components/admin/ActionForm";
+import AdminPageLoading from "@/components/admin/AdminPageLoading";
 import { AdminEmptyState, AdminHeading, StatusPill } from "@/components/admin/AdminPresentation";
 import ProofPreview from "@/components/admin/ProofPreview";
 import { actionLinkClass, inputClass, panelClass } from "@/components/admin/styles";
@@ -7,9 +9,13 @@ import { requireAdmin } from "@/lib/supabase/admin";
 import { getProofPreview } from "@/lib/supabase/proof-preview";
 import { reviewCancellation } from "./actions";
 
-export default async function RefundPage({ searchParams }: {
-  searchParams: Promise<{ id?: string; page?: string }>;
-}) {
+type RefundPageProps = { searchParams: Promise<{ id?: string; page?: string }> };
+
+export default function RefundPage(props: RefundPageProps) {
+  return <Suspense fallback={<AdminPageLoading />}><RefundData {...props} /></Suspense>;
+}
+
+async function RefundData({ searchParams }: RefundPageProps) {
   const { supabase } = await requireAdmin();
   const { id, page } = await searchParams;
   const currentPage = Math.min(10000, Math.max(1, Math.trunc(Number(page)) || 1));

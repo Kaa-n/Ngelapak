@@ -168,7 +168,7 @@ export default function MasukView({
             </div>
 
             <div className="space-y-3">
-              {DEMO_USERS.filter((user) => user.role === "penyewa").map((user) => {
+              {DEMO_USERS.map((user) => {
                 const isAdmin = user.role === "admin";
 
                 return (

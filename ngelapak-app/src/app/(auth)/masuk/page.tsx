@@ -16,6 +16,11 @@ export default function LoginPage() {
       <Suspense fallback={null}><ConfirmationFeedback /></Suspense>
       <MasukView
         onLoginDemo={async (id) => {
+          if (id === "admin") {
+            demoLogin(id);
+            router.replace("/demo/admin");
+            return;
+          }
           await signOutSupabase();
           demoLogin(id);
           router.replace("/");

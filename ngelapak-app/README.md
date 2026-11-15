@@ -17,7 +17,7 @@ Untuk mencoba verifikasi, buat pesanan dengan akun penyewa dan unggah bukti tran
 
 Pembayaran dan transfer refund dilakukan di luar aplikasi. Panel admin menyimpan bukti serta statusnya. Total pendapatan dasbor adalah pendapatan bruto dari pembayaran yang terverifikasi. Tren memakai tanggal verifikasi, sehingga pembayaran lama tanpa tanggal verifikasi hanya masuk ke total. Okupansi dihitung untuk hari ini di WITA.
 
-**Masuk dengan Akun Demo** menyediakan Ayu dan Bayu untuk mencoba alur penyewa di browser. Pesanan demo tersimpan di `localStorage`.
+**Masuk dengan Akun Demo** menyediakan Ayu dan Bayu untuk mencoba alur penyewa, serta **Masuk sebagai Admin** untuk membuka `/demo/admin`. Dasbor demo menampilkan metrik, lapak, antrean pembayaran, dan refund contoh. Keputusan verifikasi demo mengubah pesanan di `localStorage`; inventaris dan refund demo adalah contoh baca saja. Panel demo tidak memerlukan data admin Supabase.
 
 Pemeriksaan: `npm test`, `npx tsc --noEmit`, `npm run lint`, dan `npm run build`.
 

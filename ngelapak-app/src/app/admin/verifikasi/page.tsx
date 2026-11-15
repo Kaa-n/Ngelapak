@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import ActionForm from "@/components/admin/ActionForm";
+import AdminPageLoading from "@/components/admin/AdminPageLoading";
 import { AdminEmptyState, AdminHeading, StatusPill } from "@/components/admin/AdminPresentation";
 import ProofPreview from "@/components/admin/ProofPreview";
 import { actionLinkClass, panelClass } from "@/components/admin/styles";
@@ -9,9 +11,13 @@ import { reviewPayment } from "./actions";
 
 const currency = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
 
-export default async function VerificationPage({ searchParams }: {
-  searchParams: Promise<{ id?: string; page?: string }>;
-}) {
+type VerificationPageProps = { searchParams: Promise<{ id?: string; page?: string }> };
+
+export default function VerificationPage(props: VerificationPageProps) {
+  return <Suspense fallback={<AdminPageLoading />}><VerificationData {...props} /></Suspense>;
+}
+
+async function VerificationData({ searchParams }: VerificationPageProps) {
   const { supabase } = await requireAdmin();
   const { id, page } = await searchParams;
   const currentPage = Math.min(10000, Math.max(1, Math.trunc(Number(page)) || 1));

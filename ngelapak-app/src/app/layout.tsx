@@ -26,6 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="id"
+      data-scroll-behavior="smooth"
       className={`${plusJakartaSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
