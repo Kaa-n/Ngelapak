@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useLayoutEffect } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -188,6 +188,13 @@ export default function InteractiveMap({
     "dipesan" | "tersedia" | "all" | null
   >(null);
   const [userZoneFilter, setUserZoneFilter] = useState<string | null>(null);
+  const [mapKey, setMapKey] = useState(0);
+
+  useLayoutEffect(() => {
+    // Next.js keeps hidden routes mounted, but React Leaflet removes the map
+    // in its effect cleanup. Remount the canvas when the route is shown again.
+    return () => setMapKey((key) => key + 1);
+  }, []);
 
   const statusFilter = userStatusFilter ?? defaultStatus;
   const selectedZone = userZoneFilter ?? defaultZone;
@@ -367,6 +374,7 @@ export default function InteractiveMap({
           ======================================================== */}
       <div className="relative z-0 shrink-0 w-full h-[400px] sm:h-[440px] bg-[#eef2f9] overflow-hidden">
         <MapContainer
+          key={mapKey}
           center={activeCenter.center}
           zoom={activeCenter.zoom}
           scrollWheelZoom={false}

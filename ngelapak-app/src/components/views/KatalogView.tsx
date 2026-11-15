@@ -43,6 +43,7 @@ export default function KatalogView({ onNavigateToDetail, onShowToast, demoMode 
   const [spots, setSpots] = useState<Spot[]>([]);
   const [isLoadingSpots, setIsLoadingSpots] = useState(true);
   const [spotError, setSpotError] = useState<string | null>(null);
+  const [availabilityKnown, setAvailabilityKnown] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -52,16 +53,19 @@ export default function KatalogView({ onNavigateToDetail, onShowToast, demoMode 
         setSpots(MOCK_SPOTS);
         setIsLoadingSpots(false);
         setSpotError(null);
+        setAvailabilityKnown(true);
         return;
       }
       try {
         setIsLoadingSpots(true);
         setSpotError(null);
+        setAvailabilityKnown(false);
 
         const data = await getSupabaseSpots(period);
 
         if (isMounted) {
-          setSpots(data);
+          setSpots(data.spots);
+          setAvailabilityKnown(data.availabilityKnown);
         }
       } catch (error) {
         if (isMounted) {
@@ -203,6 +207,11 @@ export default function KatalogView({ onNavigateToDetail, onShowToast, demoMode 
                Zone Tabs, Spot Grid, & Paginasi di dalam Card)
             ======================================================== */}
         {spotError && <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700" role="alert">{spotError}</p>}
+        {!demoMode && !isLoadingSpots && !spotError && !availabilityKnown && (
+          <p className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="status">
+            Jadwal sewa belum bisa diperiksa. Daftar ini menampilkan status umum lapak.
+          </p>
+        )}
         <KatalogHero
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
@@ -222,7 +231,7 @@ export default function KatalogView({ onNavigateToDetail, onShowToast, demoMode 
           onReset={handleReset}
           onResetPage={() => setCurrentPage(1)}
           totalCount={filteredAndSorted.length}
-          availableCount={availableSpotsCount}
+          availableCount={availabilityKnown ? availableSpotsCount : 0}
           customLokasi={customLokasi}
           setCustomLokasi={setCustomLokasi}
           sortBy={sortBy}
@@ -264,7 +273,7 @@ export default function KatalogView({ onNavigateToDetail, onShowToast, demoMode 
             {/* FULL WIDTH INTERACTIVE MAP */}
             <InteractiveMap
               spots={spots}
-              defaultStatus="tersedia"
+              defaultStatus={availabilityKnown ? "tersedia" : "all"}
               defaultZone={zonaFilter}
               context="katalog"
               onSelectSpot={onNavigateToDetail}
