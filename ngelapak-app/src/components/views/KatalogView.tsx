@@ -175,6 +175,16 @@ useEffect(() => {
           }))
         );
 
+        console.table(
+          data.spots.map((spot) => ({
+            kode: spot.kode,
+            nama: spot.nama,
+            zona: spot.zona,
+            zonaLabel: spot.zonaLabel,
+            lokasi: spot.lokasi,
+          }))
+        );
+
         if (isMounted) {
           setSpots(data.spots);
           setAvailabilityKnown(data.availabilityKnown);
@@ -235,6 +245,15 @@ useEffect(() => {
     if (zonaFilter !== "all") {
       filteredSpots = filteredSpots.filter(
         (s) => s.zona === zonaFilter
+      );
+    }
+
+    // Filter lokasi tambahan hanya untuk opsi yang tidak memiliki zona
+    if (customLokasi && zonaFilter === "all") {
+      filteredSpots = filteredSpots.filter((spot) =>
+        spot.lokasi
+          .toLowerCase()
+          .includes(customLokasi.toLowerCase())
       );
     }
 
@@ -310,6 +329,7 @@ useEffect(() => {
       spots,
       searchQuery,
       zonaFilter,
+      customLokasi,
       ukuranFilter,
       sortBy,
       activeChips,
