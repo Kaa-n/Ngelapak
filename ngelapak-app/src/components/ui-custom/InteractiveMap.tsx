@@ -103,6 +103,49 @@ function MapController({
   return null;
 }
 
+function TouchGestureController() {
+  const map = useMap();
+
+  useEffect(() => {
+    const container = map.getContainer();
+
+    const handleTouchStart = (event: TouchEvent) => {
+      if (event.touches.length >= 2) {
+        map.dragging.enable();
+      } else {
+        map.dragging.disable();
+      }
+    };
+
+    const handleTouchEnd = (event: TouchEvent) => {
+      if (event.touches.length < 2) {
+        map.dragging.disable();
+      }
+    };
+
+    container.addEventListener("touchstart", handleTouchStart, {
+      passive: true,
+      capture: true,
+    });
+    container.addEventListener("touchend", handleTouchEnd, {
+      passive: true,
+      capture: true,
+    });
+    container.addEventListener("touchcancel", handleTouchEnd, {
+      passive: true,
+      capture: true,
+    });
+
+    return () => {
+      container.removeEventListener("touchstart", handleTouchStart, true);
+      container.removeEventListener("touchend", handleTouchEnd, true);
+      container.removeEventListener("touchcancel", handleTouchEnd, true);
+    };
+  }, [map]);
+
+  return null;
+}
+
 /**
  * Konfigurasi pusat koordinat & level zoom per zona kampus Universitas Udayana.
  */
@@ -378,8 +421,13 @@ export default function InteractiveMap({
           center={activeCenter.center}
           zoom={activeCenter.zoom}
           scrollWheelZoom={false}
+          touchZoom={true}
+          dragging={true}
           className="w-full h-full"
         >
+
+        <TouchGestureController />
+
           {/* Tile Layer OpenStreetMap */}
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'

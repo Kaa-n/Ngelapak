@@ -6,6 +6,12 @@ import ActiveStallsSection from "@/components/home/ActiveStallsSection";
 import type { Spot } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
 
+export interface HomeStats {
+  totalSpots: number;
+  successfulPayments: number;
+  availableFacilities: string;
+}
+
 export interface HomeViewProps {
   /**
    * Callback untuk menavigasi ke KatalogView ketika tombol CTA
@@ -27,6 +33,10 @@ export interface HomeViewProps {
    * Data spot lapak aktif (opsional, jika kosong akan menggunakan data mock internal).
    */
   spots?: Spot[];
+  isLoading?: boolean;
+
+  stats: HomeStats;
+  statsLoading?: boolean;
 }
 
 
@@ -35,6 +45,9 @@ export default function HomeView({
   onNavigateToDetail,
   onShowToast,
   spots,
+  isLoading = false,
+  stats,
+  statsLoading = false,
 }: HomeViewProps) {
   return (
     <div className="w-full min-h-screen bg-[#faf8ff] text-[#131b2e] pb-16">
@@ -47,28 +60,30 @@ export default function HomeView({
         </section>
 
         {/* ========================================================
-            2. RINGKASAN FITUR & STATISTIK KAMPUS (QUICK HIGHLIGHT SHELL
+            2. RINGKASAN FITUR & STATISTIK KAMPUS
             ======================================================== */}
         <section
           aria-label="Statistik Layanan Kampus"
-          className="grid grid-cols-2 md:grid-cols-4 gap-4"
+          className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5"
         >
           {[
             {
               icon: "storefront",
               label: "Total Spot Terdaftar",
-              val: "16 Spot",
-              desc: "4 Zona Kampus",
+              val: `${stats.totalSpots} Spot`,
+              desc: "Seluruh Zona Kampus",
               color: "text-[#003466]",
               bg: "bg-[#eef2f9]",
+              loading: statsLoading,
             },
             {
               icon: "receipt_long",
               label: "Transaksi Berhasil",
-              val: "140+",
+              val: `${stats.successfulPayments}`,
               desc: "Bulan Berjalan",
               color: "text-[#855300]",
               bg: "bg-[#fff6ea]",
+              loading: statsLoading,
             },
             {
               icon: "verified_user",
@@ -77,37 +92,48 @@ export default function HomeView({
               desc: "Izin Biro Aset Unud",
               color: "text-[#003c27]",
               bg: "bg-[#e2fced]",
+              loading: false,
             },
             {
               icon: "bolt",
               label: "Fasilitas Standar",
-              val: "Listrik & Air",
-              desc: "Termasuk Kebersihan",
+              val: stats.availableFacilities,
+              desc: "Fasilitas Tersedia",
               color: "text-[#003466]",
               bg: "bg-[#eef2f9]",
+              loading: statsLoading,
             },
           ].map((item, idx) => (
             <div
               key={idx}
-              className="bg-white rounded-2xl p-4 sm:p-5 border border-[#e2e7ff] shadow-xs flex flex-col justify-between"
+              className="bg-white rounded-[20px] p-6 min-h-[166px] border border-[#e1e7ff] shadow-sm flex flex-col justify-between transition-shadow duration-200 hover:shadow-md"
             >
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-semibold text-[#737781] uppercase tracking-wide">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-medium text-[#737781] uppercase tracking-wide">
                   {item.label}
                 </span>
+
                 <div
-                  className={`w-8 h-8 rounded-lg ${item.bg} ${item.color} flex items-center justify-center`}
+                  className={`w-10 h-10 shrink-0 rounded-xl ${item.bg} ${item.color} flex items-center justify-center`}
                 >
-                  <span className="material-symbols-outlined text-[18px]">
+                  <span className="material-symbols-outlined text-[24px]">
                     {item.icon}
                   </span>
                 </div>
               </div>
-              <div>
-                <p className="text-xl sm:text-2xl font-extrabold text-[#131b2e] leading-tight">
-                  {item.val}
+
+              <div className="mt-4">
+                {item.loading ? (
+                  <div className="h-9 w-28 rounded-md bg-gray-100 animate-pulse" />
+                ) : (
+                  <p className="text-[30px] font-bold text-[#131b2e] leading-tight tracking-tight">
+                    {item.val}
+                  </p>
+                )}
+
+                <p className="text-sm text-[#737781] mt-1">
+                  {item.desc}
                 </p>
-                <p className="text-xs text-[#737781] mt-0.5">{item.desc}</p>
               </div>
             </div>
           ))}
@@ -118,6 +144,7 @@ export default function HomeView({
             ======================================================== */}
         <ActiveStallsSection
           spots={spots}
+          isLoading={isLoading}
           onViewDetail={onNavigateToDetail}
           onNavigateToKatalog={onNavigateToKatalog}
         />

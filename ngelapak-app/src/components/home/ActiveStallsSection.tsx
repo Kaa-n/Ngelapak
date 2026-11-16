@@ -231,10 +231,12 @@ export default function ActiveStallsSection({
     setIsEditing(false);
   }
 
-  const allSpots = spots && spots.length > 0 ? spots : MOCK_SPOTS;
+  const allSpots = spots ?? [];
 
   // 1. Filter stan aktif beroperasi hari ini
-  const activeSpots = allSpots.filter((s) => s.status === "dipesan");
+  const activeSpots = allSpots.filter((s) =>
+    s.jadwalOperasional?.some((j) => j.status === "Active")
+  );
   const displayedActiveSpots =
     activeZona === "all"
       ? activeSpots

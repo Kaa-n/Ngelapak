@@ -38,6 +38,8 @@ export interface Spot {
   totalSewa: number;
   deskripsi: string;
   jenisUsaha?: string;
+  namaUsaha?: string;
+  sedangBeroperasi?: boolean;
   // TAMBAHAN PROPERTI: Jadwal Operasional Unik per Spot
   jadwalOperasional?: JadwalOperasionalItem[];
 }
