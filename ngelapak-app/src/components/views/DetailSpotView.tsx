@@ -204,8 +204,7 @@ export default function DetailSpotView({
         id: reservationId, spotKode: spot.kode, tanggalMulai: startDate, jumlahHari: selectedDays,
         totalBayar, jenisUsaha, namaUsaha, kategoriPenjual, catatan: catatanTambahan, setuju: agreeTerms,
       });
-      if (checkout.checkoutUrl) window.location.assign(checkout.checkoutUrl);
-      else onOrderDetail(checkout.id);
+      window.location.assign(checkout.checkoutUrl);
     } catch (error) {
       onShowToast({
         type: "error", message: "Pembayaran gagal dibuka",

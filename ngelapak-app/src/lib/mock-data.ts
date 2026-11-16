@@ -90,10 +90,20 @@ export interface Booking {
     namaRekening: string;
     alasan: string;
     diajukanPada: string;
+    /** Status pengajuan pembatalan & refund di sisi admin. */
     status?: TransactionStatus;
     refundCompleted?: boolean;
     adminNote?: string;
   };
+}
+
+/** Label status: Menunggu Pengembalian Dana (pembatalan diajukan, refund belum diproses). */
+export function isPendingCancellationRefund(booking: Booking) {
+  return (
+    booking.status === "dibatalkan" &&
+    Boolean(booking.pembatalan) &&
+    (booking.pembatalan?.status ?? "menunggu") === "menunggu"
+  );
 }
 
 export interface SpotManagement {

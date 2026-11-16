@@ -6,11 +6,29 @@ import type { Database } from "@/types/database";
 
 export const midtransBookingId = z.string().regex(/^MT-[a-f0-9]{32}$/);
 
+function configuredSecret(value: string | undefined) {
+  const secret = value?.trim() ?? "";
+  if (
+    !secret ||
+    /^<.+>$/.test(secret) ||
+    /\.\.\.$/.test(secret) ||
+    secret.includes("...") ||
+    /^(your|ganti|changeme|todo|xxx)/i.test(secret)
+  ) {
+    return null;
+  }
+  return secret;
+}
+
 export function paymentServices() {
-  const serverKey = process.env.MIDTRANS_SERVER_KEY;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!serverKey || !supabaseKey || !supabaseUrl) throw new Error("Pembayaran Midtrans belum dikonfigurasi.");
+  const serverKey = configuredSecret(process.env.MIDTRANS_SERVER_KEY);
+  const supabaseKey = configuredSecret(process.env.SUPABASE_SERVICE_ROLE_KEY);
+  const supabaseUrl = configuredSecret(process.env.NEXT_PUBLIC_SUPABASE_URL);
+  if (!serverKey || !supabaseKey || !supabaseUrl) {
+    throw new Error(
+      "Pembayaran Midtrans belum dikonfigurasi. Isi MIDTRANS_SERVER_KEY dan SUPABASE_SERVICE_ROLE_KEY di .env lalu restart server.",
+    );
+  }
   const production = process.env.MIDTRANS_IS_PRODUCTION === "true";
   return {
     serverKey,

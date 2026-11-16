@@ -52,7 +52,7 @@ export default function ReservationWizard({ spot, occupied, signedIn }: Props) {
         id, spotKode: spot.kode, tanggalMulai: start, jumlahHari: days, totalBayar: total,
         jenisUsaha: business, namaUsaha: brand, kategoriPenjual: category, catatan: "", setuju: agreed,
       });
-      window.location.assign(checkout.checkoutUrl ?? ("/?pesanan=" + encodeURIComponent(checkout.id)));
+      window.location.assign(checkout.checkoutUrl);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Pembayaran gagal dibuka.");
       setBusy(false);

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { canCancelBooking, useDemo } from "@/lib/demo-store";
 import { paymentLabel } from "@/lib/rental-policy";
-import { formatDate, formatRupiah } from "@/lib/mock-data";
+import { formatDate, formatRupiah, isPendingCancellationRefund } from "@/lib/mock-data";
 import type { Booking } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
 import type { SupabaseProfile } from "@/lib/supabase/auth";
@@ -28,6 +28,13 @@ function getStatusBadge(booking: Booking): {
   cls: string;
   icon: string;
 } {
+  if (isPendingCancellationRefund(booking)) {
+    return {
+      label: "Menunggu Pengembalian Dana",
+      cls: "bg-orange-50 text-orange-800 border-orange-200",
+      icon: "hourglass_top",
+    };
+  }
   if (booking.status === "dibatalkan" && booking.statusVerifikasi !== "ditolak")
     return {
       label: "Dibatalkan",

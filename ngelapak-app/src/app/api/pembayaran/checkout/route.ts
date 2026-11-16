@@ -58,7 +58,11 @@ export async function POST(request: Request) {
       return Response.json({ error: message }, { status: 409 });
     }
     return await checkoutResponse(services, booking, appUrl);
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("belum dikonfigurasi")) {
+      return Response.json({ error: message }, { status: 503 });
+    }
     return Response.json({ error: "Pembayaran Midtrans belum tersedia. Coba lagi atau hubungi pengelola." }, { status: 503 });
   }
 }
@@ -70,7 +74,10 @@ async function checkoutResponse(
 ) {
   if (booking.status !== "menunggu" || booking.midtrans_status === "perlu_ditinjau" ||
       !booking.payment_expires_at || Date.parse(booking.payment_expires_at) <= Date.now()) {
-    return Response.json({ bookingId: booking.id, checkoutUrl: null });
+    return Response.json({
+      bookingId: booking.id,
+      error: "Batas pembayaran sudah habis atau pesanan tidak bisa dilanjutkan. Buat pesanan baru.",
+    }, { status: 409 });
   }
   if (booking.midtrans_checkout_url) {
     return Response.json({ bookingId: booking.id, checkoutUrl: booking.midtrans_checkout_url });
@@ -83,7 +90,10 @@ async function checkoutResponse(
       .update({ midtrans_checkout_url: checkoutUrl }).eq("id", booking.id);
     if (error) throw error;
     return Response.json({ bookingId: booking.id, checkoutUrl });
-  } catch {
-    return Response.json({ bookingId: booking.id, checkoutUrl: null });
+  } catch (error) {
+    const message = error instanceof Error && error.message
+      ? error.message
+      : "Halaman pembayaran Midtrans gagal dibuka. Periksa Server Key Sandbox lalu coba lagi.";
+    return Response.json({ bookingId: booking.id, error: message }, { status: 502 });
   }
 }

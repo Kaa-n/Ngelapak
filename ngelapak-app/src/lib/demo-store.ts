@@ -9,7 +9,14 @@ import {
   type TransactionStatus,
 } from "./mock-data";
 import type { DemoUser, Role } from "./types";
-import { cancellationDeadline, CANCELLATION_WINDOW_MS, CLEANING_DAYS, PAYMENT_WINDOW_MS, rentalPeriodsConflict, rentalStart } from "./rental-policy";
+import {
+  cancellationDeadline,
+  CANCELLATION_WINDOW_MS,
+  CLEANING_DAYS,
+  PAYMENT_WINDOW_MS,
+  rentalPeriodsConflict,
+  rentalStart,
+} from "./rental-policy";
 
 // Demo only: browser storage is editable and is not a security boundary.
 const SESSION = "ngelapak-demo-session-v1";
@@ -140,6 +147,13 @@ export function getAllDemoBookings() {
   return parseBookings(read(BOOKINGS));
 }
 
+export function attachDemoBookingProof(bookingId: string, proofRef: string) {
+  const bookings = parseBookings(read(BOOKINGS));
+  const booking = bookings.find((item) => item.id === bookingId);
+  if (!booking) throw new Error("Pesanan demo tidak ditemukan.");
+  save(bookings.map((item) => item.id === bookingId ? { ...item, buktiBayar: proofRef } : item));
+}
+
 function currentUser() {
   return getDemoUsers().find(
     (user) => user.id === read(SESSION, true),
@@ -150,7 +164,11 @@ function requireRole(role: Role) {
   const user = currentUser();
 
   if (user?.role !== role) {
-    throw new Error("Anda tidak memiliki akses untuk tindakan ini.");
+    throw new Error(
+      role === "penyewa"
+        ? "Pembatalan demo hanya untuk akun demo penyewa (Ayu/Bayu). Akun Supabase memakai pembatalan server."
+        : "Anda tidak memiliki akses untuk tindakan ini.",
+    );
   }
 
   return user;
@@ -358,6 +376,29 @@ export function today() {
 // CREATE BOOKING
 // ============================================================
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function isActiveBlockingBooking(booking: Booking, now = Date.now()) {
+  if (booking.status === "dibatalkan" || booking.statusVerifikasi === "ditolak") {
+    return false;
+  }
+
+  // Pesanan menunggu tanpa bukti yang sudah lewat 1×24 jam tidak menahan jadwal.
+  if (
+    booking.status === "menunggu" &&
+    booking.statusVerifikasi === "menunggu" &&
+    !booking.buktiBayar &&
+    booking.metodePembayaran !== "midtrans"
+  ) {
+    const created = new Date(booking.createdAt).getTime();
+    if (Number.isFinite(created) && now - created >= DAY_MS) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 export function createDemoBooking(input: {
   spotId: string;
   tanggalMulai: string;
@@ -365,17 +406,22 @@ export function createDemoBooking(input: {
   jenisUsaha: string;
   catatan: string;
   metodePembayaran: string;
+  buktiBayar?: string;
 }) {
   const user = requireRole("penyewa");
+
+  // Bersihkan dulu pesanan bayar-nanti yang kedaluwarsa agar tidak memblokir slot.
+  expireUnpaidDemoBookings();
 
   const spot = MOCK_SPOTS.find(
     (spot) => spot.id === input.spotId,
   );
 
-  if (!spot || spot.status !== "tersedia") {
+  if (!spot || spot.status === "pemeliharaan") {
     throw new Error("Lapak ini belum tersedia untuk dipesan.");
   }
 
+  const jumlahHari = Math.round(Number(input.jumlahHari));
   const start = new Date(input.tanggalMulai + "T00:00:00Z");
   const now = Date.now();
 
@@ -384,9 +430,9 @@ export function createDemoBooking(input: {
     !Number.isFinite(start.getTime()) ||
     start.toISOString().slice(0, 10) !== input.tanggalMulai ||
     input.tanggalMulai < today() ||
-    !Number.isInteger(input.jumlahHari) ||
-    input.jumlahHari < 1 ||
-    input.jumlahHari > 30 ||
+    !Number.isInteger(jumlahHari) ||
+    jumlahHari < 1 ||
+    jumlahHari > 30 ||
     !input.jenisUsaha.trim()
   ) {
     throw new Error(
@@ -397,12 +443,8 @@ export function createDemoBooking(input: {
     throw new Error("Pemesanan ditutup satu jam sebelum sewa mulai (08.00 WITA).");
   }
 
-  start.setUTCDate(
-    start.getUTCDate() + input.jumlahHari - 1,
-  );
-
+  start.setUTCDate(start.getUTCDate() + jumlahHari - 1);
   const end = start.toISOString().slice(0, 10);
-
   const bookings = parseBookings(read(BOOKINGS));
 
   if (spot.jadwalOperasional?.some((schedule) =>
@@ -411,13 +453,11 @@ export function createDemoBooking(input: {
     throw new Error("Jadwal bertabrakan dengan masa sewa atau pembersihan spot. Pilih tanggal berbeda.");
   }
 
-  // Periksa bentrok jadwal dengan pesanan lain.
   if (
     bookings.some(
       (booking) =>
         booking.spotId === spot.id &&
-        booking.status !== "dibatalkan" &&
-        booking.statusVerifikasi !== "ditolak" &&
+        isActiveBlockingBooking(booking) &&
         rentalPeriodsConflict(input.tanggalMulai, end, booking.tanggalMulai, booking.tanggalSelesai),
     )
   ) {
@@ -426,11 +466,8 @@ export function createDemoBooking(input: {
     );
   }
 
-  // Ambil profil penyewa berdasarkan email akun yang sedang login.
   const fixture =
-    MOCK_BOOKINGS.find(
-      (booking) => booking.ownerId === user.id,
-    ) ??
+    MOCK_BOOKINGS.find((booking) => booking.ownerId === user.id) ??
     MOCK_BOOKINGS.find(
       (booking) =>
         booking.penyewa.email.toLowerCase() ===
@@ -438,18 +475,13 @@ export function createDemoBooking(input: {
     );
 
   if (!fixture) {
-    throw new Error(
-      "Data profil penyewa tidak ditemukan.",
-    );
+    throw new Error("Data profil penyewa tidak ditemukan.");
   }
 
   const booking: Booking = {
-    ...input,
     id: `TXN-${crypto.randomUUID()}`,
-
-    // Identitas pemilik pesanan.
     ownerId: user.id,
-
+    spotId: spot.id,
     spotNama: spot.nama,
     spotKode: spot.kode,
     penyewa: {
@@ -457,18 +489,50 @@ export function createDemoBooking(input: {
       nama: user.nama,
       email: user.email,
     },
+    tanggalMulai: input.tanggalMulai,
     tanggalSelesai: end,
-    totalBayar: spot.tarifPerHari * input.jumlahHari,
+    jumlahHari,
+    totalBayar: spot.tarifPerHari * jumlahHari,
+    metodePembayaran: input.metodePembayaran,
     status: "menunggu",
     statusVerifikasi: "menunggu",
+    jenisUsaha: input.jenisUsaha.trim(),
+    catatan: input.catatan?.trim() || undefined,
     createdAt: new Date(now).toISOString(),
+    // Bayar Nanti: bukti boleh kosong; boleh dilengkapi dalam 1×24 jam.
+    ...(input.buktiBayar ? { buktiBayar: input.buktiBayar } : {}),
     paymentExpiresAt: input.metodePembayaran === "midtrans" ? new Date(now + PAYMENT_WINDOW_MS).toISOString() : undefined,
     paymentStatus: input.metodePembayaran === "midtrans" ? "pending" : undefined,
   };
 
   save([booking, ...bookings]);
-
   return booking.id;
+}
+
+/** Batalkan pesanan demo yang belum bayar melewati tenggat 1×24 jam. */
+export function expireUnpaidDemoBookings(now = Date.now()) {
+  const bookings = parseBookings(read(BOOKINGS));
+  let changed = false;
+
+  const next = bookings.map((item) => {
+    if (
+      item.status === "menunggu" &&
+      item.statusVerifikasi === "menunggu" &&
+      !item.buktiBayar &&
+      item.metodePembayaran !== "midtrans"
+    ) {
+      const created = new Date(item.createdAt).getTime();
+      if (Number.isFinite(created) && now - created >= DAY_MS) {
+        changed = true;
+        return { ...item, status: "dibatalkan" as const };
+      }
+    }
+    // Midtrans expiry is handled in parseBookings via paymentExpiresAt.
+    return item;
+  });
+
+  if (changed) save(next);
+  return next;
 }
 
 export function completeDemoPayment(id: string) {
@@ -542,6 +606,7 @@ export function cancelDemoBooking(
         item.id === id
           ? {
             ...item,
+            // Midtrans: hold schedule until admin approves. Legacy transfer: cancel immediately.
             status: item.metodePembayaran === "midtrans" ? item.status : "dibatalkan",
             pembatalan: {
               nama,
@@ -552,7 +617,7 @@ export function cancelDemoBooking(
               namaRekening,
               alasan,
               diajukanPada: new Date().toISOString(),
-              status: item.metodePembayaran === "midtrans" ? "menunggu" : undefined,
+              status: "menunggu",
             },
           }
           : item,

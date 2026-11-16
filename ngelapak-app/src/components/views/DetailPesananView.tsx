@@ -2,7 +2,12 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { canCancelBooking, cancelDemoBooking, completeDemoPayment, useDemo } from "@/lib/demo-store";
-import { formatDate, formatRupiah, type Booking } from "@/lib/mock-data";
+import {
+  formatDate,
+  formatRupiah,
+  isPendingCancellationRefund,
+  type Booking,
+} from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
 import { printKuitansi } from "@/lib/pdf/generateKuitansi";
 import { printSPPLA } from "@/lib/pdf/generateSPPLA";
@@ -33,6 +38,13 @@ function getStatusInfo(booking: Booking): {
   cls: string;
   icon: string;
 } {
+  if (isPendingCancellationRefund(booking)) {
+    return {
+      label: "Menunggu Pengembalian Dana",
+      cls: "bg-orange-50 text-orange-800 border-orange-200",
+      icon: "hourglass_top",
+    };
+  }
   if (booking.status === "dibatalkan" && booking.statusVerifikasi !== "ditolak")
     return {
       label: "Dibatalkan",
@@ -590,7 +602,11 @@ export default function DetailPesananView({
             <span className="material-symbols-outlined text-[14px]">
               {statusInfo.icon}
             </span>
-            {isMidtrans && booking.status !== "dibatalkan" ? paymentLabel(booking.statusVerifikasi, booking.paymentStatus) : statusInfo.label}
+            {isPendingCancellationRefund(booking)
+              ? statusInfo.label
+              : isMidtrans && booking.status !== "dibatalkan"
+                ? paymentLabel(booking.statusVerifikasi, booking.paymentStatus)
+                : statusInfo.label}
           </span>
         </div>
         <p className="text-xs text-[#737781] font-mono mt-1">{booking.id}</p>
@@ -710,11 +726,15 @@ export default function DetailPesananView({
         <SectionCard title="Detail Pembatalan" icon="cancel">
           <div className="bg-red-50 rounded-xl px-3 py-2 mb-3 text-xs text-red-700 flex items-center gap-2">
             <span className="material-symbols-outlined text-[16px]">info</span>
-            {booking.pembatalan.status === "menunggu" ? "Pengajuan menunggu keputusan admin. Jadwal tetap ditahan."
-              : booking.pembatalan.status === "ditolak" ? "Pengajuan ditolak dan sewa masih berlaku."
-              : booking.pembatalan.refundCompleted ? "Pesanan dibatalkan dan refund selesai."
-              : booking.pembatalan.status === "disetujui" ? "Pesanan dibatalkan. Refund sedang diproses."
-              : "Pesanan ini telah dibatalkan."}
+            {isPendingCancellationRefund(booking)
+              ? "Pengajuan pembatalan Anda sedang diproses admin. Slot lapak ditahan hingga keputusan refund."
+              : booking.pembatalan.status === "ditolak"
+                ? "Pengajuan ditolak dan sewa masih berlaku."
+                : booking.pembatalan.refundCompleted
+                  ? "Pesanan dibatalkan dan refund selesai."
+                  : booking.pembatalan.status === "disetujui"
+                    ? "Pesanan dibatalkan. Refund sedang diproses."
+                    : "Pesanan ini telah dibatalkan."}
           </div>
           <DetailRow label="Diajukan oleh" value={booking.pembatalan.nama} />
           <DetailRow label="NIM" value={booking.pembatalan.nim} mono />
