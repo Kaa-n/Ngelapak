@@ -2,19 +2,24 @@
 import { createClient } from "@/lib/supabase/client";
 import type { Spot, SpotStatus } from "@/lib/mock-data";
 
-export async function getSupabaseSpots(): Promise<Spot[]> {
+export async function getSupabaseSpots(period: { start: string; end: string }): Promise<{
+  spots: Spot[];
+  availabilityKnown: boolean;
+}> {
   const supabase = createClient();
 
-  const { data, error } = await supabase
-    .from("spots")
-    .select("*")
-    .order("kode", { ascending: true });
+  const [{ data, error }, reservations] = await Promise.all([
+    supabase.from("spots").select().order("kode"),
+    supabase.rpc("get_unavailable_lapak_ids", { p_start: period.start, p_end: period.end }),
+  ]);
 
   if (error) {
     throw new Error(`Gagal mengambil data spot: ${error.message}`);
   }
+  const availabilityKnown = !reservations.error;
+  const unavailable = new Set(reservations.data?.map((row) => row.spot_id));
 
-  return (data ?? []).map((item) => ({
+  const spots: Spot[] = (data ?? []).map((item) => ({
     id: item.id,
     kode: item.kode,
     nama: item.nama,
@@ -25,7 +30,9 @@ export async function getSupabaseSpots(): Promise<Spot[]> {
     ukuranLabel: item.ukuran_label ?? "",
     daya: item.daya ?? 0,
     tarifPerHari: item.tarif_per_hari,
-    status: item.status as SpotStatus,
+    status: availabilityKnown && item.status !== "pemeliharaan"
+      ? unavailable.has(item.id) ? "dipesan" : "tersedia"
+      : item.status as SpotStatus,
     fasilitas: item.fasilitas ?? [],
     tags: item.tags ?? [],
     koordinat: {
@@ -39,5 +46,5 @@ export async function getSupabaseSpots(): Promise<Spot[]> {
     jenisUsaha: item.jenis_usaha ?? undefined,
     jadwalOperasional: [],
   }));
+  return { spots, availabilityKnown };
 }
-

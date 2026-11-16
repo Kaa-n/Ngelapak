@@ -77,6 +77,10 @@ export interface Booking {
   catatan?: string;
   jenisUsaha: string;
   createdAt: string;
+  paidAt?: string;
+  paymentExpiresAt?: string;
+  paymentStatus?: string;
+  checkoutUrl?: string;
   pembatalan?: {
     nama: string;
     nim: string;
@@ -87,7 +91,9 @@ export interface Booking {
     alasan: string;
     diajukanPada: string;
     /** Status pengajuan pembatalan & refund di sisi admin. */
-    status?: "menunggu" | "disetujui" | "ditolak";
+    status?: TransactionStatus;
+    refundCompleted?: boolean;
+    adminNote?: string;
   };
 }
 

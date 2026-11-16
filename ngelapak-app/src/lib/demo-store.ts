@@ -9,6 +9,14 @@ import {
   type TransactionStatus,
 } from "./mock-data";
 import type { DemoUser, Role } from "./types";
+import {
+  cancellationDeadline,
+  CANCELLATION_WINDOW_MS,
+  CLEANING_DAYS,
+  PAYMENT_WINDOW_MS,
+  rentalPeriodsConflict,
+  rentalStart,
+} from "./rental-policy";
 
 // Demo only: browser storage is editable and is not a security boundary.
 const SESSION = "ngelapak-demo-session-v1";
@@ -67,18 +75,72 @@ function read(key: string, session = false) {
   }
 }
 
+const sampleCancellations = [
+  { id: "DEMO-R01", ownerId: "ayu", status: "menunggu", alasan: "Jadwal kegiatan kampus berubah." },
+  { id: "DEMO-R02", ownerId: "bayu", status: "disetujui", alasan: "Jadwal tim usaha bentrok dengan perkuliahan." },
+] as const;
+
+function withSampleCancellations(bookings: Booking[], now: number): Booking[] {
+  const examples = sampleCancellations.flatMap(({ id, ownerId, status, alasan }) => {
+    if (bookings.some((booking) => booking.id === id)) return [];
+    const sample = MOCK_BOOKINGS.find((booking) => booking.ownerId === ownerId);
+    if (!sample) return [];
+    const nextFreeDay = bookings.reduce((date, existing) => {
+      if (existing.spotId !== sample.spotId || existing.status === "dibatalkan" ||
+          existing.statusVerifikasi === "ditolak") return date;
+      const end = Date.parse(existing.tanggalSelesai + "T00:00:00Z");
+      return Number.isFinite(end) ? Math.max(date, end + (CLEANING_DAYS + 1) * CANCELLATION_WINDOW_MS) : date;
+    }, now + 14 * CANCELLATION_WINDOW_MS);
+    const start = new Date(nextFreeDay).toISOString().slice(0, 10);
+    const paidAt = new Date(now - PAYMENT_WINDOW_MS).toISOString();
+    const booking: Booking = {
+      ...sample,
+      id,
+      tanggalMulai: start,
+      tanggalSelesai: start,
+      jumlahHari: 1,
+      totalBayar: sample.totalBayar / sample.jumlahHari,
+      createdAt: paidAt,
+      paidAt,
+      metodePembayaran: "midtrans",
+      status: status === "menunggu" ? "aktif" : "dibatalkan",
+      statusVerifikasi: "disetujui",
+      paymentStatus: "settlement",
+      pembatalan: {
+        nama: sample.penyewa.nama,
+        nim: sample.penyewa.nim,
+        telepon: sample.penyewa.telepon,
+        bank: "Bank Demo",
+        nomorRekening: "000002048",
+        namaRekening: sample.penyewa.nama,
+        alasan,
+        diajukanPada: new Date(now).toISOString(),
+        status,
+        refundCompleted: status === "disetujui",
+      },
+    };
+    return [booking];
+  });
+  return [...bookings, ...examples];
+}
+
 function parseBookings(raw: string): Booking[] {
+  const now = Date.now();
   try {
     const data = JSON.parse(raw);
 
     if (Array.isArray(data)) {
-      return data;
+      const bookings = data.map((booking: Booking): Booking =>
+        booking.status === "menunggu" && booking.paymentExpiresAt && Date.parse(booking.paymentExpiresAt) <= now
+          ? { ...booking, status: "dibatalkan", statusVerifikasi: "ditolak", paymentStatus: "expire" }
+          : booking);
+      return withSampleCancellations(bookings, now);
     }
   } catch {
     // Use fixtures on first visit.
   }
 
-  return MOCK_BOOKINGS;
+  return withSampleCancellations(MOCK_BOOKINGS, now);
 }
 
 export function getAllDemoBookings() {
@@ -90,12 +152,6 @@ export function attachDemoBookingProof(bookingId: string, proofRef: string) {
   const booking = bookings.find((item) => item.id === bookingId);
   if (!booking) throw new Error("Pesanan demo tidak ditemukan.");
   save(bookings.map((item) => item.id === bookingId ? { ...item, buktiBayar: proofRef } : item));
-}
-
-function addDays(date: string, days: number) {
-  const result = new Date(`${date}T00:00:00Z`);
-  result.setUTCDate(result.getUTCDate() + days);
-  return result.toISOString().slice(0, 10);
 }
 
 function currentUser() {
@@ -180,11 +236,9 @@ export function useDemo() {
     (user) => user.id === userId,
   ) ?? null;
 
-  const all = parseBookings(raw);
-
   return {
     user,
-    bookings: visibleBookings(user, all),
+    bookings: user ? visibleBookings(user, parseBookings(raw)) : [],
   };
 }
 
@@ -324,17 +378,6 @@ export function today() {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function rangesOverlapWithCleaning(
-  startA: string,
-  endA: string,
-  startB: string,
-  endB: string,
-) {
-  const cleaningEndA = addDays(endA, 3);
-  const cleaningEndB = addDays(endB, 3);
-  return startA <= cleaningEndB && cleaningEndA >= startB;
-}
-
 function isActiveBlockingBooking(booking: Booking, now = Date.now()) {
   if (booking.status === "dibatalkan" || booking.statusVerifikasi === "ditolak") {
     return false;
@@ -344,7 +387,8 @@ function isActiveBlockingBooking(booking: Booking, now = Date.now()) {
   if (
     booking.status === "menunggu" &&
     booking.statusVerifikasi === "menunggu" &&
-    !booking.buktiBayar
+    !booking.buktiBayar &&
+    booking.metodePembayaran !== "midtrans"
   ) {
     const created = new Date(booking.createdAt).getTime();
     if (Number.isFinite(created) && now - created >= DAY_MS) {
@@ -379,6 +423,7 @@ export function createDemoBooking(input: {
 
   const jumlahHari = Math.round(Number(input.jumlahHari));
   const start = new Date(input.tanggalMulai + "T00:00:00Z");
+  const now = Date.now();
 
   if (
     !/^\d{4}-\d{2}-\d{2}$/.test(input.tanggalMulai) ||
@@ -394,24 +439,18 @@ export function createDemoBooking(input: {
       "Isi jenis usaha, tanggal mulai hari ini atau setelahnya, dan durasi 1–30 hari.",
     );
   }
+  if (input.metodePembayaran === "midtrans" && now + PAYMENT_WINDOW_MS > rentalStart(input.tanggalMulai)) {
+    throw new Error("Pemesanan ditutup satu jam sebelum sewa mulai (08.00 WITA).");
+  }
 
   start.setUTCDate(start.getUTCDate() + jumlahHari - 1);
   const end = start.toISOString().slice(0, 10);
   const bookings = parseBookings(read(BOOKINGS));
 
-  if (
-    spot.jadwalOperasional?.some((schedule) =>
-      rangesOverlapWithCleaning(
-        input.tanggalMulai,
-        end,
-        schedule.startDate,
-        schedule.endDate,
-      ),
-    )
-  ) {
-    throw new Error(
-      "Jadwal bertabrakan dengan masa sewa atau pembersihan spot. Pilih tanggal berbeda.",
-    );
+  if (spot.jadwalOperasional?.some((schedule) =>
+    rentalPeriodsConflict(input.tanggalMulai, end, schedule.startDate, schedule.endDate)
+  )) {
+    throw new Error("Jadwal bertabrakan dengan masa sewa atau pembersihan spot. Pilih tanggal berbeda.");
   }
 
   if (
@@ -419,12 +458,7 @@ export function createDemoBooking(input: {
       (booking) =>
         booking.spotId === spot.id &&
         isActiveBlockingBooking(booking) &&
-        rangesOverlapWithCleaning(
-          input.tanggalMulai,
-          end,
-          booking.tanggalMulai,
-          booking.tanggalSelesai,
-        ),
+        rentalPeriodsConflict(input.tanggalMulai, end, booking.tanggalMulai, booking.tanggalSelesai),
     )
   ) {
     throw new Error(
@@ -464,9 +498,11 @@ export function createDemoBooking(input: {
     statusVerifikasi: "menunggu",
     jenisUsaha: input.jenisUsaha.trim(),
     catatan: input.catatan?.trim() || undefined,
-    createdAt: new Date().toISOString(),
+    createdAt: new Date(now).toISOString(),
     // Bayar Nanti: bukti boleh kosong; boleh dilengkapi dalam 1×24 jam.
     ...(input.buktiBayar ? { buktiBayar: input.buktiBayar } : {}),
+    paymentExpiresAt: input.metodePembayaran === "midtrans" ? new Date(now + PAYMENT_WINDOW_MS).toISOString() : undefined,
+    paymentStatus: input.metodePembayaran === "midtrans" ? "pending" : undefined,
   };
 
   save([booking, ...bookings]);
@@ -482,7 +518,8 @@ export function expireUnpaidDemoBookings(now = Date.now()) {
     if (
       item.status === "menunggu" &&
       item.statusVerifikasi === "menunggu" &&
-      !item.buktiBayar
+      !item.buktiBayar &&
+      item.metodePembayaran !== "midtrans"
     ) {
       const created = new Date(item.createdAt).getTime();
       if (Number.isFinite(created) && now - created >= DAY_MS) {
@@ -490,6 +527,7 @@ export function expireUnpaidDemoBookings(now = Date.now()) {
         return { ...item, status: "dibatalkan" as const };
       }
     }
+    // Midtrans expiry is handled in parseBookings via paymentExpiresAt.
     return item;
   });
 
@@ -497,13 +535,30 @@ export function expireUnpaidDemoBookings(now = Date.now()) {
   return next;
 }
 
+export function completeDemoPayment(id: string) {
+  const user = requireRole("penyewa");
+  const bookings = parseBookings(read(BOOKINGS));
+  const booking = bookings.find((item) => item.id === id && item.ownerId === user.id);
+  if (!booking || booking.metodePembayaran !== "midtrans" || booking.status !== "menunggu") {
+    throw new Error("Pembayaran demo tidak tersedia atau sudah kedaluwarsa.");
+  }
+  save(bookings.map((item) => item.id === id ? {
+    ...item, status: "aktif", statusVerifikasi: "disetujui", paymentStatus: "settlement", paidAt: new Date().toISOString(),
+  } : item));
+}
+
 export function canCancelBooking(booking: Booking, now = Date.now()) {
+  if (booking.metodePembayaran === "midtrans") {
+    if (booking.status !== "aktif" || !booking.paidAt || booking.pembatalan) return false;
+    const cutoff = cancellationDeadline(booking.tanggalMulai, booking.paidAt);
+    return Date.parse(booking.paidAt) < cutoff && now <= cutoff;
+  }
   if (booking.status === "dibatalkan" || booking.statusVerifikasi !== "menunggu") {
     return false;
   }
 
   const created = new Date(booking.createdAt).getTime();
-  return Number.isFinite(created) && now - created < DAY_MS;
+  return Number.isFinite(created) && now - created < CANCELLATION_WINDOW_MS;
 }
 
 export function cancelDemoBooking(
@@ -527,8 +582,11 @@ export function cancelDemoBooking(
   }
 
   if (!canCancelBooking(booking)) {
-    throw new Error("Pembatalan hanya tersedia dalam 1x24 jam sebelum admin memverifikasi.");
+    throw new Error(booking.metodePembayaran === "midtrans"
+      ? "Pesanan belum lunas atau batas pengajuan pembatalan sudah lewat."
+      : "Pembatalan hanya tersedia dalam 1x24 jam sebelum admin memverifikasi.");
   }
+  if (booking.metodePembayaran === "midtrans" && !input) throw new Error("Isi pengajuan pembatalan.");
 
   if (input !== undefined) {
     const nama = input.nama.trim();
@@ -548,7 +606,8 @@ export function cancelDemoBooking(
         item.id === id
           ? {
             ...item,
-            status: "dibatalkan",
+            // Midtrans: hold schedule until admin approves. Legacy transfer: cancel immediately.
+            status: item.metodePembayaran === "midtrans" ? item.status : "dibatalkan",
             pembatalan: {
               nama,
               nim,
@@ -591,6 +650,7 @@ export function verifyDemoBooking(
 
   if (
     !booking ||
+    booking.metodePembayaran === "midtrans" ||
     booking.status === "dibatalkan" ||
     booking.statusVerifikasi !== "menunggu" ||
     status === "menunggu"
@@ -614,4 +674,33 @@ export function verifyDemoBooking(
         : booking,
     ),
   );
+}
+
+export function reviewDemoCancellation(id: string, decision: "disetujui" | "ditolak" | "refund", note = "") {
+  requireRole("admin");
+  const bookings = parseBookings(read(BOOKINGS));
+  const booking = bookings.find((entry) => entry.id === id);
+  const request = booking?.pembatalan;
+  if (!booking || !request || (decision === "refund"
+    ? request.status !== "disetujui" || request.refundCompleted
+    : request.status !== "menunggu")) {
+    throw new Error("Pengajuan tidak dapat diproses.");
+  }
+  if (decision === "disetujui" && Date.now() >= rentalStart(booking.tanggalMulai)) {
+    throw new Error("Pembatalan hanya dapat disetujui sebelum sewa mulai.");
+  }
+  const adminNote = note.trim();
+  if (decision === "ditolak" && (!adminNote || adminNote.length > 1000)) {
+    throw new Error("Isi catatan penolakan maksimal 1.000 karakter.");
+  }
+  save(bookings.map((item) => item.id === id ? {
+    ...item,
+    status: decision === "disetujui" ? "dibatalkan" : item.status,
+    pembatalan: {
+      ...request,
+      status: decision === "refund" ? "disetujui" : decision,
+      refundCompleted: decision === "refund",
+      adminNote: decision === "ditolak" ? adminNote : request.adminNote,
+    },
+  } : item));
 }

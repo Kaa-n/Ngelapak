@@ -239,7 +239,7 @@ export default function DaftarView({
         </div>
 
         <p className="text-center text-xs text-[#737781] mt-5">
-          © {new Date().getFullYear()} Ngelapak · Universitas Udayana
+          Ngelapak · Universitas Udayana
         </p>
       </div>
     </div>

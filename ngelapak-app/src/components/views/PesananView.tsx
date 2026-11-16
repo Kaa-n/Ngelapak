@@ -1,20 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import {
-  attachDemoBookingProof,
-  canCancelBooking,
-  expireUnpaidDemoBookings,
-  useDemo,
-} from "@/lib/demo-store";
+import { canCancelBooking, useDemo } from "@/lib/demo-store";
+import { paymentLabel } from "@/lib/rental-policy";
 import { formatDate, formatRupiah, isPendingCancellationRefund } from "@/lib/mock-data";
 import type { Booking } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
 import type { SupabaseProfile } from "@/lib/supabase/auth";
 import { getSupabaseBookings } from "@/lib/supabase/bookings";
 import DetailPesananView from "./DetailPesananView";
-import { uploadBookingProof } from "@/lib/supabase/bookings";
-import PaymentInstructions from "@/components/booking/PaymentInstructions";
 
 // ============================================================
 // TYPES & HELPERS
@@ -23,9 +17,9 @@ import PaymentInstructions from "@/components/booking/PaymentInstructions";
 type FilterTab = "semua" | "menunggu" | "disetujui" | "ditolak" | "dibatalkan";
 
 function getEffectiveStatus(booking: Booking): FilterTab {
+  if (booking.statusVerifikasi === "ditolak") return "ditolak";
   if (booking.status === "dibatalkan") return "dibatalkan";
   if (booking.statusVerifikasi === "disetujui") return "disetujui";
-  if (booking.statusVerifikasi === "ditolak") return "ditolak";
   return "menunggu";
 }
 
@@ -41,7 +35,7 @@ function getStatusBadge(booking: Booking): {
       icon: "hourglass_top",
     };
   }
-  if (booking.status === "dibatalkan")
+  if (booking.status === "dibatalkan" && booking.statusVerifikasi !== "ditolak")
     return {
       label: "Dibatalkan",
       cls: "bg-red-50 text-red-700 border-red-200",
@@ -49,27 +43,20 @@ function getStatusBadge(booking: Booking): {
     };
   if (booking.statusVerifikasi === "disetujui")
     return {
-      label: booking.status === "selesai" ? "Selesai" : "Disetujui",
+      label: booking.status === "selesai" ? "Selesai"
+        : booking.metodePembayaran === "midtrans" ? "Lunas" : "Disetujui",
       cls: "bg-emerald-50 text-emerald-700 border-emerald-200",
       icon: "check_circle",
     };
   if (booking.statusVerifikasi === "ditolak")
     return {
-      label: "Ditolak",
+      label: booking.metodePembayaran === "midtrans" ? paymentLabel(booking.statusVerifikasi, booking.paymentStatus) : "Ditolak",
       cls: "bg-red-50 text-red-700 border-red-200",
       icon: "do_not_disturb_on",
     };
-  if (!booking.buktiBayar) {
-    return {
-      label: "Menunggu Pembayaran",
-      cls: "bg-amber-50 text-amber-700 border-amber-200",
-      icon: "payments",
-    };
-  }
-
   return {
-    label: "Menunggu Konfirmasi",
-    cls: "bg-blue-50 text-blue-700 border-blue-200",
+    label: booking.metodePembayaran === "midtrans" ? paymentLabel(booking.statusVerifikasi, booking.paymentStatus) : "Menunggu",
+    cls: "bg-amber-50 text-amber-700 border-amber-200",
     icon: "schedule",
   };
 }
@@ -101,13 +88,17 @@ function getStepIndex(booking: Booking): number {
 
 function StatusStepper({ booking }: { booking: Booking }) {
   const current = getStepIndex(booking);
+  const steps = booking.metodePembayaran === "midtrans" ? [
+    STEPS[0], { label: "Menunggu pembayaran", icon: "pending_actions" },
+    { label: "Konfirmasi pembayaran", icon: "fact_check" }, STEPS[3],
+  ] : STEPS;
   const isRejected =
     booking.statusVerifikasi === "ditolak" ||
     booking.status === "dibatalkan";
 
   return (
     <div className="flex items-start gap-0 w-full mt-4">
-      {STEPS.map((step, idx) => {
+      {steps.map((step, idx) => {
         const done = idx < current;
         const active = idx === current;
         const rejected = isRejected && idx === 2;
@@ -181,36 +172,8 @@ function BookingCard({
   booking: Booking;
   onViewDetail: (id: string) => void;
 }) {
-  const [now, setNow] = useState(Date.now());
-  const [proofFile, setProofFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [notice, setNotice] = useState("");
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
   const badge = getStatusBadge(booking);
   const eligible = canCancelBooking(booking);
-  const deadline = new Date(booking.createdAt).getTime() + 24 * 60 * 60 * 1000;
-  const remaining = Math.max(0, deadline - now);
-  const paymentPending = booking.status === "menunggu" && booking.statusVerifikasi === "menunggu";
-  const paymentSubmitted = Boolean(booking.buktiBayar) && paymentPending;
-  const countdown = `${String(Math.floor(remaining / 3600000)).padStart(2,"0")}:${String(Math.floor((remaining % 3600000) / 60000)).padStart(2,"0")}:${String(Math.floor((remaining % 60000) / 1000)).padStart(2,"0")}`;
-  async function submitProof() {
-    if (!proofFile) return;
-    setUploading(true); setNotice("");
-    try {
-      if (booking.id.startsWith("TXN-") && booking.ownerId) {
-        attachDemoBookingProof(booking.id, `demo://payment-proofs/${proofFile.name}`);
-        setNotice(`Bukti ${proofFile.name} siap ditinjau (akun demo).`);
-      } else {
-        await uploadBookingProof(booking.id, proofFile);
-        setNotice("Bukti berhasil diunggah.");
-        window.location.reload();
-      }
-    } catch (error) { setNotice(error instanceof Error ? error.message : "Upload bukti gagal."); }
-    finally { setUploading(false); }
-  }
 
   return (
     <article className="bg-white rounded-2xl border border-[#e2e7ff] hover:shadow-md transition-shadow flex flex-col">
@@ -270,63 +233,6 @@ function BookingCard({
           </span>
         </div>
       </div>
-      {paymentPending && (
-        <div
-          className={`mx-4 mb-4 rounded-xl border p-3 text-xs ${
-            paymentSubmitted
-              ? "border-blue-200 bg-blue-50 text-blue-950"
-              : "border-amber-300 bg-amber-50 text-amber-950"
-          }`}
-        >
-          {paymentSubmitted ? (
-            <>
-              <strong>Bukti pembayaran sudah dikirim.</strong>
-              <p className="mt-1">
-                Pesanan menunggu konfirmasi admin. Hitung mundur pembayaran sudah
-                dihentikan.
-              </p>
-            </>
-          ) : (
-            <>
-              <strong>Pembayaran wajib dalam 1×24 jam.</strong>
-              <p className="mt-1">
-                {remaining > 0
-                  ? `Sisa waktu: ${countdown}`
-                  : "Waktu habis; pesanan menunggu pembatalan otomatis."}
-              </p>
-              <div className="mt-3">
-                <PaymentInstructions
-                  bookingId={booking.id}
-                  metodePembayaran={booking.metodePembayaran}
-                  totalBayar={booking.totalBayar}
-                  compact
-                />
-              </div>
-            </>
-          )}
-          {!booking.buktiBayar && (
-            <div className="mt-3 space-y-2">
-              <input
-                type="file"
-                accept="image/jpeg,image/png,application/pdf"
-                onChange={(e) => setProofFile(e.target.files?.[0] ?? null)}
-              />
-              <button
-                disabled={!proofFile || uploading}
-                onClick={submitProof}
-                className="rounded-lg bg-blue-900 px-3 py-1.5 text-white disabled:opacity-50"
-              >
-                {uploading ? "Mengunggah…" : "Unggah bukti pembayaran"}
-              </button>
-            </div>
-          )}
-          {notice && (
-            <p role="status" className="mt-2">
-              {notice}
-            </p>
-          )}
-        </div>
-      )}
 
       {/* Actions */}
       <div className="px-4 pb-4 flex gap-2 mt-auto">
@@ -383,15 +289,12 @@ const TABS: { key: FilterTab; label: string }[] = [
     const { bookings: demoBookings } = useDemo();
 
     const [supabaseBookings, setSupabaseBookings] = useState<Booking[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState("");
 
     const isDemoUser = user?.id === "ayu" || user?.id === "bayu";
 
-    useEffect(() => {
-      if (isDemoUser) expireUnpaidDemoBookings();
-    }, [isDemoUser, demoBookings.length]);
-
+    const [reloadVersion, setReloadVersion] = useState(0);
     useEffect(() => {
       if (!user || user.role !== "penyewa" || isDemoUser) return;
 
@@ -427,7 +330,7 @@ const TABS: { key: FilterTab; label: string }[] = [
       return () => {
         mounted = false;
       };
-    }, [user?.id, user?.role, isDemoUser]);
+    }, [user, isDemoUser, reloadVersion]);
 
     const bookings = isDemoUser ? demoBookings : supabaseBookings;
 
@@ -440,16 +343,14 @@ const TABS: { key: FilterTab; label: string }[] = [
   if (detailId) {
     return (
       <DetailPesananView
+        key={detailId}
         bookingId={detailId}
-        bookings={bookings}
-        onBack={() => setDetailId(null)}
-        onShowToast={onShowToast}
-        onPaymentConfirmed={() => {
-          if (isDemoUser) return;
-          void getSupabaseBookings()
-            .then((data) => setSupabaseBookings(data))
-            .catch(() => undefined);
+        useSupabase={!isDemoUser}
+        onBack={() => {
+          setDetailId(null);
+          setReloadVersion((value) => value + 1);
         }}
+        onShowToast={onShowToast}
       />
     );
   }
@@ -556,7 +457,16 @@ const TABS: { key: FilterTab; label: string }[] = [
       )}
 
       {/* ── EMPTY STATE ── */}
-      {bookings.length === 0 && (
+      {!isDemoUser && loading && <p role="status" className="mb-4 text-sm">Memuat pesanan…</p>}
+      {!isDemoUser && loadError && (
+        <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm">
+          {loadError}
+          <button type="button" className="ml-2 underline" onClick={() => setReloadVersion((value) => value + 1)}>
+            Coba lagi
+          </button>
+        </div>
+      )}
+      {bookings.length === 0 && (isDemoUser || (!loading && !loadError)) && (
         <div className="bg-white rounded-2xl border border-[#e2e7ff] p-12 text-center">
           <div className="w-16 h-16 rounded-full bg-[#eef0ff] flex items-center justify-center mx-auto mb-4">
             <span className="material-symbols-outlined text-4xl text-[#003466]">
