@@ -1,8 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { Suspense } from "react";
 import DashboardBanner from "@/components/home/DashboardBanner";
 import ActiveStallsSection from "@/components/home/ActiveStallsSection";
+import PublicValidationGateway from "@/components/home/PublicValidationGateway";
 import type { Spot } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
 
@@ -142,12 +143,14 @@ export default function HomeView({
         {/* ========================================================
             3. SEKSI "LAPAK SEDANG BEROPERASI" (ActiveStallsSection)
             ======================================================== */}
-        <ActiveStallsSection
-          spots={spots}
-          isLoading={isLoading}
-          onViewDetail={onNavigateToDetail}
-          onNavigateToKatalog={onNavigateToKatalog}
-        />
+        <Suspense fallback={null}>
+          <ActiveStallsSection
+            spots={spots}
+            isLoading={isLoading}
+            onViewDetail={onNavigateToDetail}
+            onNavigateToKatalog={onNavigateToKatalog}
+          />
+        </Suspense>
 
         {/* ========================================================
             4. PANDUAN CARA SEWA CEPAT 
@@ -265,12 +268,9 @@ export default function HomeView({
         </section>
 
         {/* ========================================================
-            5. AREA EKSTENSI UNTUK TIM LAIN)
-            TODO (Untuk Anggota Tim Lain):
-            - Misal Banner Event Kampus / Festival Dies Natalis jika ada.
-            - Misal Ulasan Penyewa (Testimoni Mahasiswa).
-            - Misal FAQ interaktif.
+            5. GERBANG VALIDASI TIKET / KONTRAK LAPANGAN TANPA LOGIN
             ======================================================== */}
+        <PublicValidationGateway />
       </div>
     </div>
   );

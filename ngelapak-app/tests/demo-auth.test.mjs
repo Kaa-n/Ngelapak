@@ -143,8 +143,9 @@ test("product caption is one text saved by the tenant", () => {
   assert.equal(store.readProductCaption("spot-003"), "");
   assert.throws(() => store.saveProductCaption("spot-003", "Kopi susu"), /penyewa/);
   store.demoLogin("ayu");
-  store.saveProductCaption("spot-003", "  Kopi susu  ");
-  assert.equal(store.readProductCaption("spot-003"), "Kopi susu");
+  assert.throws(() => store.saveProductCaption("spot-003", "Kopi susu"), /lunas/);
+  store.saveProductCaption("spot-001", "  Kopi susu  ");
+  assert.equal(store.readProductCaption("spot-001"), "Kopi susu");
 });
 
 test("invalid dates, durations and unavailable spots fail without creating transactions", () => {

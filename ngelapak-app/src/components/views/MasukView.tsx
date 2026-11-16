@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -11,6 +10,23 @@ interface MasukViewProps {
   onNavigateToRegister: () => void;
 }
 
+const QUICK_SUPABASE_ACCOUNTS = [
+  {
+    label: "Admin",
+    nama: "Admin Ngelapak",
+    email: "admin@example.com",
+    password: "12345678",
+    isAdmin: true,
+  },
+  {
+    label: "User / Penyewa",
+    nama: "User Demo",
+    email: "user@example.com",
+    password: "12345678",
+    isAdmin: false,
+  },
+];
+
 export default function MasukView({
   onLoginDemo,
   onLoginSupabase,
@@ -21,6 +37,8 @@ export default function MasukView({
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [quickLoadingEmail, setQuickLoadingEmail] = useState<string | null>(null);
+  const [showLocalDemo, setShowLocalDemo] = useState(false);
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -41,14 +59,39 @@ export default function MasukView({
     }
   };
 
+  const handleQuickSupabaseLogin = async (
+    demoEmail: string,
+    demoPassword: string
+  ) => {
+    setError("");
+    setQuickLoadingEmail(demoEmail);
+    setEmail(demoEmail);
+    setPassword(demoPassword);
+
+    try {
+      const profile = await signInWithEmail(demoEmail, demoPassword);
+      onLoginSupabase(profile);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : `Gagal masuk dengan ${demoEmail}.`
+      );
+    } finally {
+      setQuickLoadingEmail(null);
+    }
+  };
+
   const handleDemoLogin = async (id: string) => {
     setError("");
     try {
       await onLoginDemo(id);
     } catch {
-      setError("Gagal masuk menggunakan akun demo.");
+      setError("Gagal masuk menggunakan akun demo lokal.");
     }
   };
+
+  const isAnyLoading = loading || quickLoadingEmail !== null;
 
   return (
     <div className="min-h-[calc(100vh-128px)] flex items-center justify-center px-4 py-10 pb-24">
@@ -133,8 +176,8 @@ export default function MasukView({
 
             <button
               type="submit"
-              disabled={loading}
-              className="w-full bg-[#003466] hover:bg-[#1a4b84] disabled:opacity-60 text-white rounded-xl py-3 font-semibold text-sm transition-colors"
+              disabled={isAnyLoading}
+              className="w-full bg-[#003466] hover:bg-[#1a4b84] disabled:opacity-60 text-white rounded-xl py-3 font-semibold text-sm transition-colors cursor-pointer"
             >
               {loading ? "Memproses..." : "Masuk"}
             </button>
@@ -145,7 +188,7 @@ export default function MasukView({
             <button
               type="button"
               onClick={onNavigateToRegister}
-              className="font-bold text-[#003466] hover:underline"
+              className="font-bold text-[#003466] hover:underline cursor-pointer"
             >
               Daftar sekarang
             </button>
@@ -157,58 +200,62 @@ export default function MasukView({
             <div className="flex-1 border-t border-[#e2e7ff]" />
           </div>
 
+          {/* ── Login Cepat Akun Demo (Supabase) ── */}
           <div>
             <div className="mb-4">
               <h2 className="font-bold text-base">
-                Masuk dengan Akun Demo
+                Login Cepat Akun Demo
               </h2>
               <p className="text-xs text-[#737781] mt-1">
-                Pilih akun untuk mencoba fitur sesuai peran.
+                Masuk langsung ke database untuk mencoba fitur sesuai peran.
               </p>
             </div>
 
             <div className="space-y-3">
-              {DEMO_USERS.map((user) => {
-                const isAdmin = user.role === "admin";
+              {QUICK_SUPABASE_ACCOUNTS.map((acc) => {
+                const isThisLoading = quickLoadingEmail === acc.email;
 
                 return (
                   <div
-                    key={user.id}
+                    key={acc.email}
                     className="border border-[#e2e7ff] rounded-xl p-4 hover:border-[#003466]/40 hover:bg-[#f8faff] transition-colors"
                   >
                     <div className="flex items-start gap-3">
                       <div className="w-10 h-10 shrink-0 bg-[#edf3fa] rounded-full flex items-center justify-center">
                         <span className="material-symbols-outlined text-[#003466]">
-                          {isAdmin ? "admin_panel_settings" : "person"}
+                          {acc.isAdmin ? "admin_panel_settings" : "person"}
                         </span>
                       </div>
 
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="font-bold text-sm">{user.nama}</p>
+                          <p className="font-bold text-sm">{acc.nama}</p>
 
                           <span
-                            className={`text-[10px] font-semibold px-2 py-1 rounded-full ${
-                              isAdmin
+                            className={`text-[10px] font-semibold px-2 py-1 rounded-full ${acc.isAdmin
                                 ? "bg-purple-50 text-purple-700"
                                 : "bg-blue-50 text-blue-700"
-                            }`}
+                              }`}
                           >
-                            {isAdmin ? "Admin" : "Penyewa"}
+                            {acc.label}
                           </span>
                         </div>
 
                         <p className="text-xs text-[#737781] mt-1 break-all">
-                          {user.email}
+                          {acc.email}
                         </p>
 
                         <button
                           type="button"
-                          onClick={() => handleDemoLogin(user.id)}
-                          className="mt-3 text-xs font-bold text-[#003466] hover:text-[#1a4b84] transition-colors"
+                          disabled={isAnyLoading}
+                          onClick={() =>
+                            handleQuickSupabaseLogin(acc.email, acc.password)
+                          }
+                          className="mt-3 text-xs font-bold text-[#003466] hover:text-[#1a4b84] disabled:opacity-50 transition-colors cursor-pointer"
                         >
-                          Masuk sebagai{" "}
-                          {isAdmin ? "Admin" : user.id === "ayu" ? "Ayu" : "Bayu"} →
+                          {isThisLoading
+                            ? "Sedang masuk..."
+                            : `Masuk sebagai ${acc.isAdmin ? "Admin" : "User"} →`}
                         </button>
                       </div>
                     </div>
@@ -218,11 +265,71 @@ export default function MasukView({
             </div>
           </div>
 
-          <div className="mt-6 bg-[#f5f7fb] rounded-xl p-3">
-            <p className="text-xs text-[#737781] text-center leading-relaxed">
-              Akun demo digunakan untuk mencoba fitur Ngelapak.
-              Data demonstrasi disimpan pada browser.
-            </p>
+          {/* ── Dropdown Akun Demo Lokal (Mock Data) ── */}
+          <div className="mt-6 border border-[#e2e7ff] rounded-xl overflow-hidden bg-[#f8faff]">
+            <button
+              type="button"
+              onClick={() => setShowLocalDemo((prev) => !prev)}
+              aria-expanded={showLocalDemo}
+              className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-[#eef3fc] transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[18px] text-[#737781]">
+                  storage
+                </span>
+                <span className="text-xs font-semibold text-[#424750]">
+                  Akun Demo Lokal (Offline / Mock Data)
+                </span>
+              </div>
+              <span className="material-symbols-outlined text-[20px] text-[#737781]">
+                {showLocalDemo ? "expand_less" : "expand_more"}
+              </span>
+            </button>
+
+            {showLocalDemo && (
+              <div className="px-4 pb-4 pt-2 border-t border-[#e2e7ff] bg-white space-y-2.5">
+                <p className="text-[11px] text-[#737781] leading-relaxed">
+                  Mode simulasi lokal tanpa koneksi database. Perubahan data hanya tersimpan sementara di browser.
+                </p>
+
+                {DEMO_USERS.map((user) => {
+                  const isAdmin = user.role === "admin";
+
+                  return (
+                    <div
+                      key={user.id}
+                      className="border border-[#e2e7ff] rounded-lg p-3 flex items-center justify-between gap-3 hover:bg-[#f8faff] transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-xs truncate">{user.nama}</p>
+                          <span
+                            className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${isAdmin
+                                ? "bg-purple-50 text-purple-700"
+                                : "bg-blue-50 text-blue-700"
+                              }`}
+                          >
+                            {isAdmin ? "Admin" : "Penyewa"}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[#737781] truncate mt-0.5">
+                          {user.email}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={isAnyLoading}
+                        onClick={() => handleDemoLogin(user.id)}
+                        className="shrink-0 px-2.5 py-1.5 rounded-lg bg-[#edf3fa] hover:bg-[#dce7f5] text-[11px] font-bold text-[#003466] transition-colors cursor-pointer"
+                      >
+                        Masuk →
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 

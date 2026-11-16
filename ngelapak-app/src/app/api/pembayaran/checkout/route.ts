@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { midtransBookingId, openSnap, paymentServices, syncMidtransPayment } from "@/lib/midtrans/server";
-import { CLEANING_DAYS, shiftRentalDate } from "@/lib/rental-policy";
+import { CLEANING_DAYS, minimumRentalStartDate, shiftRentalDate } from "@/lib/rental-policy";
 import type { Database } from "@/types/database";
 
 const inputFields = z.object({
@@ -38,6 +38,9 @@ export async function POST(request: Request) {
     }
     if (!input.success) return new Response(null, { status: 400 });
     const order = input.data;
+    if (order.tanggalMulai < minimumRentalStartDate()) {
+      return Response.json({ error: "Tanggal mulai sewa paling cepat dua hari dari hari ini." }, { status: 400 });
+    }
     const { data: expired, error: expiredError } = await services.db.from("bookings")
       .select("id,total_bayar,payment_expires_at,spots!inner(kode)")
       .eq("spots.kode", order.spotKode).eq("metode_pembayaran", "midtrans")

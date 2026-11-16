@@ -14,6 +14,7 @@ import {
   CANCELLATION_WINDOW_MS,
   CLEANING_DAYS,
   PAYMENT_WINDOW_MS,
+  minimumRentalStartDate,
   rentalPeriodsConflict,
   rentalStart,
 } from "./rental-policy";
@@ -90,7 +91,7 @@ function withSampleCancellations(bookings: Booking[], now: number): Booking[] {
           existing.statusVerifikasi === "ditolak") return date;
       const end = Date.parse(existing.tanggalSelesai + "T00:00:00Z");
       return Number.isFinite(end) ? Math.max(date, end + (CLEANING_DAYS + 1) * CANCELLATION_WINDOW_MS) : date;
-    }, now + 14 * CANCELLATION_WINDOW_MS);
+    }, now + 20 * CANCELLATION_WINDOW_MS);
     const start = new Date(nextFreeDay).toISOString().slice(0, 10);
     const paidAt = new Date(now - PAYMENT_WINDOW_MS).toISOString();
     const booking: Booking = {
@@ -164,11 +165,7 @@ function requireRole(role: Role) {
   const user = currentUser();
 
   if (user?.role !== role) {
-    throw new Error(
-      role === "penyewa"
-        ? "Pembatalan demo hanya untuk akun demo penyewa (Ayu/Bayu). Akun Supabase memakai pembatalan server."
-        : "Anda tidak memiliki akses untuk tindakan ini.",
-    );
+    throw new Error("Anda tidak memiliki akses untuk tindakan ini.");
   }
 
   return user;
@@ -331,11 +328,27 @@ export function readProductCaption(spotId: string) {
   return typeof text === "string" ? text : "";
 }
 
+export function canEditProductCaption(spotId: string) {
+  const user = currentUser();
+  return user?.role === "penyewa" && getAllDemoBookings().some((booking) =>
+    booking.ownerId === user.id &&
+    booking.spotId === spotId &&
+    booking.status !== "dibatalkan" &&
+    booking.statusVerifikasi === "disetujui" &&
+    Boolean(booking.paidAt) &&
+    (booking.metodePembayaran !== "midtrans" || booking.paymentStatus === "settlement"),
+  );
+}
+
 export function saveProductCaption(spotId: string, text: string) {
   const user = currentUser();
 
   if (user?.role !== "penyewa") {
     throw new Error("Hanya penyewa yang dapat mengubah deskripsi produk.");
+  }
+
+  if (!canEditProductCaption(spotId)) {
+    throw new Error("Deskripsi produk hanya dapat diisi setelah pesanan Anda lunas.");
   }
 
   const captions = readProductMap();
@@ -404,6 +417,8 @@ export function createDemoBooking(input: {
   tanggalMulai: string;
   jumlahHari: number;
   jenisUsaha: string;
+  namaUsaha?: string;
+  kategoriPenjual?: string;
   catatan: string;
   metodePembayaran: string;
   buktiBayar?: string;
@@ -429,14 +444,14 @@ export function createDemoBooking(input: {
     !/^\d{4}-\d{2}-\d{2}$/.test(input.tanggalMulai) ||
     !Number.isFinite(start.getTime()) ||
     start.toISOString().slice(0, 10) !== input.tanggalMulai ||
-    input.tanggalMulai < today() ||
+    input.tanggalMulai < minimumRentalStartDate() ||
     !Number.isInteger(jumlahHari) ||
     jumlahHari < 1 ||
     jumlahHari > 30 ||
     !input.jenisUsaha.trim()
   ) {
     throw new Error(
-      "Isi jenis usaha, tanggal mulai hari ini atau setelahnya, dan durasi 1–30 hari.",
+      "Isi jenis usaha, tanggal mulai minimal dua hari dari sekarang, dan durasi 1–30 hari.",
     );
   }
   if (input.metodePembayaran === "midtrans" && now + PAYMENT_WINDOW_MS > rentalStart(input.tanggalMulai)) {
@@ -497,6 +512,8 @@ export function createDemoBooking(input: {
     status: "menunggu",
     statusVerifikasi: "menunggu",
     jenisUsaha: input.jenisUsaha.trim(),
+    namaUsaha: input.namaUsaha?.trim() || undefined,
+    kategoriPenjual: input.kategoriPenjual?.trim() || undefined,
     catatan: input.catatan?.trim() || undefined,
     createdAt: new Date(now).toISOString(),
     // Bayar Nanti: bukti boleh kosong; boleh dilengkapi dalam 1×24 jam.
@@ -511,7 +528,9 @@ export function createDemoBooking(input: {
 
 /** Batalkan pesanan demo yang belum bayar melewati tenggat 1×24 jam. */
 export function expireUnpaidDemoBookings(now = Date.now()) {
-  const bookings = parseBookings(read(BOOKINGS));
+  const raw = read(BOOKINGS);
+  if (!raw) return [];
+  const bookings = parseBookings(raw);
   let changed = false;
 
   const next = bookings.map((item) => {

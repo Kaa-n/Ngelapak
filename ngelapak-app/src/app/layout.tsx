@@ -16,10 +16,40 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Ngelapak – Marketplace Lapak Kampus Universitas Udayana",
+  metadataBase: new URL("https://ngelapak-ayorvup1k-kan04.vercel.app"),
+  title: {
+    default: "Ngelapak – Marketplace Lapak Kampus Universitas Udayana",
+    template: "%s | Ngelapak",
+  },
   description:
     "Platform resmi sewa spot usaha temporer di lingkungan Universitas Udayana. Temukan lapak strategis di Lapangan Rektorat, Boulevard, Student Center, dan Agrokompleks.",
-  keywords: ["lapak kampus", "sewa spot", "universitas udayana", "bazar kampus", "ngelapak"],
+  keywords: ["lapak kampus", "sewa spot", "universitas udayana", "bazar kampus", "ngelapak", "wirausaha mahasiswa"],
+  authors: [{ name: "Ngelapak – Biro Pengelolaan Aset UNUD" }],
+  openGraph: {
+    type: "website",
+    locale: "id_ID",
+    url: "https://ngelapak-ayorvup1k-kan04.vercel.app",
+    siteName: "Ngelapak",
+    title: "Ngelapak – Sewa Lapak Kampus Universitas Udayana",
+    description:
+      "Sewa spot usaha temporer di Universitas Udayana. Lapangan Rektorat, Boulevard, Student Center, dan Agrokompleks.",
+    images: [
+      {
+        url: "/logo ngelapak.png",
+        width: 1200,
+        height: 630,
+        alt: "Ngelapak – Marketplace Lapak Kampus",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Ngelapak – Sewa Lapak Kampus Universitas Udayana",
+    description: "Platform resmi sewa spot usaha temporer Universitas Udayana.",
+    images: ["/logo ngelapak.png"],
+  },
+  robots: { index: true, follow: true },
+  alternates: { canonical: "https://ngelapak-ayorvup1k-kan04.vercel.app" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

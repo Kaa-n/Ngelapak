@@ -5,6 +5,8 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MOCK_SPOTS, formatRupiah, type Spot } from "@/lib/mock-data";
+import { minimumRentalStartDate } from "@/lib/rental-policy";
+import { getSupabaseSpots } from "@/lib/supabase/spots";
 
 export interface InteractiveMapProps {
   /**
@@ -12,6 +14,8 @@ export interface InteractiveMapProps {
    * Jika tidak diberikan, default mengambil seluruh data dari MOCK_SPOTS.
    */
   spots?: Spot[];
+  /** Availability for the selected rental period; operating status stays based on today. */
+  availabilitySpots?: Spot[];
 
   /**
    * Filter status awal/default pada peta:
@@ -50,6 +54,10 @@ export interface InteractiveMapProps {
    * Konteks penggunaan peta ("home" | "katalog" | "detail").
    */
   context?: "home" | "katalog" | "detail";
+
+  /** Rental period used to calculate availability when the rentable tab is selected. */
+  rentalPeriod?: { start: string; end: string };
+  onRentalPeriodChange?: (period: { start: string; end: string }) => void;
 }
 
 /**
@@ -218,6 +226,7 @@ const createMarkerIcon = (status: "tersedia" | "dipesan" | "pemeliharaan") => {
  */
 export default function InteractiveMap({
   spots = MOCK_SPOTS,
+  availabilitySpots,
   defaultStatus = "tersedia",
   defaultZone = "all",
   showFilters = true,
@@ -225,6 +234,8 @@ export default function InteractiveMap({
   onSelectSpot,
   className = "",
   context,
+  rentalPeriod,
+  onRentalPeriodChange,
 }: InteractiveMapProps) {
   // State filter interaktif (utamakan aksi klik pengguna, fallback ke prop default)
   const [userStatusFilter, setUserStatusFilter] = useState<
@@ -232,6 +243,11 @@ export default function InteractiveMap({
   >(null);
   const [userZoneFilter, setUserZoneFilter] = useState<string | null>(null);
   const [mapKey, setMapKey] = useState(0);
+  const [localPeriod, setLocalPeriod] = useState(() => {
+    const start = minimumRentalStartDate();
+    return { start, end: start };
+  });
+  const [localAvailabilitySpots, setLocalAvailabilitySpots] = useState<Spot[] | null>(null);
 
   useLayoutEffect(() => {
     // Next.js keeps hidden routes mounted, but React Leaflet removes the map
@@ -245,6 +261,27 @@ export default function InteractiveMap({
   const isSingleSpot = spots.length === 1 || context === "detail";
   const shouldShowFilters = showFilters && !isSingleSpot;
   const shouldShowLegend = showLegend && !isSingleSpot;
+  const minimumStart = minimumRentalStartDate();
+  const mapStart = rentalPeriod?.start || localPeriod.start;
+  const mapEnd = rentalPeriod?.end || localPeriod.end;
+  const availabilitySource = availabilitySpots ?? localAvailabilitySpots ?? spots;
+
+  function updateRentalPeriod(start: string, end: string) {
+    const next = { start, end: end < start ? start : end };
+    setLocalPeriod(next);
+    onRentalPeriodChange?.(next);
+  }
+
+  useEffect(() => {
+    if (statusFilter !== "tersedia" || availabilitySpots) return;
+    let active = true;
+    void getSupabaseSpots(localPeriod).then((result) => {
+      if (active) setLocalAvailabilitySpots(result.spots);
+    }).catch(() => {
+      if (active) setLocalAvailabilitySpots(null);
+    });
+    return () => { active = false; };
+  }, [availabilitySpots, localPeriod, statusFilter]);
 
   // Tab Zona Kampus
   const ZONES = [
@@ -265,24 +302,28 @@ export default function InteractiveMap({
     return {
       total: zoneFiltered.length,
       dipesan: zoneFiltered.filter((s) => s.status === "dipesan").length,
-      tersedia: zoneFiltered.filter((s) => s.status === "tersedia").length,
+      tersedia: availabilitySource.filter((s) =>
+        (selectedZone === "all" || s.zona === selectedZone) && s.status === "tersedia",
+      ).length,
     };
-  }, [spots, selectedZone]);
+  }, [availabilitySource, spots, selectedZone]);
 
   // Filter spot yang akan digambar di peta
   const filteredSpots = useMemo(() => {
     if (isSingleSpot) return spots;
 
-    return spots.filter((spot) => {
+    const availabilityById = new Map(availabilitySource.map((spot) => [spot.id, spot]));
+    return spots.flatMap((spot) => {
       // Filter Zona
       const matchesZone = selectedZone === "all" || spot.zona === selectedZone;
       // Filter Status
-      const matchesStatus =
-        statusFilter === "all" || spot.status === statusFilter;
+      const availability = availabilityById.get(spot.id);
+      const effectiveStatus = statusFilter === "tersedia" ? availability?.status ?? spot.status : spot.status;
+      const matchesStatus = statusFilter === "all" || effectiveStatus === statusFilter;
 
-      return matchesZone && matchesStatus;
+      return matchesZone && matchesStatus ? [{ ...spot, status: effectiveStatus }] : [];
     });
-  }, [spots, selectedZone, statusFilter, isSingleSpot]);
+  }, [availabilitySource, spots, selectedZone, statusFilter, isSingleSpot]);
 
   // Tentukan pusat koordinat kamera peta
   const activeCenter = useMemo(() => {
@@ -409,6 +450,7 @@ export default function InteractiveMap({
               );
             })}
           </div>
+
         </div>
       )}
 
@@ -579,6 +621,29 @@ export default function InteractiveMap({
           Menampilkan {filteredSpots.length} dari {spots.length} titik lapak
         </span>
       </div>
+
+      {statusFilter === "tersedia" && !isSingleSpot && (
+        <div className="border-t border-[#e2e7ff] bg-white px-5 py-4">
+          <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-[#424750]">
+            Periode Sewa untuk Cek Ketersediaan
+          </p>
+          <div className="grid max-w-md grid-cols-1 gap-2 sm:grid-cols-2">
+            <label className="text-xs text-[#424750]">
+              Tanggal mulai
+              <input type="date" value={mapStart} min={minimumStart}
+                onChange={(event) => updateRentalPeriod(event.target.value, mapEnd)}
+                className="mt-1 h-10 w-full rounded-lg bg-[#f8f9ff] px-2.5 text-sm outline-none ring-1 ring-[#d7def5] focus:ring-2 focus:ring-[#003466]/20" />
+            </label>
+            <label className="text-xs text-[#424750]">
+              Tanggal selesai
+              <input type="date" value={mapEnd} min={mapStart || minimumStart}
+                onChange={(event) => updateRentalPeriod(mapStart, event.target.value)}
+                className="mt-1 h-10 w-full rounded-lg bg-[#f8f9ff] px-2.5 text-sm outline-none ring-1 ring-[#d7def5] focus:ring-2 focus:ring-[#003466]/20" />
+            </label>
+          </div>
+          <p className="mt-2 text-[11px] text-[#737781]">Pemesanan tersedia mulai H+2; tanggal selesai tidak dapat mendahului tanggal mulai.</p>
+        </div>
+      )}
     </div>
   );
 }
