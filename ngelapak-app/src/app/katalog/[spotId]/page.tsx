@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { cache } from "react";
-import { notFound, redirect } from "next/navigation";
+import { Suspense, cache } from "react";
+import { redirect } from "next/navigation";
 import { getSpotByKode } from "@/lib/supabase/spots-server";
 import { formatRupiah } from "@/lib/mock-data";
 
@@ -22,7 +22,22 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function SpotDetailPage({ params }: Props) {
+async function SpotRedirector({ params }: Props) {
   const { spotId } = await params;
   redirect(`/?view=detail&spot=${encodeURIComponent(spotId)}`);
+  return null;
+}
+
+export default function SpotDetailPage({ params }: Props) {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#faf8ff] flex items-center justify-center p-4">
+          <p className="text-sm font-semibold text-[#003466]">Memuat detail lapak…</p>
+        </div>
+      }
+    >
+      <SpotRedirector params={params} />
+    </Suspense>
+  );
 }
