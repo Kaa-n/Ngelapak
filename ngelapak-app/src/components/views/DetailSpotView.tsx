@@ -1,15 +1,30 @@
 "use client";
 
 import React, { useEffect, useState, useSyncExternalStore } from "react";
-import type { Spot } from "@/lib/mock-data";
+import type { JadwalOperasionalItem, Spot } from "@/lib/mock-data";
 import dynamic from "next/dynamic";
 import { formatRupiah, formatDate } from "@/lib/mock-data";
 import type { ToastMessage, DemoUser } from "@/lib/types";
 import type { SupabaseProfile } from "@/lib/supabase/auth";
+import BookingDateFields from "@/components/booking/BookingDateFields";
 import { createSupabaseBooking } from "@/lib/supabase/bookings";
 import { createClient } from "@/lib/supabase/client";
 import { createDemoBooking, getAllDemoBookings, today } from "@/lib/demo-store";
-import { CANCELLATION_WINDOW_MS, CLEANING_DAYS, PAYMENT_WINDOW_MS, rentalStart, formatRentalTime, shiftRentalDate } from "@/lib/rental-policy";
+import {
+  CANCELLATION_WINDOW_MS,
+  CLEANING_DAYS,
+  PAYMENT_WINDOW_MS,
+  formatRentalTime,
+  isDateBlocked,
+  nextAvailableDate,
+  rentalStart,
+  shiftRentalDate,
+} from "@/lib/rental-policy";
+
+type ScheduleRow = JadwalOperasionalItem & {
+  statusVerifikasi?: string;
+  isCleaning?: boolean;
+};
 
 const emptySubscribe = () => () => { };
 
@@ -56,20 +71,60 @@ export default function DetailSpotView({
   const [showTerms, setShowTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [reservedDates, setReservedDates] = useState<{ startDate: string; endDate: string }[]>([]);
+  const [paidSchedule, setPaidSchedule] = useState<ScheduleRow[]>([]);
+  const [dateMessage, setDateMessage] = useState("");
   const demoAccount = user?.id === "ayu" || user?.id === "bayu";
   const spotId = spot?.id;
 
   useEffect(() => {
     if (!spotId || demoAccount || !/^[\da-f-]{36}$/i.test(spotId)) return;
     let active = true;
-    async function loadDates() {
+    async function loadAvailability() {
       if (!spotId) return;
-      const { data } = await createClient().rpc("get_reserved_lapak_dates", { p_spot_id: spotId });
-      if (active && data) setReservedDates(data.map((row) => ({
-        startDate: row.tanggal_mulai, endDate: row.tanggal_selesai,
-      })));
+      const client = createClient();
+      const [reserved, schedule] = await Promise.all([
+        client.rpc("get_reserved_lapak_dates", { p_spot_id: spotId }),
+        client.rpc("get_spot_operating_schedule", { p_spot_id: spotId }),
+      ]);
+      if (!active) return;
+      const day = today();
+      const normalize = (value: string) => value.slice(0, 10);
+      const reservedRanges = (reserved.data ?? []).map((row) => ({
+        startDate: normalize(row.tanggal_mulai),
+        endDate: normalize(row.tanggal_selesai),
+      }));
+      const scheduleRows = (schedule.data ?? []).map((row) => ({
+        id: `booking-${row.booking_id}`,
+        penjual: row.penjual,
+        kategori: (row.kategori === "Mahasiswa Wirausaha" ? "Mahasiswa Wirausaha" : "UMKM Umum") as ScheduleRow["kategori"],
+        startDate: normalize(row.tanggal_mulai),
+        endDate: normalize(row.tanggal_selesai),
+        status: normalize(row.tanggal_mulai) <= day ? "Active" as const : "Upcoming" as const,
+        statusVerifikasi: "disetujui",
+        isCleaning: normalize(row.tanggal_selesai) < day,
+      }));
+      // Gabungkan reserved + jadwal operasional lunas agar tanggal pasti terblokir.
+      const merged = new Map<string, { startDate: string; endDate: string }>();
+      for (const range of [...reservedRanges, ...scheduleRows.map((row) => ({
+        startDate: row.startDate,
+        endDate: row.endDate,
+      }))]) {
+        merged.set(`${range.startDate}:${range.endDate}`, range);
+      }
+      const ranges = [...merged.values()];
+      setReservedDates(ranges);
+      setPaidSchedule(scheduleRows);
+      const occupied = ranges.map((range) => ({ start: range.startDate, end: range.endDate }));
+      const openStart = nextAvailableDate(day, occupied);
+      setStartDate((current) => {
+        const nextStart = isDateBlocked(current, occupied) ? openStart : current;
+        setEndDateStr((currentEnd) => (
+          currentEnd < nextStart || isDateBlocked(currentEnd, occupied) ? nextStart : currentEnd
+        ));
+        return nextStart;
+      });
     }
-    void loadDates().catch(() => undefined);
+    void loadAvailability().catch(() => undefined);
     return () => { active = false; };
   }, [spotId, demoAccount]);
 
@@ -108,34 +163,46 @@ export default function DetailSpotView({
     );
   }
 
-  // BACA DATA JADWAL OPERASIONAL UNIK PER SPOT (Dinamis dari mock-data.ts)
+  // Jadwal operasional: booking yang sudah berhasil bayar / tervalidasi
   const currentDay = today();
   const bookings = isMounted && demoAccount ? getAllDemoBookings() : [];
   const fixtureJadwalList = spot.jadwalOperasional || [];
-  const bookingScheduleList = bookings.filter((booking) =>
+  const demoSpotBookings = bookings.filter((booking) =>
     booking.spotId === spot.id &&
     booking.status !== "dibatalkan" &&
     booking.statusVerifikasi !== "ditolak" &&
     shiftRentalDate(booking.tanggalSelesai, CLEANING_DAYS) >= currentDay
-  ).map((booking) => ({
-    id: `booking-${booking.id}`,
-    penjual: booking.penyewa.nama,
-    kategori: "UMKM Umum" as const,
-    startDate: booking.tanggalMulai,
-    endDate: booking.tanggalSelesai,
-    status: booking.tanggalMulai <= currentDay ? "Active" as const : "Upcoming" as const,
-    statusVerifikasi: booking.statusVerifikasi,
-    isCleaning: booking.tanggalSelesai < currentDay,
-  }));
+  );
+  const bookingScheduleList: ScheduleRow[] = demoAccount
+    ? demoSpotBookings
+      .filter((booking) => booking.statusVerifikasi === "disetujui" && booking.status !== "menunggu")
+      .map((booking) => ({
+        id: `booking-${booking.id}`,
+        penjual: booking.penyewa.nama,
+        kategori: "UMKM Umum" as const,
+        startDate: booking.tanggalMulai,
+        endDate: booking.tanggalSelesai,
+        status: booking.tanggalMulai <= currentDay ? "Active" as const : "Upcoming" as const,
+        statusVerifikasi: booking.statusVerifikasi,
+        isCleaning: booking.tanggalSelesai < currentDay,
+      }))
+    : paidSchedule;
   const jadwalList = [...fixtureJadwalList, ...bookingScheduleList];
-  const unavailableRanges = demoAccount ? jadwalList : reservedDates;
+  const unavailableRanges = demoAccount
+    ? demoSpotBookings.map((booking) => ({
+      startDate: booking.tanggalMulai,
+      endDate: booking.tanggalSelesai,
+    }))
+    : reservedDates;
+  const occupiedForPicker = unavailableRanges.map((range) => ({
+    start: range.startDate,
+    end: range.endDate,
+  }));
 
   // Perhitungan Tarif & Durasi
   const tarif = spot.tarifPerHari;
   const selectedDays = (Date.parse(endDateStr) - Date.parse(startDate)) / CANCELLATION_WINDOW_MS + 1;
   const totalBayar = tarif * selectedDays;
-  const maxEndDateStr = shiftRentalDate(startDate, 29);
-  const cleaningStart = shiftRentalDate(endDateStr, 1);
   const cleaningEnd = shiftRentalDate(endDateStr, CLEANING_DAYS);
   const isConflicted = unavailableRanges.some(({ startDate: occupiedStart, endDate: occupiedEnd }) =>
     startDate <= shiftRentalDate(occupiedEnd, CLEANING_DAYS) && cleaningEnd >= occupiedStart,
@@ -578,72 +645,35 @@ export default function DetailSpotView({
                     />
                   </div>
 
-                  {/* Tanggal Terisi Khusus Spot Ini */}
-                  {unavailableRanges.length > 0 && (
-                    <div className="rounded-xl bg-[#ffddb8]/30 p-3 border border-[#ffddb8] text-[11px] text-[#855300]">
-                      <span className="font-bold block mb-1">Tanggal terpakai dan masa cleaning spot ini:</span>
-                      <ul className="list-disc pl-4 space-y-0.5">
-                        {unavailableRanges.map((range) => (
-                          <li key={range.startDate + range.endDate}>
-                            {formatDate(range.startDate)} – {formatDate(range.endDate)} · Pembersihan sampai {formatDate(shiftRentalDate(range.endDate, CLEANING_DAYS))}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Tanggal Mulai */}
-                  <div>
-                    <label className="block text-[12px] font-semibold text-[#424750] mb-1.5 uppercase tracking-wide">
-                      Tanggal Mulai *
-                    </label>
-                    <input
-                      type="date"
-                      value={startDate}
-                      min={today()}
-                      onChange={(e) => {
-                        const nextStart = e.target.value;
-                        if (!nextStart) return;
-                        setStartDate(nextStart);
-                        if (endDateStr < nextStart) setEndDateStr(nextStart);
-                        else {
-                          const limit = new Date(`${nextStart}T00:00:00Z`);
-                          limit.setUTCDate(limit.getUTCDate() + 29);
-                          if (endDateStr > limit.toISOString().slice(0, 10)) setEndDateStr(limit.toISOString().slice(0, 10));
-                        }
-                      }}
-                      className={`w-full h-10 px-3 text-[14px] rounded-lg outline-none transition-all ${isConflicted
-                        ? "bg-red-50 text-red-900 border border-red-500"
-                        : "bg-[#f2f3ff] text-[#131b2e] focus:bg-white focus:ring-2 focus:ring-[#003466]/20"
-                      }`}
-                    />
+                  <BookingDateFields
+                    occupied={occupiedForPicker}
+                    startDate={startDate}
+                    endDate={endDateStr}
+                    minDate={today()}
+                    conflicted={isConflicted}
+                    onChange={({ start, end }) => {
+                      setDateMessage("");
+                      setStartDate(start);
+                      setEndDateStr(end);
+                    }}
+                    onBlockedSelect={(mark) => {
+                      setDateMessage(
+                        mark === "rental"
+                          ? "Tanggal ini sudah tervalidasi dan tidak bisa dipilih."
+                          : "Tanggal ini masuk masa cleaning 3 hari dan tidak bisa dipilih.",
+                      );
+                    }}
+                  />
+                  <div className="text-center py-2 bg-[#f2f3ff] rounded-lg text-[14px] font-bold text-[#131b2e]">
+                    Durasi sewa : {selectedDays} hari
                   </div>
+                  <p className="text-[11px] text-[#737781]">
+                    {formatDate(startDate)} – {formatDate(endDateStr)}
+                  </p>
 
-                  {/* Tanggal Selesai dan Durasi Sewa */}
-                  <div>
-                    <label className="block text-[12px] font-semibold text-[#424750] mb-1.5 uppercase tracking-wide">
-                      Tanggal Selesai *
-                    </label>
-                    <input type="date" value={endDateStr} min={startDate} max={maxEndDateStr}
-                      onChange={(e) => {
-                        if (e.target.value) setEndDateStr(e.target.value);
-                      }}
-                      className="w-full h-10 px-3 bg-[#f2f3ff] text-[#131b2e] text-[14px] rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-[#003466]/20 transition-all" />
-                    <div className="mt-2 text-center py-2 bg-[#f2f3ff] rounded-lg text-[14px] font-bold text-[#131b2e]">
-                      Durasi sewa : {selectedDays} hari
-                    </div>
-                    <p className="text-[11px] text-[#737781] mt-1.5">
-                      {formatDate(startDate)} – {formatDate(endDateStr)}
-                    </p>
-                    <p className="mt-2 rounded-lg border border-[#ffddb8] bg-[#ffddb8]/30 p-2.5 text-[11px] leading-relaxed text-[#855300]">
-                      Masa cleaning area berlangsung 3 hari setelah sewa: {formatDate(cleaningStart)}–{formatDate(cleaningEnd)}. Tanggal tersebut tidak tersedia untuk pesanan baru. Jika tanggal yang dipilih berbenturan dengan jadwal lain, pemesanan tidak dapat dilanjutkan.
-                    </p>
-                  </div>
-
-                  {/* Peringatan Tanggal Bentrok */}
-                  {isConflicted && (
-                    <div className="rounded-lg bg-red-50 p-2.5 text-[12px] text-red-600 border border-red-200">
-                      Tanggal bertabrakan dengan jadwal sewa atau masa pembersihan. Silakan pilih tanggal lain.
+                  {(isConflicted || dateMessage) && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-[12px] text-red-600">
+                      {dateMessage || "Tanggal bertabrakan dengan jadwal sewa atau masa pembersihan. Silakan pilih tanggal lain."}
                     </div>
                   )}
 

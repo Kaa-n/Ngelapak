@@ -144,6 +144,16 @@ export type Database = {
         Args: { p_spot_id: string };
         Returns: { tanggal_mulai: string; tanggal_selesai: string }[];
       };
+      get_spot_operating_schedule: {
+        Args: { p_spot_id: string };
+        Returns: {
+          booking_id: string;
+          penjual: string;
+          kategori: string;
+          tanggal_mulai: string;
+          tanggal_selesai: string;
+        }[];
+      };
       review_booking_payment: { Args: { p_booking_id: string; p_approve: boolean }; Returns: undefined };
       reserve_midtrans_booking: {
         Args: {

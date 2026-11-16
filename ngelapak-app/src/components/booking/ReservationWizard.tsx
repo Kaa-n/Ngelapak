@@ -2,17 +2,31 @@
 
 import Link from "next/link";
 import { useRef, useState, type FormEvent } from "react";
+import BookingDateFields from "@/components/booking/BookingDateFields";
 import { formatRupiah, type Spot } from "@/lib/mock-data";
-import { CANCELLATION_WINDOW_MS, CLEANING_DAYS, PAYMENT_WINDOW_MS, rentalPeriodsConflict, rentalStart, shiftRentalDate } from "@/lib/rental-policy";
+import {
+  CANCELLATION_WINDOW_MS,
+  CLEANING_DAYS,
+  PAYMENT_WINDOW_MS,
+  isDateBlocked,
+  nextAvailableDate,
+  rentalPeriodsConflict,
+  rentalStart,
+} from "@/lib/rental-policy";
 import { createSupabaseBooking } from "@/lib/supabase/bookings";
 
 type Props = { spot: Spot; occupied: { start: string; end: string }[] | null; signedIn: boolean };
 const inputClass = "mt-1 block w-full rounded-lg border p-2";
 
 export default function ReservationWizard({ spot, occupied, signedIn }: Props) {
+  const occupiedRanges = (occupied ?? []).map((range) => ({
+    start: range.start.slice(0, 10),
+    end: range.end.slice(0, 10),
+  }));
+  const fallback = nextAvailableDate(new Date().toISOString().slice(0, 10), occupiedRanges);
   const [step, setStep] = useState(1);
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
+  const [start, setStart] = useState(fallback);
+  const [end, setEnd] = useState(fallback);
   const [brand, setBrand] = useState("");
   const [business, setBusiness] = useState("");
   const [category, setCategory] = useState("UMKM Umum");
@@ -26,8 +40,13 @@ export default function ReservationWizard({ spot, occupied, signedIn }: Props) {
   function validateDates() {
     if (!occupied) return "Jadwal belum bisa diperiksa. Muat ulang halaman untuk mencoba lagi.";
     if (!Number.isInteger(days) || days < 1 || days > 30) return "Pilih tanggal sewa antara 1 dan 30 hari.";
-    if (Date.now() + PAYMENT_WINDOW_MS > rentalStart(start)) return "Pemesanan ditutup satu jam sebelum sewa mulai (08.00 WITA).";
-    if (occupied.some((range) => rentalPeriodsConflict(start, end, range.start, range.end))) {
+    if (Date.now() + PAYMENT_WINDOW_MS > rentalStart(start)) {
+      return "Pemesanan ditutup satu jam sebelum sewa mulai (08.00 WITA).";
+    }
+    if (isDateBlocked(start, occupiedRanges) || isDateBlocked(end, occupiedRanges)) {
+      return "Tanggal sudah tervalidasi atau masuk masa cleaning. Pilih tanggal lain.";
+    }
+    if (occupiedRanges.some((range) => rentalPeriodsConflict(start, end, range.start, range.end))) {
       return "Jadwal bertabrakan dengan masa sewa atau pembersihan. Pilih tanggal lain.";
     }
     return "";
@@ -65,12 +84,24 @@ export default function ReservationWizard({ spot, occupied, signedIn }: Props) {
       {!occupied ? <p role="status" className="mt-3 text-sm text-slate-600">Jadwal belum bisa diperiksa. Muat ulang halaman untuk mencoba lagi.</p> :
         <form className="mt-4 space-y-3" onSubmit={submit}>
           {step === 1 ? <>
-            <label className="block text-sm">Mulai sewa<input required className={inputClass} type="date" value={start} onChange={(event) => {
-              const value = event.target.value;
-              setStart(value);
-              if (!value || !end || end < value || end > shiftRentalDate(value, 29)) setEnd(value);
-            }} /></label>
-            <label className="block text-sm">Selesai sewa<input required className={inputClass} type="date" min={start || undefined} max={start ? shiftRentalDate(start, 29) : undefined} value={end} onChange={(event) => setEnd(event.target.value)} /></label>
+            <BookingDateFields
+              occupied={occupiedRanges}
+              startDate={start}
+              endDate={end}
+              minDate={new Date().toISOString().slice(0, 10)}
+              onChange={({ start: nextStart, end: nextEnd }) => {
+                setMessage("");
+                setStart(nextStart);
+                setEnd(nextEnd);
+              }}
+              onBlockedSelect={(mark) => {
+                setMessage(
+                  mark === "rental"
+                    ? "Tanggal ini sudah tervalidasi dan tidak bisa dipilih."
+                    : "Tanggal ini masuk masa cleaning 3 hari dan tidak bisa dipilih.",
+                );
+              }}
+            />
             <p className="text-sm text-slate-600">Lapak ditutup selama {CLEANING_DAYS} hari untuk pembersihan setelah masa sewa.</p>
             {days > 0 && <p className="text-sm font-semibold">{days} hari · {formatRupiah(total)}</p>}
             <button className="rounded-lg bg-blue-900 px-4 py-2 text-white">Lanjut</button>
