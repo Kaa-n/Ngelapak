@@ -5,7 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getSpotByKode } from "@/lib/supabase/spots-server";
 import ReservationWizard from "@/components/booking/ReservationWizard";
 import ProductDescription from "@/components/spot-detail/ProductDescription";
-import { formatRupiah } from "@/lib/mock-data";
+import { formatDate, formatRupiah } from "@/lib/mock-data";
+import { CLEANING_DAYS, shiftRentalDate } from "@/lib/rental-policy";
 
 type Props = { params: Promise<{ spotId: string }> };
 const lookupSpot = cache(getSpotByKode);
@@ -14,8 +15,9 @@ async function getData(spotId: string) {
   const spot = await lookupSpot(spotId);
   if (!spot) return null;
   const supabase = await createClient();
-  const [reserved, { data: captions }, { data: auth }] = await Promise.all([
+  const [reserved, schedule, { data: captions }, { data: auth }] = await Promise.all([
     supabase.rpc("get_reserved_lapak_dates", { p_spot_id: spot.id }),
+    supabase.rpc("get_spot_operating_schedule", { p_spot_id: spot.id }),
     supabase.from("product_captions").select("konten,owner_id").eq("spot_id", spot.id).order("updated_at", { ascending: false }).limit(1),
     supabase.auth.getUser(),
   ]);
@@ -26,9 +28,33 @@ async function getData(spotId: string) {
   const { data: active } = userId ? await supabase.from("bookings").select("id")
     .eq("spot_id", spot.id).eq("owner_id", userId).eq("status", "aktif").eq("status_verifikasi", "disetujui")
     .lte("tanggal_mulai", today).gte("tanggal_selesai", today).limit(1).maybeSingle() : { data: null };
+  const scheduleRows = schedule.error ? [] : (schedule.data ?? []).map((row) => {
+    const start = String(row.tanggal_mulai).slice(0, 10);
+    const end = String(row.tanggal_selesai).slice(0, 10);
+    return {
+      id: row.booking_id,
+      penjual: row.penjual,
+      start,
+      end,
+      active: start <= today && end >= today,
+      cleaning: end < today,
+    };
+  });
+  const occupiedMap = new Map<string, { start: string; end: string }>();
+  if (!reserved.error) {
+    for (const row of reserved.data ?? []) {
+      const start = String(row.tanggal_mulai).slice(0, 10);
+      const end = String(row.tanggal_selesai).slice(0, 10);
+      occupiedMap.set(`${start}:${end}`, { start, end });
+    }
+  }
+  for (const row of scheduleRows) {
+    occupiedMap.set(`${row.start}:${row.end}`, { start: row.start, end: row.end });
+  }
   return {
     spot, userId, caption: captions?.[0]?.konten ?? "",
-    occupied: reserved.error ? null : (reserved.data ?? []).map((row) => ({ start: row.tanggal_mulai, end: row.tanggal_selesai })),
+    occupied: reserved.error && scheduleRows.length === 0 ? null : [...occupiedMap.values()],
+    schedule: scheduleRows,
     active: active && userId ? { userId, active: true } : null,
   };
 }
@@ -48,5 +74,61 @@ async function SpotDetails({ params }: Props) {
   const { spotId } = await params; const data = await getData(spotId); if (!data) notFound();
   const { spot } = data;
   const jsonLd = { "@context": "https://schema.org", "@type": "Product", name: spot.nama, description: spot.deskripsi, image: spot.gambar ? [spot.gambar] : undefined, sku: spot.kode, offers: { "@type": "Offer", priceCurrency: "IDR", price: spot.tarifPerHari, availability: spot.status === "tersedia" ? "https://schema.org/InStock" : "https://schema.org/LimitedAvailability", url: `/katalog/${encodeURIComponent(spot.kode)}` }, aggregateRating: spot.rating > 0 ? { "@type": "AggregateRating", ratingValue: spot.rating, reviewCount: Math.max(spot.totalSewa, 1) } : undefined };
-  return <main className="min-h-screen bg-[#faf8ff] px-4 py-8"><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} /><div className="mx-auto max-w-6xl"><a href="/" className="text-sm font-semibold text-blue-900">← Kembali ke katalog</a><div className="mt-5 grid grid-cols-1 gap-6 md:grid-cols-[1.2fr_0.8fr]"><div className="space-y-6"><div className="overflow-hidden rounded-2xl bg-white shadow-sm"><img src={spot.gambar || "/placeholder.png"} alt={spot.nama} className="h-72 w-full object-cover sm:h-96" /><div className="p-5"><p className="text-sm font-semibold text-amber-700">{spot.zonaLabel} · {spot.kode}</p><h1 className="mt-1 text-3xl font-bold text-slate-900">{spot.nama}</h1><p className="mt-2 text-slate-600">{spot.lokasi}</p><p className="mt-4 text-slate-700">{spot.deskripsi}</p><div className="mt-5 grid grid-cols-2 gap-3 text-sm"><p className="rounded-lg bg-slate-50 p-3">Dimensi <strong className="block">{spot.ukuranLabel}</strong></p><p className="rounded-lg bg-slate-50 p-3">Daya listrik <strong className="block">{spot.daya} Watt</strong></p><p className="rounded-lg bg-slate-50 p-3">Rating <strong className="block">{spot.rating} / 5</strong></p><p className="rounded-lg bg-slate-50 p-3">Tarif / hari <strong className="block">{formatRupiah(spot.tarifPerHari)}</strong></p></div></div></div><section className="rounded-2xl border bg-white p-5"><h2 className="text-xl font-bold">Fasilitas & lokasi mikro</h2><p className="mt-2 text-sm text-slate-600">{spot.lokasi} · Koordinat peta kampus {spot.koordinat.x}, {spot.koordinat.y}</p><div className="mt-3 flex flex-wrap gap-2">{spot.fasilitas.map(x=><span key={x} className="rounded-full bg-blue-50 px-3 py-1 text-sm">{x}</span>)}</div></section><ProductDescription spotId={spot.id} initialText={data.caption} currentUserId={data.userId} activeBooking={data.active} /><section className="rounded-2xl border bg-white p-5"><h2 className="text-xl font-bold">Ulasan</h2><p className="mt-2 text-sm text-slate-600">Rating rata-rata {spot.rating} dari 5 berdasarkan {spot.totalSewa} penyewaan.</p></section></div><div className="md:sticky md:top-6 md:self-start"><ReservationWizard spot={spot} occupied={data.occupied} signedIn={Boolean(data.userId)} /></div></div></div></main>;
+  return (
+    <main className="min-h-screen bg-[#faf8ff] px-4 py-8">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />
+      <div className="mx-auto max-w-6xl">
+        <a href="/" className="text-sm font-semibold text-blue-900">← Kembali ke katalog</a>
+        <div className="mt-5 grid grid-cols-1 gap-6 md:grid-cols-[1.2fr_0.8fr]">
+          <div className="space-y-6">
+            <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
+              <img src={spot.gambar || "/placeholder.png"} alt={spot.nama} className="h-72 w-full object-cover sm:h-96" />
+              <div className="p-5">
+                <p className="text-sm font-semibold text-amber-700">{spot.zonaLabel} · {spot.kode}</p>
+                <h1 className="mt-1 text-3xl font-bold text-slate-900">{spot.nama}</h1>
+                <p className="mt-2 text-slate-600">{spot.lokasi}</p>
+                <p className="mt-4 text-slate-700">{spot.deskripsi}</p>
+                <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
+                  <p className="rounded-lg bg-slate-50 p-3">Dimensi <strong className="block">{spot.ukuranLabel}</strong></p>
+                  <p className="rounded-lg bg-slate-50 p-3">Daya listrik <strong className="block">{spot.daya} Watt</strong></p>
+                  <p className="rounded-lg bg-slate-50 p-3">Rating <strong className="block">{spot.rating} / 5</strong></p>
+                  <p className="rounded-lg bg-slate-50 p-3">Tarif / hari <strong className="block">{formatRupiah(spot.tarifPerHari)}</strong></p>
+                </div>
+              </div>
+            </div>
+            <section className="rounded-2xl border bg-white p-5">
+              <h2 className="text-xl font-bold">Fasilitas & lokasi mikro</h2>
+              <p className="mt-2 text-sm text-slate-600">{spot.lokasi} · Koordinat peta kampus {spot.koordinat.x}, {spot.koordinat.y}</p>
+              <div className="mt-3 flex flex-wrap gap-2">{spot.fasilitas.map((x) => <span key={x} className="rounded-full bg-blue-50 px-3 py-1 text-sm">{x}</span>)}</div>
+            </section>
+            <section className="rounded-2xl border bg-white p-5">
+              <h2 className="text-xl font-bold">Jadwal operasional</h2>
+              <p className="mt-1 text-sm text-slate-600">Otomatis dari pesanan yang sudah berhasil bayar. Tanggal tersebut diblokir untuk pemesanan baru (+ {CLEANING_DAYS} hari cleaning).</p>
+              {data.schedule.length === 0 ? (
+                <p className="mt-3 text-sm italic text-slate-500">Belum ada sewa tervalidasi pada lapak ini.</p>
+              ) : (
+                <ul className="mt-3 space-y-2">
+                  {data.schedule.map((item) => (
+                    <li key={item.id} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm">
+                      <p className="font-semibold text-slate-900">{item.penjual}</p>
+                      <p className="text-slate-600">{formatDate(item.start)} – {formatDate(item.end)} · {item.active ? "Sewa Aktif" : item.cleaning ? "Pembersihan" : "Mendatang"}</p>
+                      <p className="text-xs text-amber-800">Diblokir sampai {formatDate(shiftRentalDate(item.end, CLEANING_DAYS))}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+            <ProductDescription spotId={spot.id} initialText={data.caption} currentUserId={data.userId} activeBooking={data.active} />
+            <section className="rounded-2xl border bg-white p-5">
+              <h2 className="text-xl font-bold">Ulasan</h2>
+              <p className="mt-2 text-sm text-slate-600">Rating rata-rata {spot.rating} dari 5 berdasarkan {spot.totalSewa} penyewaan.</p>
+            </section>
+          </div>
+          <div className="md:sticky md:top-6 md:self-start">
+            <ReservationWizard spot={spot} occupied={data.occupied} signedIn={Boolean(data.userId)} />
+          </div>
+        </div>
+      </div>
+    </main>
+  );
 }

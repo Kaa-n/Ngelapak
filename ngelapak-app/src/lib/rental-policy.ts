@@ -14,6 +14,69 @@ export function rentalPeriodsConflict(start: string, end: string, occupiedStart:
     shiftRentalDate(end, CLEANING_DAYS) >= occupiedStart;
 }
 
+export type OccupiedDateMark = "rental" | "cleaning";
+
+/** Tanda tanggal: tervalidasi (jadwal operasional) atau masa cleaning. */
+export function getOccupiedDateMark(
+  date: string,
+  occupied: { start: string; end: string }[],
+): OccupiedDateMark | null {
+  for (const range of occupied) {
+    if (date >= range.start && date <= range.end) return "rental";
+    if (date > range.end && date <= shiftRentalDate(range.end, CLEANING_DAYS)) {
+      return "cleaning";
+    }
+  }
+  return null;
+}
+
+/** Tanggal bentrok dengan masa sewa tervalidasi + 3 hari cleaning. */
+export function isDateBlocked(
+  date: string,
+  occupied: { start: string; end: string }[],
+) {
+  return getOccupiedDateMark(date, occupied) !== null;
+}
+
+export function nextAvailableDate(
+  from: string,
+  occupied: { start: string; end: string }[],
+  limitDays = 120,
+) {
+  let cursor = from;
+  for (let i = 0; i < limitDays; i += 1) {
+    if (!isDateBlocked(cursor, occupied)) return cursor;
+    cursor = shiftRentalDate(cursor, 1);
+  }
+  return from;
+}
+
+/** Daftar tanggal bertanda untuk ditampilkan di form pemesanan. */
+export function markedBookingDates(
+  occupied: { start: string; end: string }[],
+) {
+  const marks: { date: string; mark: OccupiedDateMark }[] = [];
+  const seen = new Set<string>();
+  for (const range of occupied) {
+    let cursor = range.start;
+    while (cursor <= range.end) {
+      if (!seen.has(cursor)) {
+        seen.add(cursor);
+        marks.push({ date: cursor, mark: "rental" });
+      }
+      cursor = shiftRentalDate(cursor, 1);
+    }
+    for (let i = 1; i <= CLEANING_DAYS; i += 1) {
+      const cleaningDate = shiftRentalDate(range.end, i);
+      if (!seen.has(cleaningDate)) {
+        seen.add(cleaningDate);
+        marks.push({ date: cleaningDate, mark: "cleaning" });
+      }
+    }
+  }
+  return marks.sort((a, b) => a.date.localeCompare(b.date));
+}
+
 export function rentalStart(tanggalMulai: string) {
   return Date.parse(`${tanggalMulai}T08:00:00+08:00`);
 }
