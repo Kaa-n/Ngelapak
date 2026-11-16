@@ -33,8 +33,8 @@ BEGIN
   IF v_user_id IS NULL THEN
     RAISE EXCEPTION 'Silakan masuk sebelum membuat pesanan.';
   END IF;
-  IF v_file_path IS NULL OR v_file_path NOT LIKE v_user_id::TEXT || '/%' THEN
-    RAISE EXCEPTION 'Bukti pembayaran wajib diunggah ke folder akun Anda.';
+  IF v_file_path IS NOT NULL AND v_file_path NOT LIKE v_user_id::TEXT || '/%' THEN
+    RAISE EXCEPTION 'Path bukti pembayaran harus berada di folder akun Anda.';
   END IF;
   SELECT * INTO v_spot FROM public.spots WHERE kode = p_spot_kode FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Lapak tidak ditemukan.'; END IF;
@@ -79,3 +79,28 @@ WITH CHECK (bucket_id = 'payment-proofs' AND (storage.foldername(name))[1] = aut
 DROP POLICY IF EXISTS "payment_proofs_read_own" ON storage.objects;
 CREATE POLICY "payment_proofs_read_own" ON storage.objects FOR SELECT TO authenticated
 USING (bucket_id = 'payment-proofs' AND (storage.foldername(name))[1] = auth.uid()::text);
+
+-- Expire unpaid pending bookings. Supabase projects must have pg_cron available.
+CREATE OR REPLACE FUNCTION public.cancel_expired_unpaid_bookings()
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE v_count INTEGER;
+BEGIN
+  UPDATE public.bookings
+  SET status = 'dibatalkan'
+  WHERE status = 'menunggu'
+    AND status_verifikasi = 'menunggu'
+    AND bukti_bayar IS NULL
+    AND payment_deadline <= NOW();
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
+CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog;
+SELECT cron.unschedule(jobid) FROM cron.job WHERE jobname = 'cancel-expired-unpaid-bookings';
+SELECT cron.schedule('cancel-expired-unpaid-bookings', '*/5 * * * *',
+  'SELECT public.cancel_expired_unpaid_bookings()');

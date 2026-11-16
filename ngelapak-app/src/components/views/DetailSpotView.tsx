@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { formatRupiah, formatDate } from "@/lib/mock-data";
 import type { ToastMessage, DemoUser } from "@/lib/types";
 import type { SupabaseProfile } from "@/lib/supabase/auth";
-import { createSupabaseBooking } from "@/lib/supabase/bookings";
+import { createSupabaseBooking, uploadBookingProof } from "@/lib/supabase/bookings";
 import { createDemoBooking, getAllDemoBookings, today } from "@/lib/demo-store";
 
 const addDaysForDate = (date: string, days: number) => {
@@ -35,7 +35,7 @@ interface DetailSpotViewProps {
   initialTab?: "detail" | "operasional" | "fasilitas" | "ulasan";
   onBack: () => void;
   onLogin: () => void;
-  onOrderDetail: (bookingId: string) => void;
+  onGoToOrders: () => void;
   onShowToast: (toast: Omit<ToastMessage, "id">) => void;
 }
 
@@ -45,7 +45,7 @@ export default function DetailSpotView({
   initialTab = "detail",
   onBack,
   onLogin,
-  onOrderDetail,
+  onGoToOrders,
   onShowToast,
 }: DetailSpotViewProps) {
   const bookings = getAllDemoBookings();
@@ -63,8 +63,8 @@ export default function DetailSpotView({
 
   // State Alur Pembayaran Interaktif
   const [showPaymentStep, setShowPaymentStep] = useState(false); // Modal Barcode QRIS & Token
-  const [bookingSuccess, setBookingSuccess] = useState(false);   // Ringkasan Halaman Sukses
   const [reservationId, setReservationId] = useState("");
+  const [paymentProof, setPaymentProof] = useState<File | null>(null);
 
   const [activeTab, setActiveTab] = useState<"detail" | "operasional" | "fasilitas" | "ulasan">(initialTab);
   const [prevInitialTab, setPrevInitialTab] = useState(initialTab);
@@ -193,9 +193,8 @@ export default function DetailSpotView({
     setShowPaymentStep(true); // Buka modal pembayaran
   };
 
-  // LANGKAH 2: Konfirmasi Pembayaran Selesai -> Diteruskan ke Halaman Ringkasan Sukses
-  
-  const handleConfirmPayment = async () => {
+  // LANGKAH 2: Buat pesanan (bayar nanti ATAU kirim bukti), lalu ke Pesanan Saya
+  const handleConfirmPayment = async (mode: "pay_later" | "with_proof") => {
     if (!user || user.role !== "penyewa") {
       onShowToast({
         type: "error",
@@ -204,7 +203,18 @@ export default function DetailSpotView({
       return;
     }
 
+    if (mode === "with_proof" && !paymentProof) {
+      onShowToast({
+        type: "warning",
+        message: "Bukti pembayaran belum diunggah",
+        description: "Unggah bukti terlebih dahulu, atau pilih Bayar Nanti.",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
+    // Bayar Nanti: sengaja abaikan file yang mungkin sudah dipilih.
+    const proofFile = mode === "with_proof" ? paymentProof : null;
 
     try {
       let id: string;
@@ -218,10 +228,12 @@ export default function DetailSpotView({
           jenisUsaha,
           catatan: catatanTambahan,
           metodePembayaran,
+          ...(proofFile
+            ? { buktiBayar: `demo://payment-proofs/${proofFile.name}` }
+            : {}),
           ...({ namaUsaha, kategoriPenjual } as Record<string, unknown>),
         });
       } else {
-        // Akun Supabase menyimpan pemesanan ke database.
         id = await createSupabaseBooking({
           spotKode: spot.kode,
           tanggalMulai: startDate,
@@ -232,30 +244,47 @@ export default function DetailSpotView({
           namaUsaha,
           kategoriPenjual,
           catatan: catatanTambahan,
+          // pay_later: kirim null supaya RPC tidak mengharuskan bukti
+          buktiBayar: undefined,
         });
+
+        if (proofFile) {
+          await uploadBookingProof(id, proofFile);
+        }
       }
 
       setReservationId(id);
       setShowPaymentStep(false);
-      setBookingSuccess(true);
+      setPaymentProof(null);
 
-      onShowToast({
-        type: "success",
-        message: "Pengajuan pemesanan berhasil",
-        description:
-          "Pesanan berhasil dicatat dan sedang menunggu verifikasi admin.",
-      });
+      if (mode === "pay_later") {
+        onShowToast({
+          type: "success",
+          message: "Pesanan dibuat — bayar dalam 1×24 jam",
+          description:
+            "Pesanan menunggu pembayaran. Unggah bukti dari Pesanan Saya sebelum tenggat.",
+        });
+      } else {
+        onShowToast({
+          type: "success",
+          message: "Pengajuan pemesanan berhasil",
+          description:
+            "Bukti terkirim. Pesanan menunggu konfirmasi admin.",
+        });
+      }
+
+      onGoToOrders();
     } catch (error) {
       console.error("Gagal menyimpan pemesanan:", error);
 
-      const rawMessage = error instanceof Error ? error.message : "Terjadi kesalahan saat menyimpan pemesanan.";
-      const conflictMessage = /no_overlapping_bookings|conflict|overlap/i.test(rawMessage)
-        ? "Tanggal yang dipilih baru saja terisi oleh pesanan lain. Muat ulang jadwal dan pilih tanggal berbeda."
-        : rawMessage;
+      const rawMessage =
+        error instanceof Error
+          ? error.message
+          : "Terjadi kesalahan saat menyimpan pemesanan.";
       onShowToast({
         type: "error",
         message: "Pengajuan gagal disimpan",
-        description: conflictMessage,
+        description: rawMessage,
       });
     } finally {
       setIsSubmitting(false);
@@ -285,6 +314,9 @@ export default function DetailSpotView({
           <div className="bg-[#f2f3ff] rounded-xl p-3 text-center mb-5 border border-[#e2e7ff]">
             <span className="text-[11px] text-[#737781] uppercase font-semibold block mb-0.5">Token / ID Transaksi</span>
             <span className="text-[16px] font-mono font-bold text-[#003466] tracking-wider">{reservationId}</span>
+          </div>
+          <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-[12px] text-amber-950">
+            <strong>Batas pembayaran 1×24 jam sejak pesanan dibuat.</strong> Pesanan dapat dilanjutkan dari menu Pesanan Saya. Jika belum dibayar sampai tenggat, pesanan akan dibatalkan otomatis.
           </div>
 
           {/* Barcode QRIS / Virtual Account */}
@@ -321,71 +353,67 @@ export default function DetailSpotView({
             </div>
           </div>
 
-          <div className="flex gap-2">
-            <button
-              onClick={() => setShowPaymentStep(false)}
-              className="flex-1 h-11 rounded-xl bg-[#eaedff] text-[#131b2e] text-[13px] font-semibold hover:bg-[#dae2fd] transition-colors"
-            >
-              Ubah Opsi
-            </button>
-            <button
-              onClick={handleConfirmPayment}
-              disabled={isSubmitting}
-              className="flex-1 h-11 rounded-xl bg-[#003466] text-white text-[13px] font-bold hover:bg-[#1a4b84] transition-colors flex items-center justify-center gap-1 shadow-md"
-            >
-              {isSubmitting ? "Memverifikasi..." : "Saya Sudah Bayar ✓"}
-            </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowPaymentStep(false);
+              setPaymentProof(null);
+            }}
+            className="mb-3 w-full h-10 rounded-xl bg-[#eaedff] text-[#131b2e] text-[13px] font-semibold hover:bg-[#dae2fd] transition-colors"
+          >
+            Ubah Opsi
+          </button>
+
+          {/* Bayar Nanti: tanpa bukti, tenggat 1×24 jam */}
+          <button
+            type="button"
+            onClick={() => void handleConfirmPayment("pay_later")}
+            disabled={isSubmitting}
+            className="mb-3 w-full h-11 rounded-xl border-2 border-[#003466] text-[#003466] text-[13px] font-bold hover:bg-[#f2f3ff] transition-colors disabled:opacity-50"
+          >
+            {isSubmitting ? "Memproses..." : "Bayar Nanti (tanpa unggah bukti)"}
+          </button>
+          <p className="mb-4 text-[11px] text-center text-[#737781]">
+            Pesanan langsung dibuat. Anda punya waktu 1×24 jam untuk mengunggah bukti
+            dari Pesanan Saya. Jika lewat tenggat, pesanan dibatalkan otomatis.
+          </p>
+
+          <div className="mb-3 flex items-center gap-2 text-[11px] text-[#9ba4b5]">
+            <span className="h-px flex-1 bg-[#e2e7ff]" />
+            atau unggah bukti sekarang
+            <span className="h-px flex-1 bg-[#e2e7ff]" />
           </div>
-        </div>
-      </div>
-    );
-  }
 
-  // TAHAP 2: RINGKASAN SETELAH VERIFIKASI PEMBAYARAN SUKSES
-  if (bookingSuccess) {
-    return (
-      <div className="max-w-lg mx-auto px-4 py-16 flex flex-col items-center text-center">
-        <div className="w-20 h-20 rounded-full bg-[#6ffbbe]/20 flex items-center justify-center mb-6">
-          <span className="material-symbols-outlined text-[#003c27] text-[48px]">check_circle</span>
-        </div>
-        <h2 className="text-[24px] font-bold text-[#131b2e] mb-3">Pembayaran Berhasil</h2>
-        <p className="text-[14px] text-[#424750] mb-2 leading-relaxed max-w-sm">
-          Pembayaran sewa Spot <strong>{spot.nama}</strong> untuk <strong>{namaUsaha}</strong> ({kategoriPenjual}) selama <strong>{selectedDays} hari</strong> sudah tercatat.
-        </p>
-        <p className="text-[13px] text-[#737781] mb-8">
-          Total: <strong className="text-[#003466]">{formatRupiah(totalBayar)}</strong>. Admin belum memverifikasi. Pembatalan tersedia 1x24 jam di detail pesanan.
-        </p>
+          <div className="mb-3 rounded-xl border border-dashed border-[#9aaee0] bg-[#faf8ff] p-4 text-center text-[12px] text-[#424750]">
+            <p className="mb-2 font-semibold text-[#131b2e]">
+              Opsional — hanya untuk Kirim Bukti & Buat Pesanan
+            </p>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,application/pdf"
+              className="block w-full text-xs"
+              onChange={(event) =>
+                setPaymentProof(event.target.files?.[0] ?? null)
+              }
+            />
+            {paymentProof && (
+              <span className="mt-2 block text-emerald-700">
+                File dipilih: {paymentProof.name}
+              </span>
+            )}
+          </div>
 
-        <div className="w-full bg-[#f2f3ff] rounded-xl p-4 mb-6 text-left space-y-2.5">
-          {[
-            { icon: "confirmation_number", label: "ID RESERVASI", value: reservationId },
-            { icon: "storefront", label: "NAMA USAHA", value: `${namaUsaha} (${kategoriPenjual})` },
-            { icon: "calendar_today", label: "PERIODE", value: `${formatDate(startDate)} – ${formatDate(endDateStr)}` },
-            { icon: "payments", label: "TOTAL BAYAR", value: formatRupiah(totalBayar) },
-          ].map((item) => (
-            <div key={item.label} className="flex items-start gap-3">
-              <span className="material-symbols-outlined text-[16px] text-[#003466] mt-0.5">{item.icon}</span>
-              <div>
-                <span className="text-[11px] text-[#737781] uppercase font-medium tracking-wide block">{item.label}</span>
-                <span className="text-[13px] font-semibold text-[#131b2e]">{item.value}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex gap-3 w-full">
           <button
-            onClick={onBack}
-            className="flex-1 h-11 rounded-xl bg-[#eaedff] text-[#131b2e] text-[14px] font-semibold hover:bg-[#dae2fd] transition-colors"
+            type="button"
+            onClick={() => void handleConfirmPayment("with_proof")}
+            disabled={isSubmitting || !paymentProof}
+            className="w-full h-11 rounded-xl bg-[#003466] text-white text-[13px] font-bold hover:bg-[#1a4b84] transition-colors disabled:opacity-50"
           >
-            Kembali ke Katalog
+            {isSubmitting ? "Membuat..." : "Kirim Bukti & Buat Pesanan"}
           </button>
-          <button
-            onClick={() => onOrderDetail(reservationId)}
-            className="flex-1 h-11 rounded-xl bg-[#003466] text-white text-[14px] font-semibold hover:bg-[#1a4b84] transition-colors"
-          >
-            Detail Pesanan
-          </button>
+          <p className="mt-2 text-[11px] text-center text-[#737781]">
+            Dengan bukti: pesanan langsung menunggu konfirmasi admin.
+          </p>
         </div>
       </div>
     );

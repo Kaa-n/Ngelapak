@@ -1,13 +1,20 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { canCancelBooking, useDemo } from "@/lib/demo-store";
-import { formatDate, formatRupiah } from "@/lib/mock-data";
+import {
+  attachDemoBookingProof,
+  canCancelBooking,
+  expireUnpaidDemoBookings,
+  useDemo,
+} from "@/lib/demo-store";
+import { formatDate, formatRupiah, isPendingCancellationRefund } from "@/lib/mock-data";
 import type { Booking } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
 import type { SupabaseProfile } from "@/lib/supabase/auth";
 import { getSupabaseBookings } from "@/lib/supabase/bookings";
 import DetailPesananView from "./DetailPesananView";
+import { uploadBookingProof } from "@/lib/supabase/bookings";
+import PaymentInstructions from "@/components/booking/PaymentInstructions";
 
 // ============================================================
 // TYPES & HELPERS
@@ -27,6 +34,13 @@ function getStatusBadge(booking: Booking): {
   cls: string;
   icon: string;
 } {
+  if (isPendingCancellationRefund(booking)) {
+    return {
+      label: "Menunggu Pengembalian Dana",
+      cls: "bg-orange-50 text-orange-800 border-orange-200",
+      icon: "hourglass_top",
+    };
+  }
   if (booking.status === "dibatalkan")
     return {
       label: "Dibatalkan",
@@ -45,9 +59,17 @@ function getStatusBadge(booking: Booking): {
       cls: "bg-red-50 text-red-700 border-red-200",
       icon: "do_not_disturb_on",
     };
+  if (!booking.buktiBayar) {
+    return {
+      label: "Menunggu Pembayaran",
+      cls: "bg-amber-50 text-amber-700 border-amber-200",
+      icon: "payments",
+    };
+  }
+
   return {
-    label: "Menunggu",
-    cls: "bg-amber-50 text-amber-700 border-amber-200",
+    label: "Menunggu Konfirmasi",
+    cls: "bg-blue-50 text-blue-700 border-blue-200",
     icon: "schedule",
   };
 }
@@ -159,8 +181,36 @@ function BookingCard({
   booking: Booking;
   onViewDetail: (id: string) => void;
 }) {
+  const [now, setNow] = useState(Date.now());
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [notice, setNotice] = useState("");
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
   const badge = getStatusBadge(booking);
   const eligible = canCancelBooking(booking);
+  const deadline = new Date(booking.createdAt).getTime() + 24 * 60 * 60 * 1000;
+  const remaining = Math.max(0, deadline - now);
+  const paymentPending = booking.status === "menunggu" && booking.statusVerifikasi === "menunggu";
+  const paymentSubmitted = Boolean(booking.buktiBayar) && paymentPending;
+  const countdown = `${String(Math.floor(remaining / 3600000)).padStart(2,"0")}:${String(Math.floor((remaining % 3600000) / 60000)).padStart(2,"0")}:${String(Math.floor((remaining % 60000) / 1000)).padStart(2,"0")}`;
+  async function submitProof() {
+    if (!proofFile) return;
+    setUploading(true); setNotice("");
+    try {
+      if (booking.id.startsWith("TXN-") && booking.ownerId) {
+        attachDemoBookingProof(booking.id, `demo://payment-proofs/${proofFile.name}`);
+        setNotice(`Bukti ${proofFile.name} siap ditinjau (akun demo).`);
+      } else {
+        await uploadBookingProof(booking.id, proofFile);
+        setNotice("Bukti berhasil diunggah.");
+        window.location.reload();
+      }
+    } catch (error) { setNotice(error instanceof Error ? error.message : "Upload bukti gagal."); }
+    finally { setUploading(false); }
+  }
 
   return (
     <article className="bg-white rounded-2xl border border-[#e2e7ff] hover:shadow-md transition-shadow flex flex-col">
@@ -220,6 +270,63 @@ function BookingCard({
           </span>
         </div>
       </div>
+      {paymentPending && (
+        <div
+          className={`mx-4 mb-4 rounded-xl border p-3 text-xs ${
+            paymentSubmitted
+              ? "border-blue-200 bg-blue-50 text-blue-950"
+              : "border-amber-300 bg-amber-50 text-amber-950"
+          }`}
+        >
+          {paymentSubmitted ? (
+            <>
+              <strong>Bukti pembayaran sudah dikirim.</strong>
+              <p className="mt-1">
+                Pesanan menunggu konfirmasi admin. Hitung mundur pembayaran sudah
+                dihentikan.
+              </p>
+            </>
+          ) : (
+            <>
+              <strong>Pembayaran wajib dalam 1×24 jam.</strong>
+              <p className="mt-1">
+                {remaining > 0
+                  ? `Sisa waktu: ${countdown}`
+                  : "Waktu habis; pesanan menunggu pembatalan otomatis."}
+              </p>
+              <div className="mt-3">
+                <PaymentInstructions
+                  bookingId={booking.id}
+                  metodePembayaran={booking.metodePembayaran}
+                  totalBayar={booking.totalBayar}
+                  compact
+                />
+              </div>
+            </>
+          )}
+          {!booking.buktiBayar && (
+            <div className="mt-3 space-y-2">
+              <input
+                type="file"
+                accept="image/jpeg,image/png,application/pdf"
+                onChange={(e) => setProofFile(e.target.files?.[0] ?? null)}
+              />
+              <button
+                disabled={!proofFile || uploading}
+                onClick={submitProof}
+                className="rounded-lg bg-blue-900 px-3 py-1.5 text-white disabled:opacity-50"
+              >
+                {uploading ? "Mengunggah…" : "Unggah bukti pembayaran"}
+              </button>
+            </div>
+          )}
+          {notice && (
+            <p role="status" className="mt-2">
+              {notice}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Actions */}
       <div className="px-4 pb-4 flex gap-2 mt-auto">
@@ -282,6 +389,10 @@ const TABS: { key: FilterTab; label: string }[] = [
     const isDemoUser = user?.id === "ayu" || user?.id === "bayu";
 
     useEffect(() => {
+      if (isDemoUser) expireUnpaidDemoBookings();
+    }, [isDemoUser, demoBookings.length]);
+
+    useEffect(() => {
       if (!user || user.role !== "penyewa" || isDemoUser) return;
 
       let mounted = true;
@@ -330,8 +441,15 @@ const TABS: { key: FilterTab; label: string }[] = [
     return (
       <DetailPesananView
         bookingId={detailId}
+        bookings={bookings}
         onBack={() => setDetailId(null)}
         onShowToast={onShowToast}
+        onPaymentConfirmed={() => {
+          if (isDemoUser) return;
+          void getSupabaseBookings()
+            .then((data) => setSupabaseBookings(data))
+            .catch(() => undefined);
+        }}
       />
     );
   }
