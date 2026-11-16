@@ -64,7 +64,11 @@ export default function KatalogZoneTabs({
           Menampilkan{" "}
           <span className="text-[#003466] font-bold">
             {totalCount} Spot
-            {zonaFilter !== "all" && ` di ${ZONA_LABELS[zonaFilter]?.split("–")[1]?.trim()}`}
+            {customLokasi
+              ? ` di ${customLokasi}`
+              : zonaFilter !== "all"
+                ? ` di ${ZONA_LABELS[zonaFilter]?.split("–")[1]?.trim()}`
+                : ""}
           </span>
           {availableCount > 0 && (
             <span className="text-[#424750] font-normal">
@@ -121,10 +125,14 @@ export default function KatalogZoneTabs({
                 setZonaFilter("all");
               } else {
                 setCustomLokasi(item.label);
+
                 if (item.zona) {
                   setZonaFilter(item.zona as ZonaFilter);
+                } else {
+                  setZonaFilter("all");
                 }
               }
+
               if (onResetPage) onResetPage();
             }}
           />

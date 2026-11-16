@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import { KatalogHero } from "@/components/katalog";
 import type { ZonaFilter, UkuranFilter, SortOption } from "@/components/katalog";
@@ -34,7 +35,7 @@ export default function KatalogView({ onNavigateToDetail, onShowToast, demoMode 
   const [zonaFilter, setZonaFilter] = useState<ZonaFilter>("all");
   const [ukuranFilter, setUkuranFilter] = useState<UkuranFilter>("all");
   const [sortBy, setSortBy] = useState<SortOption>("populer");
-  const [activeChips, setActiveChips] = useState<Set<string>>(new Set(["listrik"]));
+  const [activeChips, setActiveChips] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [dateStart, setDateStart] = useState(today);
   const [dateEnd, setDateEnd] = useState(today);
@@ -44,6 +45,108 @@ export default function KatalogView({ onNavigateToDetail, onShowToast, demoMode 
   const [isLoadingSpots, setIsLoadingSpots] = useState(true);
   const [spotError, setSpotError] = useState<string | null>(null);
   const [availabilityKnown, setAvailabilityKnown] = useState(false);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [isUrlInitialized, setIsUrlInitialized] = useState(false);
+
+  // Membaca filter dari URL saat Katalog pertama kali dibuka
+useEffect(() => {
+  const params = new URLSearchParams(searchParams.toString());
+
+  const zona = params.get("zona");
+  const ukuran = params.get("ukuran");
+  const fasilitas = params.get("fasilitas");
+  const search = params.get("search");
+  const sort = params.get("sort");
+
+  const validZona = [
+    "all",
+    "rektorat",
+    "boulevard",
+    "sc",
+    "agrokompleks",
+  ];
+
+  const validUkuran = ["all", "2x2", "3x3", "4x4"];
+  const validSort = [
+    "populer",
+    "harga-asc",
+    "harga-desc",
+    "terbaru",
+  ];
+
+  setZonaFilter(
+    validZona.includes(zona ?? "") ? zona as ZonaFilter : "all"
+  );
+
+  setUkuranFilter(
+    validUkuran.includes(ukuran ?? "") ? ukuran as UkuranFilter : "all"
+  );
+
+  setSortBy(
+    validSort.includes(sort ?? "") ? sort as SortOption : "populer"
+  );
+
+  setSearchQuery(search ?? "");
+
+  const validFacilities = [
+    "listrik", "air", "kanopi", "meja", "wifi", "parkir",
+    "toilet", "genset", "cctv", "sampah", "atm", "ventilasi",
+  ];
+
+  setActiveChips(
+    new Set(
+      (fasilitas ?? "")
+        .split(",")
+        .filter((id) => validFacilities.includes(id))
+    )
+  );
+
+  setIsUrlInitialized(true);
+}, []);
+
+  // Menyimpan perubahan filter ke URL
+useEffect(() => {
+  if (!isUrlInitialized) return;
+
+  const params = new URLSearchParams();
+
+  params.set("view", "katalog");
+
+  if (searchQuery.trim()) {
+    params.set("search", searchQuery.trim());
+  }
+
+  if (zonaFilter !== "all") {
+    params.set("zona", zonaFilter);
+  }
+
+  if (ukuranFilter !== "all") {
+    params.set("ukuran", ukuranFilter);
+  }
+
+  if (activeChips.size > 0) {
+    params.set("fasilitas", [...activeChips].sort().join(","));
+  }
+
+  if (sortBy !== "populer") {
+    params.set("sort", sortBy);
+  }
+
+  const newUrl = `/?${params.toString()}`;
+
+  if (`${window.location.pathname}${window.location.search}` !== newUrl) {
+    router.replace(newUrl, { scroll: false });
+  }
+}, [
+  isUrlInitialized,
+  searchQuery,
+  zonaFilter,
+  ukuranFilter,
+  activeChips,
+  sortBy,
+  router,
+]);
 
   useEffect(() => {
     let isMounted = true;
@@ -62,6 +165,25 @@ export default function KatalogView({ onNavigateToDetail, onShowToast, demoMode 
         setAvailabilityKnown(false);
 
         const data = await getSupabaseSpots(period);
+        console.log("MODE DEMO:", demoMode);
+        console.log("DATA KATALOG:", data.spots);
+        console.log(
+          "FASILITAS LAPAK:",
+          data.spots.map((spot) => ({
+            kode: spot.kode,
+            fasilitas: spot.fasilitas,
+          }))
+        );
+
+        console.table(
+          data.spots.map((spot) => ({
+            kode: spot.kode,
+            nama: spot.nama,
+            zona: spot.zona,
+            zonaLabel: spot.zonaLabel,
+            lokasi: spot.lokasi,
+          }))
+        );
 
         if (isMounted) {
           setSpots(data.spots);
@@ -126,9 +248,50 @@ export default function KatalogView({ onNavigateToDetail, onShowToast, demoMode 
       );
     }
 
+    // Filter lokasi tambahan hanya untuk opsi yang tidak memiliki zona
+    if (customLokasi && zonaFilter === "all") {
+      filteredSpots = filteredSpots.filter((spot) =>
+        spot.lokasi
+          .toLowerCase()
+          .includes(customLokasi.toLowerCase())
+      );
+    }
+
     if (ukuranFilter !== "all") {
       filteredSpots = filteredSpots.filter(
         (s) => s.ukuran === ukuranFilter
+      );
+    }
+
+    // Filter fasilitas
+    if (activeChips.size > 0) {
+      const facilityKeywords: Record<string, string[]> = {
+        listrik: ["listrik"],
+        air: ["air bersih", "air"],
+        kanopi: ["kanopi"],
+        meja: ["meja", "kursi"],
+        wifi: ["wifi", "wi-fi"],
+        parkir: ["parkir"],
+        toilet: ["toilet"],
+        genset: ["genset"],
+        cctv: ["cctv"],
+        sampah: ["sampah"],
+        atm: ["atm", "m-banking"],
+        ventilasi: ["ventilasi"],
+      };
+
+      filteredSpots = filteredSpots.filter((spot) =>
+        [...activeChips].every((chipId) => {
+          const keywords = facilityKeywords[chipId] ?? [];
+
+          return spot.fasilitas.some((facility) => {
+            const normalized = facility.toLowerCase();
+
+            return keywords.some((keyword) =>
+              normalized.includes(keyword)
+            );
+          });
+        })
       );
     }
 
@@ -162,7 +325,15 @@ export default function KatalogView({ onNavigateToDetail, onShowToast, demoMode 
     }
 
     return filteredSpots;
-  }, [spots, searchQuery, zonaFilter, ukuranFilter, sortBy]);
+    }, [
+      spots,
+      searchQuery,
+      zonaFilter,
+      customLokasi,
+      ukuranFilter,
+      sortBy,
+      activeChips,
+    ]);
 
   const totalPages = Math.ceil(filteredAndSorted.length / ITEMS_PER_PAGE);
   const paginatedSpots = filteredAndSorted.slice(

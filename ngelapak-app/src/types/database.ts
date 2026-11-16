@@ -135,11 +135,37 @@ export type Database = {
     Views: Record<never, never>;
     Functions: {
       is_admin: { Args: Record<never, never>; Returns: boolean };
-      get_admin_rental_metrics: { Args: Record<never, never>; Returns: Json };
+
+      get_public_home_stats: {
+        Args: Record<never, never>;
+        Returns: number;
+      };
+
+      get_admin_rental_metrics: {
+        Args: Record<never, never>;
+        Returns: Json;
+      };
+
       get_unavailable_lapak_ids: {
         Args: { p_start: string; p_end: string };
         Returns: { spot_id: string }[];
       };
+
+      get_public_operational_schedule: {
+        Args: {
+          p_start: string;
+          p_end: string;
+        };
+        Returns: {
+          booking_id: string;
+          spot_id: string;
+          nama_usaha: string | null;
+          jenis_usaha: string | null;
+          tanggal_mulai: string;
+          tanggal_selesai: string;
+        }[];
+      };
+
       get_reserved_lapak_dates: {
         Args: { p_spot_id: string };
         Returns: { tanggal_mulai: string; tanggal_selesai: string }[];

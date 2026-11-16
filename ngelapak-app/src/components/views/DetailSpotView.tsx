@@ -187,7 +187,17 @@ export default function DetailSpotView({
         isCleaning: booking.tanggalSelesai < currentDay,
       }))
     : paidSchedule;
-  const jadwalList = [...fixtureJadwalList, ...bookingScheduleList];
+  const jadwalGabungan = [...fixtureJadwalList, ...bookingScheduleList];
+
+  const jadwalList = jadwalGabungan.filter(
+    (item, index, self) =>
+      index === self.findIndex(
+        (other) =>
+          other.penjual === item.penjual &&
+          other.startDate === item.startDate &&
+          other.endDate === item.endDate
+      )
+  );
   const unavailableRanges = demoAccount
     ? demoSpotBookings.map((booking) => ({
       startDate: booking.tanggalMulai,

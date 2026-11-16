@@ -29,7 +29,7 @@ export default function KatalogGrid({
 }: KatalogGridProps) {
   if (isFiltering) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+      <div className="grid grid-cols-1 min-[640px]:grid-cols-2 min-[1024px]:grid-cols-3 gap-6 mb-12">
         {[...Array(6)].map((_, i) => (
           <div key={i} className="bg-white rounded-xl overflow-hidden border border-[#e2e7ff]">
             <div className="h-44 skeleton" />
@@ -76,7 +76,7 @@ export default function KatalogGrid({
   return (
     <>
       {/* Spot Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+      <div className="grid grid-cols-1 min-[640px]:grid-cols-2 min-[1024px]:grid-cols-3 gap-6 mb-10">
         {spots.map((spot) => (
           <SpotCard key={spot.id} spot={spot} onViewDetail={onNavigateToDetail} />
         ))}
