@@ -1,9 +1,16 @@
+import type { Metadata } from "next";
 import { Suspense, type ReactNode } from "react";
 
-export const metadata = {
-  title: "Validasi Tiket – Ngelapak",
-  description: "Halaman publik verifikasi izin lapak Universitas Udayana",
-};
+type Props = { params: Promise<{ ticketId: string }> };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { ticketId } = await params;
+  return {
+    title: `Validasi Tiket ${ticketId}`,
+    description: `Periksa keabsahan izin operasional stan ${ticketId} di Universitas Udayana tanpa login.`,
+    robots: { index: false, follow: false },
+  };
+}
 
 export default function ValidasiLayout({ children }: { children: ReactNode }) {
   return (

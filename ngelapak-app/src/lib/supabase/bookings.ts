@@ -122,6 +122,8 @@ function mapSupabaseBooking(row: SupabaseBookingRow): Booking {
     buktiBayar: row.bukti_bayar ?? undefined,
     catatan: row.catatan ?? undefined,
     jenisUsaha: row.jenis_usaha ?? "",
+    namaUsaha: row.nama_usaha ?? undefined,
+    kategoriPenjual: row.kategori_penjual ?? undefined,
     createdAt: row.created_at,
     paidAt: row.verified_at ?? undefined,
     paymentExpiresAt: row.payment_expires_at ?? undefined,

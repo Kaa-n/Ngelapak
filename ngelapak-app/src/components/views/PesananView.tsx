@@ -174,6 +174,11 @@ function BookingCard({
 }) {
   const badge = getStatusBadge(booking);
   const eligible = canCancelBooking(booking);
+  const canEditCaption =
+    booking.status !== "dibatalkan" &&
+    booking.statusVerifikasi === "disetujui" &&
+    Boolean(booking.paidAt) &&
+    (booking.metodePembayaran !== "midtrans" || booking.paymentStatus === "settlement");
 
   return (
     <article className="bg-white rounded-2xl border border-[#e2e7ff] hover:shadow-md transition-shadow flex flex-col">
@@ -181,9 +186,13 @@ function BookingCard({
       <div className="p-4 pb-0 flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h2 className="font-bold text-base text-[#131b2e] leading-tight truncate">
-            {booking.spotNama}
+            {booking.namaUsaha || booking.spotNama}
           </h2>
-          <p className="text-xs text-[#737781] mt-0.5">{booking.spotKode}</p>
+          <p className="text-xs text-[#737781] mt-0.5">
+            {booking.namaUsaha
+              ? `${booking.spotNama} (${booking.spotKode})`
+              : booking.spotKode}
+          </p>
         </div>
         <span
           className={`shrink-0 flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border ${badge.cls}`}
@@ -245,6 +254,16 @@ function BookingCard({
           </span>
           Lihat Detail
         </button>
+        {/* {canEditCaption /* && TODO: hapus kalau tidak digunakan */}
+        {/*       <button
+            onClick={() => onViewDetail(booking.id)}
+            className="flex items-center gap-1 border border-[#003466] text-[#003466] hover:bg-[#eef3ff] text-xs font-semibold px-3 py-2.5 rounded-xl transition-colors cursor-pointer"
+            aria-label={`Edit deskripsi produk untuk ${booking.namaUsaha || booking.spotNama}`}
+          >
+            <span className="material-symbols-outlined text-[15px]">edit_note</span>
+            Edit Produk
+          </button>
+        )} */}
         {eligible && (
           <button
             onClick={() => onViewDetail(booking.id)}
@@ -277,67 +296,67 @@ const TABS: { key: FilterTab; label: string }[] = [
 // MAIN VIEW
 // ============================================================
 
-  export default function PesananView({
-    user,
-    onExplore,
-    onShowToast,
-  }: {
-    user: ReturnType<typeof useDemo>["user"] | SupabaseProfile | null;
-    onExplore: () => void;
-    onShowToast: (toast: Omit<ToastMessage, "id">) => void;
-  }) {
-    const { bookings: demoBookings } = useDemo();
+export default function PesananView({
+  user,
+  onExplore,
+  onShowToast,
+}: {
+  user: ReturnType<typeof useDemo>["user"] | SupabaseProfile | null;
+  onExplore: () => void;
+  onShowToast: (toast: Omit<ToastMessage, "id">) => void;
+}) {
+  const { bookings: demoBookings } = useDemo();
 
-    const [supabaseBookings, setSupabaseBookings] = useState<Booking[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [loadError, setLoadError] = useState("");
+  const [supabaseBookings, setSupabaseBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
-    const isDemoUser = user?.id === "ayu" || user?.id === "bayu";
+  const isDemoUser = user?.id === "ayu" || user?.id === "bayu";
 
-    const [reloadVersion, setReloadVersion] = useState(0);
-    useEffect(() => {
-      if (!user || user.role !== "penyewa" || isDemoUser) return;
+  const [reloadVersion, setReloadVersion] = useState(0);
+  useEffect(() => {
+    if (!user || user.role !== "penyewa" || isDemoUser) return;
 
-      let mounted = true;
+    let mounted = true;
 
-      async function loadBookings() {
-        setLoading(true);
-        setLoadError("");
+    async function loadBookings() {
+      setLoading(true);
+      setLoadError("");
 
-        try {
-          const data = await getSupabaseBookings();
+      try {
+        const data = await getSupabaseBookings();
 
-          if (mounted) {
-            setSupabaseBookings(data);
-          }
-        } catch (error) {
-          if (mounted) {
-            setLoadError(
-              error instanceof Error
-                ? error.message
-                : "Gagal mengambil data pesanan."
-            );
-          }
-        } finally {
-          if (mounted) {
-            setLoading(false);
-          }
+        if (mounted) {
+          setSupabaseBookings(data);
+        }
+      } catch (error) {
+        if (mounted) {
+          setLoadError(
+            error instanceof Error
+              ? error.message
+              : "Gagal mengambil data pesanan."
+          );
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
         }
       }
+    }
 
-      loadBookings();
+    loadBookings();
 
-      return () => {
-        mounted = false;
-      };
-    }, [user, isDemoUser, reloadVersion]);
+    return () => {
+      mounted = false;
+    };
+  }, [user, isDemoUser, reloadVersion]);
 
-    const bookings = isDemoUser ? demoBookings : supabaseBookings;
+  const bookings = isDemoUser ? demoBookings : supabaseBookings;
 
-    const [activeTab, setActiveTab] = useState<FilterTab>("semua");
-    const [detailId, setDetailId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<FilterTab>("semua");
+  const [detailId, setDetailId] = useState<string | null>(null);
 
-    if (user?.role !== "penyewa") return null;
+  if (user?.role !== "penyewa") return null;
 
   // If viewing detail, render DetailPesananView
   if (detailId) {
@@ -432,20 +451,18 @@ const TABS: { key: FilterTab; label: string }[] = [
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-all border ${
-                  active
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-all border ${active
                     ? "bg-[#003466] text-white border-[#003466] shadow-sm"
                     : "bg-white text-[#424750] border-[#e2e7ff] hover:border-[#003466] hover:text-[#003466]"
-                }`}
+                  }`}
               >
                 {tab.label}
                 {counts[tab.key] > 0 && (
                   <span
-                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center ${
-                      active
+                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center ${active
                         ? "bg-white/20 text-white"
                         : "bg-[#eef0ff] text-[#003466]"
-                    }`}
+                      }`}
                   >
                     {counts[tab.key]}
                   </span>

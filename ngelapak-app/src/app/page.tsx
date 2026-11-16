@@ -52,6 +52,7 @@ function DemoHome() {
 
   const requestedOrder = searchParams.get("pesanan");
   const requestedView = searchParams.get("view");
+  const requestedSpot = searchParams.get("spot");
 
   const returningOrder = /^MT-[a-f0-9]{32}$/.test(requestedOrder ?? "")
     ? requestedOrder
@@ -195,63 +196,134 @@ useEffect(() => {
 }, []);
   // Default tampilan awal saat aplikasi dibuka: "home" (Halaman Home / Beranda)
   const [currentView, setCurrentView] = useState<PageView>(() => {
-    if (returningOrder) return "detail-pesanan";
+    if (returningOrder || requestedView === "detail-pesanan") return "detail-pesanan";
+    if (requestedView === "detail" || requestedSpot) return "detail";
     if (requestedView === "katalog") return "katalog";
+    if (requestedView === "pesanan") return "pesanan";
+    if (requestedView === "edit-profile") return "edit-profile";
+    if (requestedView === "help-center") return "help-center";
     return "home";
   });
-  const [selectedSpot, setSelectedSpot] = useState<Spot>(MOCK_SPOTS[0]);
+  const [selectedSpot, setSelectedSpot] = useState<Spot>(() => {
+    if (requestedSpot) {
+      const match = MOCK_SPOTS.find(
+        (s) => s.kode.toLowerCase() === requestedSpot.toLowerCase()
+      );
+      if (match) return match;
+    }
+    return MOCK_SPOTS[0];
+  });
   const [detailInitialTab, setDetailInitialTab] = useState<"detail" | "operasional" | "fasilitas" | "ulasan">("detail");
   const [orderId, setOrderId] = useState<string | null>(returningOrder);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
+  // Sinkronisasi selectedSpot jika spots dari Supabase baru selesai dimuat
+  useEffect(() => {
+    const spotParam = searchParams.get("spot");
+    if (spotParam) {
+      const allSpots = spots.length > 0 ? spots : MOCK_SPOTS;
+      const found = allSpots.find(
+        (s) => s.kode.toLowerCase() === spotParam.toLowerCase()
+      );
+      if (found) {
+        setSelectedSpot(found);
+      }
+    }
+  }, [searchParams, spots]);
+
+  // Sinkronisasi browser back/forward buttons dengan URL searchParams
+  useEffect(() => {
+    const v = searchParams.get("view") as PageView | null;
+    const p = searchParams.get("pesanan");
+    const s = searchParams.get("spot");
+
+    if (p) {
+      setOrderId(p);
+      setCurrentView("detail-pesanan");
+    } else if (v === "detail" || s) {
+      setCurrentView("detail");
+    } else if (v === "katalog") {
+      setCurrentView("katalog");
+    } else if (v === "pesanan") {
+      setCurrentView("pesanan");
+    } else if (v === "edit-profile") {
+      setCurrentView("edit-profile");
+    } else if (v === "help-center") {
+      setCurrentView("help-center");
+    } else if (!v) {
+      if (!p) setCurrentView("home");
+    }
+  }, [searchParams]);
+
   const navigate = useCallback((
-  view: PageView,
-  spot?: Spot,
-  initialTab?: "detail" | "operasional" | "fasilitas" | "ulasan"
-) => {
-  if (view === "masuk" || view === "daftar") {
-    router.push(view === "masuk" ? "/masuk" : "/daftar");
-    return;
-  }
+    view: PageView,
+    spot?: Spot,
+    initialTab?: "detail" | "operasional" | "fasilitas" | "ulasan"
+  ) => {
+    if (view === "masuk" || view === "daftar") {
+      router.push(view === "masuk" ? "/masuk" : "/daftar");
+      return;
+    }
 
-  if (!canAccess(view, user?.role)) {
-    if (user) setCurrentView("katalog");
-    else router.push("/masuk");
-    return;
-  }
+    if (!canAccess(view, user?.role)) {
+      if (user) setCurrentView("katalog");
+      else router.push("/masuk");
+      return;
+    }
 
-  if (view === "dasbor" || view === "verifikasi") {
-    router.push(view === "dasbor" ? "/admin" : "/admin/pembayaran");
-    return;
-  }
+    if (view === "dasbor" || view === "verifikasi") {
+      router.push(view === "dasbor" ? "/admin" : "/admin/pembayaran");
+      return;
+    }
 
-  setCurrentView(view);
+    setCurrentView(view);
 
-  if (spot) setSelectedSpot(spot);
+    const targetSpot = spot ?? selectedSpot;
+    if (spot) setSelectedSpot(spot);
 
-  setDetailInitialTab(initialTab ?? "detail");
+    setDetailInitialTab(initialTab ?? "detail");
 
-  // Sinkronisasi navigasi Katalog dan Beranda dengan URL
-  if (view === "katalog" || view === "home") {
+    // Sinkronisasi seluruh navigasi view ke URL searchParams
     const params = new URLSearchParams(searchParams.toString());
 
-    if (view === "katalog") {
-      params.set("view", "katalog");
-    } else {
+    // Bersihkan parameter spesifik view sebelumnya
+    if (view !== "detail") {
+      params.delete("spot");
+    }
+    if (view !== "detail-pesanan") {
+      params.delete("pesanan");
+    }
+
+    if (view === "home") {
       params.delete("view");
       params.delete("zona");
       params.delete("ukuran");
       params.delete("fasilitas");
       params.delete("search");
       params.delete("sort");
+    } else if (view === "katalog") {
+      params.set("view", "katalog");
+    } else if (view === "detail") {
+      params.set("view", "detail");
+      if (targetSpot?.kode) {
+        params.set("spot", targetSpot.kode);
+      }
+    } else if (view === "pesanan") {
+      params.set("view", "pesanan");
+    } else if (view === "detail-pesanan") {
+      params.set("view", "detail-pesanan");
+      if (orderId) params.set("pesanan", orderId);
+    } else if (view === "edit-profile") {
+      params.set("view", "edit-profile");
+    } else if (view === "help-center") {
+      params.set("view", "help-center");
     }
 
     const query = params.toString();
-    router.push(query ? `/?${query}` : "/");
-  }
+    router.push(query ? `/?${query}` : "/", { scroll: false });
 
-  window.scrollTo({ top: 0, behavior: "smooth" });
-}, [user, router, searchParams]);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [user, router, searchParams, selectedSpot, orderId]);
 
   const showToast = useCallback((toast: Omit<ToastMessage, "id">) => {
     const id = Date.now().toString();
@@ -264,6 +336,22 @@ useEffect(() => {
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  // Sinkronisasi document.title dengan SPA view aktif
+  useEffect(() => {
+    const titles: Record<string, string> = {
+      home: "Ngelapak – Marketplace Lapak Kampus Universitas Udayana",
+      katalog: "Katalog Lapak | Ngelapak",
+      detail: selectedSpot
+        ? `${selectedSpot.nama} (${selectedSpot.kode}) | Ngelapak`
+        : "Detail Lapak | Ngelapak",
+      pesanan: "Pesanan Saya | Ngelapak",
+      "detail-pesanan": "Detail Pesanan | Ngelapak",
+      "edit-profile": "Edit Profil | Ngelapak",
+      "help-center": "Pusat Bantuan | Ngelapak",
+    };
+    document.title = titles[currentView] ?? "Ngelapak";
+  }, [currentView, selectedSpot]);
 
   return (
     <div className="flex flex-col min-h-screen bg-[#faf8ff]">
@@ -357,7 +445,12 @@ useEffect(() => {
             onLogin={() => navigate("masuk")}
             onOrderDetail={(id) => {
               setOrderId(id);
-              navigate("detail-pesanan");
+              const params = new URLSearchParams(searchParams.toString());
+              params.set("view", "detail-pesanan");
+              params.set("pesanan", id);
+              router.push(`/?${params.toString()}`, { scroll: false });
+              setCurrentView("detail-pesanan");
+              window.scrollTo({ top: 0, behavior: "smooth" });
             }}
             onShowToast={showToast}
           />

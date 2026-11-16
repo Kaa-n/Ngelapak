@@ -2,6 +2,21 @@ export const PAYMENT_WINDOW_MS = 60 * 60 * 1000;
 export const CANCELLATION_WINDOW_MS = 24 * PAYMENT_WINDOW_MS;
 export const CLEANING_DAYS = 3;
 
+/** Date in WITA, formatted for native date inputs. */
+export function rentalDateInMakassar(daysFromToday = 0) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Makassar", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value);
+  const date = new Date(Date.UTC(value("year"), value("month") - 1, value("day") + daysFromToday));
+  return date.toISOString().slice(0, 10);
+}
+
+/** A rental must be booked at least two calendar days in advance. */
+export function minimumRentalStartDate() {
+  return rentalDateInMakassar(2);
+}
+
 export function shiftRentalDate(date: string, days: number) {
   const timestamp = Date.parse(date);
   return Number.isFinite(timestamp)

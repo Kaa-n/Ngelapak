@@ -5,6 +5,7 @@ import FasilitasDropdown from "@/components/ui-custom/FasilitasDropdown";
 import KatalogZoneTabs from "./KatalogZoneTabs";
 import KatalogGrid from "./KatalogGrid";
 import type { Spot } from "@/lib/mock-data";
+import { minimumRentalStartDate } from "@/lib/rental-policy";
 
 export type ZonaFilter = "all" | "rektorat" | "boulevard" | "sc" | "agrokompleks";
 export type UkuranFilter = "all" | "2x2" | "3x3" | "4x4";
@@ -95,6 +96,7 @@ export default function KatalogHero({
   onPageChange,
   onNavigateToDetail,
 }: KatalogHeroProps) {
+  const minimumStart = minimumRentalStartDate();
   return (
     <div className="relative rounded-2xl bg-[#f2f3ff] shadow-sm p-6 md:p-10 mb-8 border border-[#e2e7ff]">
       {/* Decorative blobs wrapped in dedicated overflow-hidden container */}
@@ -251,13 +253,19 @@ export default function KatalogHero({
                 <input
                   type="date"
                   value={dateStart}
-                  onChange={(e) => setDateStart(e.target.value)}
+                  min={minimumStart}
+                  onChange={(e) => {
+                    const nextStart = e.target.value;
+                    setDateStart(nextStart);
+                    if (dateEnd < nextStart) setDateEnd(nextStart);
+                  }}
                   className="w-full h-11 px-2.5 bg-[#f2f3ff] text-[#131b2e] text-[13px] rounded-lg shadow-sm outline-none cursor-pointer focus:bg-white transition-all"
                 />
                 <input
                   type="date"
                   value={dateEnd}
-                  onChange={(e) => setDateEnd(e.target.value)}
+                  min={dateStart || minimumStart}
+                  onChange={(e) => setDateEnd(e.target.value < dateStart ? dateStart : e.target.value)}
                   className="w-full h-11 px-2.5 bg-[#f2f3ff] text-[#131b2e] text-[13px] rounded-lg shadow-sm outline-none cursor-pointer focus:bg-white transition-all"
                 />
               </div>

@@ -6,7 +6,9 @@ import {
   formatDate,
   formatRupiah,
   isPendingCancellationRefund,
+  MOCK_SPOTS,
   type Booking,
+  type Spot,
 } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
 import { printKuitansi } from "@/lib/pdf/generateKuitansi";
@@ -14,6 +16,8 @@ import { printSPPLA } from "@/lib/pdf/generateSPPLA";
 import { getSupabaseBookingDetail, refreshPayment, requestSupabaseCancellation, resumePayment } from "@/lib/supabase/bookings";
 import { createClient } from "@/lib/supabase/client";
 import { cancellationDeadline, formatRentalTime, paymentLabel } from "@/lib/rental-policy";
+import ProductCaptionEditor from "@/components/booking/ProductCaptionEditor";
+import MapComponent from "@/components/home/MapComponent";
 
 // ============================================================
 // TYPES
@@ -228,6 +232,12 @@ function SectionCard({
   );
 }
 
+function getSpotLatLng(spot: Spot): [number, number] {
+  const y = spot.koordinat?.y ?? 50;
+  const x = spot.koordinat?.x ?? 50;
+  return [-8.796 + (y - 50) * 0.0002, 115.176 + (x - 50) * 0.0002];
+}
+
 // ============================================================
 // CANCELLATION FORM
 // ============================================================
@@ -382,6 +392,48 @@ export default function DetailPesananView({
   const cancellation = useSupabase ? detail?.cancellation : null;
   const [showCancelForm, setShowCancelForm] = useState(false);
   const [cancelNote, setCancelNote] = useState("");
+  const [supabaseSpot, setSupabaseSpot] = useState<Spot | null>(null);
+
+  useEffect(() => {
+    if (!useSupabase || !booking?.spotId) return;
+    let active = true;
+    async function loadSpot() {
+      const { data, error } = await createClient()
+        .from("spots")
+        .select("*")
+        .eq("id", booking!.spotId)
+        .maybeSingle();
+      if (active && data && !error) {
+        setSupabaseSpot({
+          id: data.id,
+          nama: data.nama,
+          kode: data.kode,
+          lokasi: data.lokasi ?? "Kampus Bukit Jimbaran, Universitas Udayana",
+          zona: (data.zona as Spot["zona"]) || "rektorat",
+          zonaLabel: data.zona_label || "Zona Kampus",
+          ukuran: (data.ukuran as Spot["ukuran"]) || "2x2",
+          ukuranLabel: data.ukuran_label || "Standar (2x2m)",
+          daya: data.daya ?? 450,
+          tarifPerHari: Number(data.tarif_per_hari ?? 75000),
+          status: "tersedia",
+          fasilitas: data.fasilitas ?? [],
+          tags: data.tags ?? [],
+          koordinat: {
+            x: Number(data.koordinat_x ?? 50),
+            y: Number(data.koordinat_y ?? 50),
+          },
+          gambar: data.gambar ?? "/images/spots/rektorat-a1.jpg",
+          rating: Number(data.rating ?? 4.8),
+          totalSewa: Number(data.total_sewa ?? 0),
+          deskripsi: data.deskripsi ?? "",
+        });
+      }
+    }
+    void loadSpot();
+    return () => {
+      active = false;
+    };
+  }, [useSupabase, booking?.spotId]);
 
   useEffect(() => {
     if (!useSupabase) return;
@@ -463,11 +515,43 @@ export default function DetailPesananView({
   }
 
   const currentBooking = booking;
+  const currentSpot: Spot =
+    supabaseSpot ||
+    (currentBooking
+      ? MOCK_SPOTS.find(
+        (s) => s.id === currentBooking.spotId || s.kode === currentBooking.spotKode
+      ) || {
+        id: currentBooking.spotId || "spot-custom",
+        nama: currentBooking.spotNama || "Spot Lapak Kampus",
+        kode: currentBooking.spotKode || "A-01",
+        lokasi: "Kampus Bukit Jimbaran, Universitas Udayana",
+        zona: "rektorat",
+        zonaLabel: "Lapangan Kampus",
+        ukuran: "2x2",
+        ukuranLabel: "Standar (2x2m)",
+        daya: 450,
+        tarifPerHari: currentBooking.totalBayar / Math.max(1, currentBooking.jumlahHari),
+        status: "dipesan",
+        fasilitas: ["Listrik 450W", "Paving Bersih", "Keamanan 24 Jam"],
+        tags: ["Kuliner", "Strategis"],
+        koordinat: { x: 50, y: 50 },
+        gambar: "/images/spots/rektorat-a1.jpg",
+        rating: 4.8,
+        totalSewa: 1,
+        deskripsi: "Titik stan resmi terdaftar Universitas Udayana.",
+      }
+      : MOCK_SPOTS[0]);
+
+  const [spotLat, spotLng] = getSpotLatLng(currentSpot);
+  const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${spotLat.toFixed(6)},${spotLng.toFixed(6)}`;
+
+
   const statusInfo = getStatusInfo(currentBooking);
   const isMidtrans = booking.metodePembayaran === "midtrans";
   const cancellationStatus = cancellation?.status ?? booking.pembatalan?.status;
   const bolehBatal = canCancelBooking(currentBooking, now) && (!cancellation || (!isMidtrans && cancellation.status === "ditolak"));
   const isApproved = currentBooking.statusVerifikasi === "disetujui" && currentBooking.status !== "dibatalkan";
+  const isPaid = isApproved && (isMidtrans ? currentBooking.paymentStatus === "settlement" : Boolean(currentBooking.paidAt));
   const canDownloadAgreement = isApproved && cancellationStatus !== "menunggu" && cancellationStatus !== "disetujui";
   const canContinuePayment = useSupabase && Date.parse(expiresAt ?? "") > now;
 
@@ -498,26 +582,51 @@ export default function DetailPesananView({
   }
 
   async function downloadDemoAgreement() {
-    if (!currentBooking.paidAt) return;
     setPaymentError("");
     try {
       const { rentalAgreementPdf } = await import("@/lib/pdf/rentalAgreement");
       const pdf = await rentalAgreementPdf({
-        id: currentBooking.id, tenant: currentBooking.penyewa.nama, spot: currentBooking.spotNama,
-        start: currentBooking.tanggalMulai, end: currentBooking.tanggalSelesai,
-        amount: currentBooking.totalBayar, paidAt: currentBooking.paidAt,
+        id: currentBooking.id,
+        tenant: currentBooking.penyewa.nama,
+        nim: currentBooking.penyewa.nim || undefined,
+        fakultas: currentBooking.penyewa.fakultas || undefined,
+        telepon: currentBooking.penyewa.telepon || undefined,
+        email: currentBooking.penyewa.email || undefined,
+        namaUsaha: currentBooking.namaUsaha || undefined,
+        jenisUsaha: currentBooking.jenisUsaha || undefined,
+        spot: `${currentBooking.spotNama} (${currentBooking.spotKode})`,
+        spotKode: currentBooking.spotKode,
+        lokasi: currentSpot.lokasi,
+        zonaLabel: currentSpot.zonaLabel,
+        ukuran: currentSpot.ukuran,
+        daya: currentSpot.daya,
+        start: currentBooking.tanggalMulai,
+        end: currentBooking.tanggalSelesai,
+        jumlahHari: currentBooking.jumlahHari,
+        amount: currentBooking.totalBayar,
+        metodePembayaran:
+          currentBooking.metodePembayaran || "Midtrans / Transfer Bank",
+        paidAt:
+          currentBooking.paidAt ||
+          currentBooking.createdAt ||
+          new Date().toISOString(),
+        googleMapsUrl,
+        lat: spotLat,
+        lng: spotLng,
       });
-      const url = URL.createObjectURL(new Blob([new Uint8Array(pdf)], { type: "application/pdf" }));
+      const url = URL.createObjectURL(
+        new Blob([new Uint8Array(pdf)], { type: "application/pdf" })
+      );
       const link = document.createElement("a");
       link.href = url;
       link.download = `MOU-${currentBooking.id}.pdf`;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch {
+    } catch (err) {
+      console.error(err);
       setPaymentError("PDF MOU gagal dibuat. Coba lagi.");
     }
   }
-
   async function submitCancellation(form: CancelForm) {
     if (!useSupabase) {
       cancelDemoBooking(bookingId, form);
@@ -592,12 +701,14 @@ export default function DetailPesananView({
       {/* ── Page heading ── */}
       <div className="mb-5">
         <p className="text-xs font-semibold text-[#855300] uppercase tracking-widest mb-1">
-          Pesanan
+          {booking.namaUsaha ? "Pesanan Usaha Mahasiswa" : "Pesanan"}
         </p>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-2xl font-bold text-[#003466]">Detail Pesanan</h1>
+          <h1 className="text-2xl font-bold text-[#003466]">
+            {booking.namaUsaha ? booking.namaUsaha : "Detail Pesanan"}
+          </h1>
           <span
-            className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border ${statusInfo.cls}`}
+            className={`flex items - center gap - 1.5 text - xs font - semibold px - 3 py - 1.5 rounded - full border ${statusInfo.cls} `}
           >
             <span className="material-symbols-outlined text-[14px]">
               {statusInfo.icon}
@@ -609,7 +720,11 @@ export default function DetailPesananView({
                 : statusInfo.label}
           </span>
         </div>
-        <p className="text-xs text-[#737781] font-mono mt-1">{booking.id}</p>
+        <p className="text-xs text-[#424750] font-medium mt-1">
+          {booking.spotNama}{" "}
+          <span className="font-mono text-[#737781]">({booking.spotKode})</span>
+        </p>
+        <p className="text-xs text-[#737781] font-mono mt-0.5">ID: {booking.id}</p>
       </div>
 
       {/* ── Stepper timeline ── */}
@@ -628,6 +743,10 @@ export default function DetailPesananView({
       <SectionCard title="Detail Lapak & Periode" icon="storefront">
         <DetailRow label="Nama Lapak" value={booking.spotNama} />
         <DetailRow label="Kode Lapak" value={booking.spotKode} mono />
+        <DetailRow label="Nama Usaha" value={booking.namaUsaha || "—"} />
+        {booking.kategoriPenjual && (
+          <DetailRow label="Kategori Pengelola" value={booking.kategoriPenjual} />
+        )}
         <DetailRow label="Jenis Usaha" value={booking.jenisUsaha} />
         <DetailRow
           label="Tanggal Mulai"
@@ -646,6 +765,36 @@ export default function DetailPesananView({
             </p>
           </div>
         )}
+      </SectionCard>
+
+      {/* ── Peta Lokasi Lapak ── */}
+      <SectionCard title="Peta Lokasi Lapak" icon="map">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[#f0f2fa]">
+          <div>
+            <p className="text-xs font-semibold text-[#131b2e]">
+              {currentSpot.nama} ({currentSpot.kode})
+            </p>
+            <p className="text-xs text-[#737781] mt-0.5">
+              {currentSpot.lokasi} • {currentSpot.zonaLabel}
+            </p>
+          </div>
+          <a
+            href={googleMapsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 self-start sm:self-auto text-xs font-semibold text-[#003466] bg-[#f0f3ff] hover:bg-[#e2e7ff] border border-[#d2dbfa] px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-[15px]">open_in_new</span>
+            Buka di Google Maps
+          </a>
+        </div>
+        <div className="rounded-xl overflow-hidden border border-[#e2e7ff] mt-3">
+          <MapComponent spots={[currentSpot]} defaultStatus="all" />
+        </div>
+        <p className="text-[11px] text-[#737781] mt-2 flex items-center gap-1">
+          <span className="material-symbols-outlined text-[14px]">info</span>
+          Titik koordinat penempatan stan Anda telah terplot secara presisi pada peta kampus.
+        </p>
       </SectionCard>
 
       {/* ── Informasi Pembayaran ── */}
@@ -668,13 +817,12 @@ export default function DetailPesananView({
         <div className="mt-3 pt-3 border-t border-[#f0f2fa] flex items-center justify-between">
           <span className="text-xs text-[#737781]">{isMidtrans ? "Status pembayaran" : "Status Verifikasi"}</span>
           <span
-            className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${
-              booking.statusVerifikasi === "disetujui"
-                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                : booking.statusVerifikasi === "ditolak"
-                  ? "bg-red-50 text-red-700 border-red-200"
-                  : "bg-amber-50 text-amber-700 border-amber-200"
-            }`}
+            className={`text - xs font - semibold px - 2.5 py - 1 rounded - full border ${booking.statusVerifikasi === "disetujui"
+              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+              : booking.statusVerifikasi === "ditolak"
+                ? "bg-red-50 text-red-700 border-red-200"
+                : "bg-amber-50 text-amber-700 border-amber-200"
+              } `}
           >
             {isMidtrans ? paymentLabel(booking.statusVerifikasi, booking.paymentStatus) : booking.statusVerifikasi === "disetujui"
               ? "Disetujui"
@@ -703,6 +851,26 @@ export default function DetailPesananView({
         )}
         {paymentError && <p role="alert" className="mt-2 text-sm text-red-700">{paymentError}</p>}
       </SectionCard>
+
+      {currentBooking.spotId && (
+        isPaid ? (
+          <ProductCaptionEditor
+            spotId={currentBooking.spotId}
+            ownerId={currentBooking.ownerId}
+            useSupabase={useSupabase}
+          />
+        ) : (
+          <div className="bg-white rounded-2xl border border-[#e2e7ff] p-5 mb-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="material-symbols-outlined text-[18px] text-[#003466]">description</span>
+              <h3 className="font-bold text-sm text-[#131b2e]">Deskripsi Produk</h3>
+            </div>
+            <p className="text-xs text-[#737781] bg-[#f8f9ff] border border-[#e2e7ff] rounded-xl p-3">
+              Deskripsi produk dan menu stan dapat diisi setelah pesanan disetujui dan pembayaran terverifikasi (lunas).
+            </p>
+          </div>
+        )
+      )}
 
       {cancellation && (
         <SectionCard title="Pengajuan pembatalan" icon="cancel">
@@ -820,7 +988,7 @@ export default function DetailPesananView({
           )}
 
           {/* Unduh Kontrak SPPLA */}
-          {canDownloadAgreement && !isMidtrans && (
+          {canDownloadAgreement && !isMidtrans && !useSupabase && (
             <button
               type="button"
               onClick={handlePrintSPPLA}
@@ -832,34 +1000,43 @@ export default function DetailPesananView({
               Unduh Kontrak SPPLA
             </button>
           )}
-          {canDownloadAgreement && isMidtrans && (useSupabase ? (
-            <a href={`/api/pesanan/${encodeURIComponent(bookingId)}/mou`}
-              className="rounded-xl bg-[#003466] px-4 py-3 text-center text-sm font-semibold text-white">Unduh PDF MOU</a>
-          ) : (
-            <button type="button" onClick={downloadDemoAgreement}
-              className="rounded-xl bg-[#003466] px-4 py-3 text-sm font-semibold text-white">Unduh PDF MOU</button>
-          ))}
+
+          {/* Unduh PDF MOU Resmi */}
+          {canDownloadAgreement && (
+            <button
+              type="button"
+              onClick={downloadDemoAgreement}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#003466] hover:bg-[#004785] px-4 py-3 text-center text-sm font-semibold text-white transition-colors cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[18px]">
+                description
+              </span>
+              Unduh PDF MOU Resmi
+            </button>
+          )}
 
           {/* No actions available */}
-          {!isMidtrans && !bolehBatal && !isApproved && (
-            <div className="flex items-center gap-2 text-sm text-[#737781]">
-              <span className="material-symbols-outlined text-[18px]">
-                info
-              </span>
-              {booking.status === "dibatalkan"
-                ? "Pesanan ini telah dibatalkan."
-                : booking.statusVerifikasi === "ditolak"
-                  ? "Pesanan ini ditolak oleh admin."
-                  : "Menunggu verifikasi admin. Belum ada tindakan yang tersedia."}
-            </div>
-          )}
-        </div>
-      </div>
+          {
+            !isMidtrans && !bolehBatal && !isApproved && (
+              <div className="flex items-center gap-2 text-sm text-[#737781]">
+                <span className="material-symbols-outlined text-[18px]">
+                  info
+                </span>
+                {booking.status === "dibatalkan"
+                  ? "Pesanan ini telah dibatalkan."
+                  : booking.statusVerifikasi === "ditolak"
+                    ? "Pesanan ini ditolak oleh admin."
+                    : "Menunggu verifikasi admin. Belum ada tindakan yang tersedia."}
+              </div>
+            )
+          }
+        </div >
+      </div >
 
       {/* ── Footer note ── */}
-      <p className="text-xs text-center text-[#9ba4b5] mt-6">
+      < p className="text-xs text-center text-[#9ba4b5] mt-6" >
         Dokumen ini merupakan detail transaksi dari sistem demonstrasi Ngelapak.
-      </p>
-    </div>
+      </p >
+    </div >
   );
 }

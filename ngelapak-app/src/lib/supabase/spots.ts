@@ -66,6 +66,7 @@ export async function getSupabaseSpots(
       startDate: booking.tanggal_mulai,
       endDate: booking.tanggal_selesai,
       status: isActive ? "Active" : "Upcoming",
+      productCaption: booking.product_caption ?? undefined,
     };
 
     const existing = bookingsBySpot.get(booking.spot_id) ?? [];

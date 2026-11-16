@@ -163,6 +163,7 @@ export type Database = {
           jenis_usaha: string | null;
           tanggal_mulai: string;
           tanggal_selesai: string;
+          product_caption: string | null;
         }[];
       };
 
@@ -228,6 +229,21 @@ export type Database = {
           p_alasan: string;
         };
         Returns: Json;
+      };
+      get_ticket_validation: {
+        Args: { p_ticket_id: string };
+        Returns: {
+          id: string;
+          penyewa_nama: string | null;
+          penyewa_nim: string | null;
+          jenis_usaha: string | null;
+          spot_kode: string | null;
+          spot_nama: string | null;
+          tanggal_mulai: string;
+          tanggal_selesai: string;
+          status: string;
+          status_verifikasi: string;
+        }[];
       };
     };
     Enums: Record<never, never>;
