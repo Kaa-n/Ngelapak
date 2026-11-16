@@ -433,7 +433,7 @@ export default function ActiveStallsSection({
           ======================================================== */}
       {isLoading ? (
         /* SKELETON LOADING STATE */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+        <div className="grid grid-cols-1 min-[640px]:grid-cols-2 min-[1024px]:grid-cols-3 gap-6 mb-10">
           {[...Array(6)].map((_, i) => (
             <div
               key={i}
@@ -602,19 +602,50 @@ export default function ActiveStallsSection({
           />
         </div>
 
-        {displayedUpcomingSpots.length === 0 ? (
+        {isLoading ? (
+          /* SKELETON LOADING OPERASIONAL MENDATANG */
+          <div className="grid grid-cols-1 min-[640px]:grid-cols-2 min-[1024px]:grid-cols-3 gap-6 mb-10">
+            {[...Array(3)].map((_, i) => (
+              <div
+                key={i}
+                className="bg-white rounded-xl overflow-hidden border border-[#e2e7ff] shadow-xs"
+              >
+                <div className="h-44 skeleton" />
+
+                <div className="p-4 space-y-3">
+                  <div className="h-3 w-2/3 skeleton rounded" />
+                  <div className="h-5 w-full skeleton rounded" />
+                  <div className="h-10 skeleton rounded-lg" />
+
+                  <div className="flex gap-2">
+                    <div className="h-5 w-16 skeleton rounded" />
+                    <div className="h-5 w-20 skeleton rounded" />
+                  </div>
+
+                  <div className="flex justify-between items-center pt-2">
+                    <div className="h-6 w-24 skeleton rounded" />
+                    <div className="h-9 w-24 skeleton rounded-lg" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : displayedUpcomingSpots.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 px-4 text-center bg-white rounded-2xl border border-[#e2e7ff] mb-10">
             <div className="w-14 h-14 rounded-2xl bg-[#eaedff] flex items-center justify-center mb-3">
               <span className="material-symbols-outlined text-[28px] text-[#424750]">
                 calendar_today
               </span>
             </div>
+
             <h4 className="text-base font-bold text-[#131b2e] mb-1">
               Belum ada jadwal operasional mendatang di zona ini
             </h4>
+
             <p className="text-xs md:text-sm text-[#424750] max-w-sm mb-4">
               Silakan pilih zona lain untuk melihat stan dan bazar yang akan hadir berikutnya.
             </p>
+
             <button
               type="button"
               onClick={() => {
@@ -629,7 +660,7 @@ export default function ActiveStallsSection({
           </div>
         ) : (
           <div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+            <div className="grid grid-cols-1 min-[640px]:grid-cols-2 min-[1024px]:grid-cols-3 gap-6 mb-6">
               {paginatedUpcomingSpots.map(({ spot, upcoming }) => (
                 <div key={`${spot.id}-${upcoming.id}`} className="relative group">
                   <SpotCard
@@ -649,7 +680,6 @@ export default function ActiveStallsSection({
               ))}
             </div>
 
-            {/* Pagination Bar Operasional Mendatang */}
             <PaginationBar
               currentPage={upcomingPage}
               totalItems={displayedUpcomingSpots.length}
