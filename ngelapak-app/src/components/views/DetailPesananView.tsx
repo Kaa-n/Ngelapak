@@ -3,6 +3,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { canCancelBooking, cancelDemoBooking, completeDemoPayment, useDemo } from "@/lib/demo-store";
 import {
+  cancellationDecisionStatus,
+  cancellationStatusBadge,
   formatDate,
   formatRupiah,
   isPendingCancellationRefund,
@@ -42,13 +44,9 @@ function getStatusInfo(booking: Booking): {
   cls: string;
   icon: string;
 } {
-  if (isPendingCancellationRefund(booking)) {
-    return {
-      label: "Menunggu Pengembalian Dana",
-      cls: "bg-orange-50 text-orange-800 border-orange-200",
-      icon: "hourglass_top",
-    };
-  }
+  const cancelBadge = cancellationStatusBadge(booking);
+  if (cancelBadge) return cancelBadge;
+
   if (booking.status === "dibatalkan" && booking.statusVerifikasi !== "ditolak")
     return {
       label: "Dibatalkan",
@@ -96,7 +94,17 @@ const STEPS = [
   { label: "Sewa Aktif / Selesai", icon: "store" },
 ];
 
+const CANCEL_STEPS = [
+  { label: "Pesanan Dibuat", icon: "receipt_long" },
+  { label: "Pembayaran Lunas", icon: "payments" },
+  { label: "Pengajuan Pembatalan", icon: "cancel" },
+  { label: "Disetujui / Ditolak", icon: "fact_check" },
+];
+
 function getStepIndex(booking: Booking): number {
+  const cancelDecision = cancellationDecisionStatus(booking);
+  if (cancelDecision === "disetujui" || cancelDecision === "ditolak") return 4;
+  if (cancelDecision === "menunggu") return 3;
   if (booking.status === "selesai") return 4;
   if (booking.status === "aktif") return 3;
   if (
@@ -110,13 +118,24 @@ function getStepIndex(booking: Booking): number {
 }
 
 function StatusStepper({ booking }: { booking: Booking }) {
+  const cancelDecision = cancellationDecisionStatus(booking);
   const current = getStepIndex(booking);
-  const steps = booking.metodePembayaran === "midtrans" ? [
-    STEPS[0], { label: "Menunggu pembayaran", icon: "pending_actions" },
-    { label: "Konfirmasi pembayaran", icon: "fact_check" }, STEPS[3],
-  ] : STEPS;
+  const steps = cancelDecision
+    ? CANCEL_STEPS
+    : booking.metodePembayaran === "midtrans"
+      ? [
+        STEPS[0],
+        { label: "Menunggu pembayaran", icon: "pending_actions" },
+        { label: "Konfirmasi pembayaran", icon: "fact_check" },
+        STEPS[3],
+      ]
+      : STEPS;
   const isRejected =
-    booking.statusVerifikasi === "ditolak" || booking.status === "dibatalkan";
+    cancelDecision === "ditolak" ||
+    (!cancelDecision &&
+      (booking.statusVerifikasi === "ditolak" || booking.status === "dibatalkan"));
+  const isApprovedCancel = cancelDecision === "disetujui";
+  const decisionStep = cancelDecision ? 3 : 2;
 
   return (
     <div className="bg-white rounded-2xl border border-[#e2e7ff] p-5 mb-4">
@@ -125,9 +144,9 @@ function StatusStepper({ booking }: { booking: Booking }) {
       </h3>
       <div className="flex items-start">
         {steps.map((step, idx) => {
-          const done = idx < current;
-          const active = idx === current;
-          const rejected = isRejected && idx === 2;
+          const done = idx < current || (isApprovedCancel && idx === decisionStep);
+          const active = idx === current && !(isApprovedCancel && idx === decisionStep);
+          const rejected = isRejected && idx === decisionStep;
 
           let dotCls = "bg-[#eef0ff] border-[#c5cbe0] text-[#c5cbe0]";
           let lineCls = "bg-[#e2e7ff]";
@@ -140,6 +159,9 @@ function StatusStepper({ booking }: { booking: Booking }) {
           } else if (active && rejected) {
             dotCls = "bg-red-500 border-red-500 text-white";
             labelCls = "text-red-700 font-semibold";
+          } else if (active && cancelDecision === "menunggu" && idx === decisionStep) {
+            dotCls = "bg-orange-500 border-orange-500 text-white";
+            labelCls = "text-orange-800 font-semibold";
           } else if (active) {
             dotCls = "bg-[#003466] border-[#003466] text-white";
             labelCls = "text-[#003466] font-semibold";
@@ -150,7 +172,7 @@ function StatusStepper({ booking }: { booking: Booking }) {
               <div className="flex items-center w-full">
                 {idx > 0 && (
                   <div
-                    className={`flex-1 h-0.5 ${idx <= current ? lineCls : "bg-[#e2e7ff]"}`}
+                    className={`flex-1 h-0.5 ${idx <= current || (isApprovedCancel && idx <= decisionStep) ? lineCls : "bg-[#e2e7ff]"}`}
                   />
                 )}
                 <div
@@ -166,16 +188,22 @@ function StatusStepper({ booking }: { booking: Booking }) {
                     </span>
                   )}
                 </div>
-                {idx < STEPS.length - 1 && (
+                {idx < steps.length - 1 && (
                   <div
-                    className={`flex-1 h-0.5 ${idx < current ? lineCls : "bg-[#e2e7ff]"}`}
+                    className={`flex-1 h-0.5 ${idx < current || (isApprovedCancel && idx < decisionStep) ? lineCls : "bg-[#e2e7ff]"}`}
                   />
                 )}
               </div>
               <p
                 className={`text-[10px] mt-1.5 text-center leading-tight px-0.5 ${labelCls}`}
               >
-                {step.label}
+                {cancelDecision && idx === decisionStep
+                  ? cancelDecision === "disetujui"
+                    ? "Disetujui"
+                    : cancelDecision === "ditolak"
+                      ? "Ditolak"
+                      : "Disetujui / Ditolak"
+                  : step.label}
               </p>
             </div>
           );
@@ -300,9 +328,9 @@ function CancellationForm({
         <h3 className="font-bold text-sm text-red-800">Form Pembatalan Pesanan</h3>
       </div>
       <p className="text-xs text-[#737781] mb-4 pl-7">
-        {booking.metodePembayaran === "midtrans"
-          ? "Admin akan meninjau pengajuan. Jadwal tetap ditahan sampai pembatalan disetujui."
-          : "Untuk transfer lama, pembatalan hanya tersedia dalam 1×24 jam selama admin belum memverifikasi."}
+        {booking.status === "aktif" && booking.statusVerifikasi === "disetujui"
+          ? "Admin akan meninjau pengajuan. Setelah diajukan, status menjadi Menunggu Pengembalian Dana dan jadwal tetap ditahan sampai disetujui."
+          : "Pembatalan tersedia dalam 1×24 jam selama admin belum memverifikasi."}
         {" "}Isi data rekening untuk proses refund.
       </p>
 
@@ -630,16 +658,18 @@ export default function DetailPesananView({
   async function submitCancellation(form: CancelForm) {
     if (!useSupabase) {
       cancelDemoBooking(bookingId, form);
-      return isMidtrans ? "Pengajuan pembatalan menunggu keputusan admin." : "Pesanan telah dibatalkan.";
+      return isMidtrans
+        ? "Pengajuan berhasil. Status pesanan: Menunggu Pengembalian Dana."
+        : "Pesanan telah dibatalkan. Status: Menunggu Pengembalian Dana.";
     }
-    await requestSupabaseCancellation({
+    const message = await requestSupabaseCancellation({
       p_booking_id: bookingId, p_nama: form.nama, p_nim: form.nim, p_telepon: form.telepon,
       p_bank: form.bank, p_nomor_rekening: form.nomorRekening,
       p_nama_rekening: form.namaRekening, p_alasan: form.alasan,
     });
     setDetail(undefined);
     setVersion((value) => value + 1);
-    return "Pengajuan pembatalan menunggu keputusan admin.";
+    return message;
   }
 
   async function showRefundProof(path: string) {
@@ -713,7 +743,7 @@ export default function DetailPesananView({
             <span className="material-symbols-outlined text-[14px]">
               {statusInfo.icon}
             </span>
-            {isPendingCancellationRefund(booking)
+            {cancellationDecisionStatus(booking)
               ? statusInfo.label
               : isMidtrans && booking.status !== "dibatalkan"
                 ? paymentLabel(booking.statusVerifikasi, booking.paymentStatus)
@@ -874,10 +904,25 @@ export default function DetailPesananView({
 
       {cancellation && (
         <SectionCard title="Pengajuan pembatalan" icon="cancel">
-          <DetailRow label="Status" value={cancellation.status} />
+          <DetailRow
+            label="Status"
+            value={
+              cancellation.status === "menunggu"
+                ? "Menunggu Pengembalian Dana"
+                : cancellation.status === "disetujui"
+                  ? cancellation.bukti_refund
+                    ? "Refund selesai"
+                    : "Dibatalkan — refund diproses"
+                  : "Pengajuan ditolak"
+            }
+          />
           <DetailRow label="Alasan" value={cancellation.alasan ?? "—"} />
           {cancellation.admin_catatan && <DetailRow label="Catatan admin" value={cancellation.admin_catatan} />}
-          {cancellation.status === "menunggu" && <p className="mt-3 text-sm">Jadwal tetap ditahan sampai admin memproses pengajuan.</p>}
+          {cancellation.status === "menunggu" && (
+            <p className="mt-3 text-sm">
+              Pengajuan diterima. Status pesanan: Menunggu Pengembalian Dana. Jadwal tetap ditahan sampai admin memproses.
+            </p>
+          )}
           {cancellation.status === "disetujui" && !cancellation.bukti_refund && <DetailRow label="Refund" value="Sedang diproses" />}
           {cancellation.bukti_refund && cancellation.status === "disetujui" && (
             <button type="button" className="mt-3 text-sm font-semibold text-[#003466] underline"
@@ -904,6 +949,18 @@ export default function DetailPesananView({
                     ? "Pesanan dibatalkan. Refund sedang diproses."
                     : "Pesanan ini telah dibatalkan."}
           </div>
+          <DetailRow
+            label="Status"
+            value={
+              booking.pembatalan.status === "ditolak"
+                ? "Ditolak"
+                : booking.pembatalan.status === "disetujui"
+                  ? booking.pembatalan.refundCompleted
+                    ? "Disetujui — Refund selesai"
+                    : "Disetujui — Menunggu pengembalian dana"
+                  : "Menunggu — Disetujui / Ditolak"
+            }
+          />
           <DetailRow label="Diajukan oleh" value={booking.pembatalan.nama} />
           <DetailRow label="NIM" value={booking.pembatalan.nim} mono />
           <DetailRow label="Telepon" value={booking.pembatalan.telepon} />
@@ -951,7 +1008,7 @@ export default function DetailPesananView({
         <h3 className="text-xs font-semibold text-[#737781] uppercase tracking-widest mb-4">
           Tindakan
         </h3>
-        {isMidtrans && booking.paidAt && !cancellationStatus && booking.status === "aktif" && (
+        {booking.paidAt && !cancellationStatus && booking.status === "aktif" && booking.statusVerifikasi === "disetujui" && (
           <p className="mb-3 text-sm text-[#424750]">
             {bolehBatal ? `Batas pengajuan batal ${formatRentalTime(cancellationDeadline(booking.tanggalMulai, booking.paidAt))}.`
               : "Batas pengajuan batal sudah lewat."}

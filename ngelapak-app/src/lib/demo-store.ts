@@ -567,11 +567,18 @@ export function completeDemoPayment(id: string) {
 }
 
 export function canCancelBooking(booking: Booking, now = Date.now()) {
-  if (booking.metodePembayaran === "midtrans") {
-    if (booking.status !== "aktif" || !booking.paidAt || booking.pembatalan) return false;
+  if (booking.pembatalan && booking.pembatalan.status !== "ditolak") return false;
+
+  // Paid + verified (Midtrans atau transfer): ajukan dalam jendela refund.
+  if (booking.status === "aktif" && booking.statusVerifikasi === "disetujui" && booking.paidAt) {
     const cutoff = cancellationDeadline(booking.tanggalMulai, booking.paidAt);
     return Date.parse(booking.paidAt) < cutoff && now <= cutoff;
   }
+
+  // Midtrans belum lunas: tunggu settlement / kedaluwarsa, bukan batal mandiri.
+  if (booking.metodePembayaran === "midtrans") return false;
+
+  // Transfer lama belum diverifikasi: boleh batal dalam 1×24 jam sejak dibuat.
   if (booking.status === "dibatalkan" || booking.statusVerifikasi !== "menunggu") {
     return false;
   }
@@ -601,11 +608,15 @@ export function cancelDemoBooking(
   }
 
   if (!canCancelBooking(booking)) {
-    throw new Error(booking.metodePembayaran === "midtrans"
-      ? "Pesanan belum lunas atau batas pengajuan pembatalan sudah lewat."
-      : "Pembatalan hanya tersedia dalam 1x24 jam sebelum admin memverifikasi.");
+    throw new Error(
+      booking.status === "aktif" && booking.statusVerifikasi === "disetujui"
+        ? "Pesanan belum lunas atau batas pengajuan pembatalan sudah lewat."
+        : "Pembatalan hanya tersedia dalam 1x24 jam sebelum admin memverifikasi.",
+    );
   }
-  if (booking.metodePembayaran === "midtrans" && !input) throw new Error("Isi pengajuan pembatalan.");
+  if ((booking.status === "aktif" || booking.metodePembayaran === "midtrans") && !input) {
+    throw new Error("Isi pengajuan pembatalan.");
+  }
 
   if (input !== undefined) {
     const nama = input.nama.trim();
@@ -620,13 +631,17 @@ export function cancelDemoBooking(
       throw new Error("Lengkapi identitas, rekening, dan alasan pembatalan.");
     }
 
+    const holdUntilAdminApproves =
+      booking.status === "aktif" && booking.statusVerifikasi === "disetujui";
+
     save(
       bookings.map((item) =>
         item.id === id
           ? {
             ...item,
-            // Midtrans: hold schedule until admin approves. Legacy transfer: cancel immediately.
-            status: item.metodePembayaran === "midtrans" ? item.status : "dibatalkan",
+            // Paid/verified: hold schedule until admin approves refund.
+            // Pre-verify: free the schedule immediately.
+            status: holdUntilAdminApproves ? item.status : "dibatalkan",
             pembatalan: {
               nama,
               nim,
