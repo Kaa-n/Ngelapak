@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import SpotCard from "@/components/ui-custom/SpotCard";
 import LokasiDropdown, { LokasiItem } from "@/components/ui-custom/LokasiDropdown";
 import MapComponent from "./MapComponent";
@@ -11,7 +12,8 @@ import {
   type JadwalOperasionalItem,
   buildDefaultCaption,
 } from "@/lib/mock-data";
-import { readProductCaption, saveProductCaption, useDemo } from "@/lib/demo-store";
+import { canEditProductCaption, readProductCaption, saveProductCaption } from "@/lib/demo-store";
+import { createClient } from "@/lib/supabase/client";
 
 export interface ActiveStallsSectionProps {
   /**
@@ -141,11 +143,10 @@ function PaginationBar({
             key={i}
             type="button"
             onClick={() => onPageChange(i + 1)}
-            className={`h-9 w-9 flex items-center justify-center rounded-lg text-[13px] font-semibold transition-colors cursor-pointer ${
-              currentPage === i + 1
+            className={`h-9 w-9 flex items-center justify-center rounded-lg text-[13px] font-semibold transition-colors cursor-pointer ${currentPage === i + 1
                 ? "bg-[#003466] text-white shadow-sm"
                 : "bg-white text-[#424750] hover:bg-[#eaedff] border border-[#e2e7ff]"
-            }`}
+              }`}
           >
             {i + 1}
           </button>
@@ -168,6 +169,41 @@ function PaginationBar({
   );
 }
 
+// ─── Tombol Bagikan untuk modal deskripsi produk ───────────────────────────
+
+function ShareProductButton({ spot, penjualNama }: { spot: Spot; penjualNama: string }) {
+  const [copied, setCopied] = React.useState(false);
+
+  async function handleShare() {
+    const url = `${window.location.origin}/?produk=${encodeURIComponent(spot.kode)}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: `${penjualNama} – Deskripsi Produk`, url });
+        return;
+      } catch { /* dibatalkan pengguna */ }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch { /* clipboard tidak tersedia */ }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleShare}
+      className="w-8 h-8 rounded-full bg-white hover:bg-[#e2e7ff] text-[#424750] flex items-center justify-center transition-colors cursor-pointer border border-[#e2e7ff]"
+      aria-label={copied ? "Tautan disalin" : "Bagikan deskripsi produk"}
+      title={copied ? "Tautan disalin!" : "Bagikan"}
+    >
+      <span className="material-symbols-outlined text-[16px]">
+        {copied ? "check_circle" : "share"}
+      </span>
+    </button>
+  );
+}
+
 /**
  * Seksi "Lapak Sedang Beroperasi" & "Operasional Mendatang" (ActiveStallsSection)
  *
@@ -178,7 +214,7 @@ function PaginationBar({
 export default function ActiveStallsSection({
   spots,
   isLoading = false,
-  onViewDetail = () => {},
+  onViewDetail = () => { },
   onNavigateToKatalog,
   className = "",
 }: ActiveStallsSectionProps) {
@@ -196,20 +232,88 @@ export default function ActiveStallsSection({
   const [customUpcomingLokasi, setCustomUpcomingLokasi] = useState<string | null>(null);
   const [upcomingPage, setUpcomingPage] = useState<number>(1);
 
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+
   const [selectedProductSpot, setSelectedProductSpot] = useState<Spot | null>(null);
   const [captionDraft, setCaptionDraft] = useState("");
   const [captionNote, setCaptionNote] = useState("");
   const [isEditing, setIsEditing] = useState(false);
-  const { user } = useDemo();
+  const openedCaptionSpotId = useRef<string | null>(null);
+  // Guard agar useEffect ?produk= tidak memicu loop saat openProduct memanggil router.replace
+  const urlOpenedKode = useRef<string | null>(null);
 
   function openProduct(spot: Spot) {
+    openedCaptionSpotId.current = spot.id;
     setSelectedProductSpot(spot);
+    const activeSchedule = spot.jadwalOperasional?.find((item) => item.status === "Active");
     const saved = readProductCaption(spot.id);
-    // Jika belum pernah diisi, gunakan caption default dari data lapak
-    setCaptionDraft(saved || buildDefaultCaption(spot));
+    // Caption dari booking aktif di Supabase selalu diprioritaskan. Penyimpanan
+    // browser hanya dipakai saat mode demo tidak terhubung ke Supabase.
+    setCaptionDraft(activeSchedule?.productCaption || saved || buildDefaultCaption(spot));
     setCaptionNote("");
     setIsEditing(false);
+
+    // Sync URL to support sharing
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("produk", spot.kode);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+
+    // Do not depend solely on the operational-schedule RPC: an already
+    // deployed database may still return its older response shape. Captions
+    // are public, so the current value can be read directly as a safe fallback.
+    void (async () => {
+      try {
+        const { data, error } = await createClient()
+          .from("product_captions")
+          .select("konten")
+          .eq("spot_id", spot.id)
+          .not("konten", "is", null)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (!error && data?.konten && openedCaptionSpotId.current === spot.id) {
+          setCaptionDraft(data.konten);
+        }
+      } catch {
+        // Demo mode or an offline Supabase connection keeps the local fallback.
+      }
+    })();
   }
+
+  function closeProduct() {
+    setSelectedProductSpot(null);
+    openedCaptionSpotId.current = null;
+    // Remove produk param from URL
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("produk");
+    const newUrl = params.size > 0 ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(newUrl, { scroll: false });
+  }
+
+  // Open modal automatically when ?produk= param is present on mount / param change
+  useEffect(() => {
+    const kode = searchParams.get("produk");
+    if (!kode) {
+      // Jika param hilang (misalnya user navigate back), tutup modal
+      if (urlOpenedKode.current && selectedProductSpot) {
+        setSelectedProductSpot(null);
+        openedCaptionSpotId.current = null;
+        urlOpenedKode.current = null;
+      }
+      return;
+    }
+    // Jangan re-open jika kode sama (mencegah loop dari router.replace di openProduct)
+    if (urlOpenedKode.current === kode) return;
+    const allSpots = spots ?? [];
+    const found = allSpots.find((s) => s.kode === kode);
+    if (found) {
+      urlOpenedKode.current = kode;
+      openProduct(found);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, spots]);
 
   function saveCaption() {
     if (!selectedProductSpot) return;
@@ -226,7 +330,8 @@ export default function ActiveStallsSection({
   function cancelEdit() {
     if (!selectedProductSpot) return;
     const saved = readProductCaption(selectedProductSpot.id);
-    setCaptionDraft(saved || buildDefaultCaption(selectedProductSpot));
+    const activeSchedule = selectedProductSpot.jadwalOperasional?.find((item) => item.status === "Active");
+    setCaptionDraft(activeSchedule?.productCaption || saved || buildDefaultCaption(selectedProductSpot));
     setCaptionNote("");
     setIsEditing(false);
   }
@@ -241,10 +346,10 @@ export default function ActiveStallsSection({
     activeZona === "all"
       ? activeSpots
       : activeZona === "custom" && customActiveLokasi
-      ? activeSpots.filter((s) =>
+        ? activeSpots.filter((s) =>
           s.lokasi.toLowerCase().includes(customActiveLokasi.toLowerCase())
         )
-      : activeSpots.filter((s) => s.zona === activeZona);
+        : activeSpots.filter((s) => s.zona === activeZona);
 
   const paginatedActiveSpots = displayedActiveSpots.slice(
     (activePage - 1) * ITEMS_PER_PAGE,
@@ -265,10 +370,10 @@ export default function ActiveStallsSection({
     upcomingZona === "all"
       ? upcomingSpots
       : upcomingZona === "custom" && customUpcomingLokasi
-      ? upcomingSpots.filter((item) =>
+        ? upcomingSpots.filter((item) =>
           item.spot.lokasi.toLowerCase().includes(customUpcomingLokasi.toLowerCase())
         )
-      : upcomingSpots.filter((item) => item.spot.zona === upcomingZona);
+        : upcomingSpots.filter((item) => item.spot.zona === upcomingZona);
 
   const paginatedUpcomingSpots = displayedUpcomingSpots.slice(
     (upcomingPage - 1) * ITEMS_PER_PAGE,
@@ -387,19 +492,17 @@ export default function ActiveStallsSection({
                 setCustomActiveLokasi(null);
                 setActivePage(1);
               }}
-              className={`px-4 py-2 rounded-lg text-[11px] font-semibold whitespace-nowrap shadow-sm transition-all flex items-center gap-2 cursor-pointer ${
-                isActive
+              className={`px-4 py-2 rounded-lg text-[11px] font-semibold whitespace-nowrap shadow-sm transition-all flex items-center gap-2 cursor-pointer ${isActive
                   ? "bg-[#1a4b84] text-white"
                   : "bg-white text-[#424750] hover:bg-[#eaedff] hover:text-[#131b2e] border border-[#e2e7ff]"
-              }`}
+                }`}
             >
               <span>{label}</span>
               <span
-                className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                  isActive
+                className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${isActive
                     ? "bg-white/20 text-white"
                     : "bg-[#e2e7ff] text-[#424750]"
-                }`}
+                  }`}
               >
                 {count}
               </span>
@@ -561,19 +664,17 @@ export default function ActiveStallsSection({
                   setCustomUpcomingLokasi(null);
                   setUpcomingPage(1);
                 }}
-                className={`px-4 py-2 rounded-lg text-[11px] font-semibold whitespace-nowrap shadow-sm transition-all flex items-center gap-2 cursor-pointer ${
-                  isActive
+                className={`px-4 py-2 rounded-lg text-[11px] font-semibold whitespace-nowrap shadow-sm transition-all flex items-center gap-2 cursor-pointer ${isActive
                     ? "bg-[#1a4b84] text-white"
                     : "bg-white text-[#424750] hover:bg-[#eaedff] hover:text-[#131b2e] border border-[#e2e7ff]"
-                }`}
+                  }`}
               >
                 <span>{label}</span>
                 <span
-                  className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                    isActive
+                  className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${isActive
                       ? "bg-white/20 text-white"
                       : "bg-[#e2e7ff] text-[#424750]"
-                  }`}
+                    }`}
                 >
                   {count}
                 </span>
@@ -690,6 +791,8 @@ export default function ActiveStallsSection({
         )}
       </div>
 
+
+
       {/* ========================================================
           3. TEMPAT KHUSUS UNTUK PEMANGGILAN KOMPONEN PETA (MapComponent)
           ======================================================== */}
@@ -755,16 +858,22 @@ export default function ActiveStallsSection({
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setSelectedProductSpot(null)}
-                  className="w-8 h-8 rounded-full bg-white hover:bg-[#e2e7ff] text-[#424750] flex items-center justify-center transition-colors cursor-pointer border border-[#e2e7ff]"
-                  aria-label="Tutup dokumen"
-                >
-                  <span className="material-symbols-outlined text-[18px]">
-                    close
-                  </span>
-                </button>
+                <div className="flex items-center gap-1">
+                  {/* Tombol Bagikan */}
+                  <ShareProductButton spot={selectedProductSpot} penjualNama={penjualNama} />
+
+                  {/* Tombol Tutup */}
+                  <button
+                    type="button"
+                    onClick={closeProduct}
+                    className="w-8 h-8 rounded-full bg-white hover:bg-[#e2e7ff] text-[#424750] flex items-center justify-center transition-colors cursor-pointer border border-[#e2e7ff]"
+                    aria-label="Tutup dokumen"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">
+                      close
+                    </span>
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4 sm:p-5 overflow-y-auto bg-[#faf8ff]/50">
@@ -799,7 +908,7 @@ export default function ActiveStallsSection({
                       <h5 className="text-xs font-bold uppercase tracking-wider text-[#003466]">
                         Deskripsi Produk
                       </h5>
-                      {user?.role === "penyewa" && !isEditing && (
+                      {canEditProductCaption(selectedProductSpot.id) && !isEditing && (
                         <button
                           type="button"
                           onClick={() => setIsEditing(true)}
@@ -811,7 +920,7 @@ export default function ActiveStallsSection({
                       )}
                     </div>
 
-                    {isEditing && user?.role === "penyewa" ? (
+                    {isEditing && canEditProductCaption(selectedProductSpot.id) ? (
                       <div className="space-y-3">
                         <textarea
                           value={captionDraft}
@@ -860,7 +969,7 @@ export default function ActiveStallsSection({
               <div className="px-6 py-4 border-t border-[#e2e7ff] bg-white flex justify-end">
                 <button
                   type="button"
-                  onClick={() => setSelectedProductSpot(null)}
+                  onClick={closeProduct}
                   className="h-10 px-6 rounded-lg bg-[#003466] text-white text-sm font-semibold hover:bg-[#1a4b84] transition-colors cursor-pointer shadow-xs"
                 >
                   Tutup

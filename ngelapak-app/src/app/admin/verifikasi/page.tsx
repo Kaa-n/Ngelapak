@@ -7,7 +7,8 @@ import ProofPreview from "@/components/admin/ProofPreview";
 import { actionLinkClass, panelClass } from "@/components/admin/styles";
 import { requireAdmin } from "@/lib/supabase/admin";
 import { getProofPreview } from "@/lib/supabase/proof-preview";
-import { reviewPayment } from "./actions";
+import { reviewPayment, uploadPaymentProof } from "./actions";
+import { inputClass } from "@/components/admin/styles";
 
 const currency = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
 
@@ -85,7 +86,35 @@ async function VerificationData({ searchParams }: VerificationPageProps) {
               )}
               {!!cancellations && <p className="mt-4 text-sm">Ada pengajuan pembatalan. <Link href="/admin/refund" className="underline">Buka refund</Link></p>}
             </section>
-            <ProofPreview proof={proof} title="Bukti transfer" />
+            <div className="space-y-4">
+              <ProofPreview proof={proof} title="Bukti transfer" />
+
+              {/* Unggah / Perbarui Bukti Pembayaran ke Bucket payment-proofs */}
+              <section className={`${panelClass} space-y-3`}>
+                <h3 className="font-semibold text-sm text-[#003466] flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[18px]">cloud_upload</span>
+                  {proof ? "Perbarui Bukti Pembayaran" : "Unggah Bukti Pembayaran Manual"}
+                </h3>
+                <p className="text-xs text-[#424750]">
+                  Unggah berkas bukti transfer (JPG, PNG, PDF maks. 6 MB) langsung ke bucket storage resmi Supabase &apos;payment-proofs&apos;.
+                </p>
+                <ActionForm
+                  action={uploadPaymentProof.bind(null, booking.id)}
+                  label="Unggah ke Storage Supabase"
+                >
+                  <label className="grid gap-1 text-xs font-medium text-[#131b2e]">
+                    <span>Pilih Berkas Bukti Transfer</span>
+                    <input
+                      type="file"
+                      name="bukti_bayar"
+                      className={inputClass}
+                      accept="image/jpeg,image/png,application/pdf"
+                      required
+                    />
+                  </label>
+                </ActionForm>
+              </section>
+            </div>
           </div>
         </section>
       )}

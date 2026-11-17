@@ -16,6 +16,8 @@ export interface JadwalOperasionalItem {
   startDate: string;
   endDate: string;
   status: "Active" | "Upcoming";
+  /** Caption published by the tenant whose paid booking is operating. */
+  productCaption?: string;
 }
 
 export interface Spot {
@@ -78,6 +80,8 @@ export interface Booking {
   buktiBayar?: string;
   catatan?: string;
   jenisUsaha: string;
+  namaUsaha?: string;
+  kategoriPenjual?: string;
   createdAt: string;
   paidAt?: string;
   paymentExpiresAt?: string;
@@ -441,6 +445,7 @@ export const MOCK_BOOKINGS: Booking[] = [
     status: "menunggu",
     statusVerifikasi: "menunggu",
     jenisUsaha: "Kuliner - Minuman Kekinian",
+    namaUsaha: "Es Teh Tarik Kampus",
     catatan: "Stan es teh tarik untuk acara Dies Natalis Udayana",
     createdAt: "2025-10-24T09:15:00",
   },
@@ -466,6 +471,7 @@ export const MOCK_BOOKINGS: Booking[] = [
     status: "menunggu",
     statusVerifikasi: "menunggu",
     jenisUsaha: "Merchandise - Produk Kreatif Mahasiswa",
+    namaUsaha: "HMPS FEB Merchandise",
     catatan: "Penjualan merchandise HMPS FEB Udayana",
     createdAt: "2025-10-24T11:30:00",
   },
@@ -491,6 +497,7 @@ export const MOCK_BOOKINGS: Booking[] = [
     status: "aktif",
     statusVerifikasi: "disetujui",
     jenisUsaha: "Kuliner - Nasi Jinggo",
+    namaUsaha: "Warung Jinggo Udayana",
     createdAt: "2025-10-22T14:20:00",
   },
   {
@@ -515,6 +522,7 @@ export const MOCK_BOOKINGS: Booking[] = [
     status: "selesai",
     statusVerifikasi: "disetujui",
     jenisUsaha: "Jasa - Konsultasi Kesehatan Gratis",
+    namaUsaha: "Klinik Sahabat Mahasiswa",
     createdAt: "2025-10-19T08:00:00",
   },
   {

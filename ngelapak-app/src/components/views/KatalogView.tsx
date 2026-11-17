@@ -8,7 +8,7 @@ import type { ZonaFilter, UkuranFilter, SortOption } from "@/components/katalog"
 import { MOCK_SPOTS, type Spot } from "@/lib/mock-data";
 import { getSupabaseSpots } from "@/lib/supabase/spots";
 import type { ToastMessage } from "@/lib/types";
-import { today } from "@/lib/demo-store";
+import { minimumRentalStartDate, rentalDateInMakassar } from "@/lib/rental-policy";
 
 const InteractiveMap = dynamic(
   () => import("@/components/ui-custom/InteractiveMap"),
@@ -37,11 +37,15 @@ export default function KatalogView({ onNavigateToDetail, onShowToast, demoMode 
   const [sortBy, setSortBy] = useState<SortOption>("populer");
   const [activeChips, setActiveChips] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
-  const [dateStart, setDateStart] = useState(today);
-  const [dateEnd, setDateEnd] = useState(today);
-  const [period, setPeriod] = useState(() => ({ start: today(), end: today() }));
+  const [dateStart, setDateStart] = useState(minimumRentalStartDate);
+  const [dateEnd, setDateEnd] = useState(minimumRentalStartDate);
+  const [period, setPeriod] = useState(() => {
+    const date = minimumRentalStartDate();
+    return { start: date, end: date };
+  });
   const [customLokasi, setCustomLokasi] = useState<string | null>(null);
   const [spots, setSpots] = useState<Spot[]>([]);
+  const [mapSpots, setMapSpots] = useState<Spot[]>([]);
   const [isLoadingSpots, setIsLoadingSpots] = useState(true);
   const [spotError, setSpotError] = useState<string | null>(null);
   const [availabilityKnown, setAvailabilityKnown] = useState(false);
@@ -154,6 +158,7 @@ useEffect(() => {
     async function loadSpots() {
       if (demoMode) {
         setSpots(MOCK_SPOTS);
+        setMapSpots(MOCK_SPOTS);
         setIsLoadingSpots(false);
         setSpotError(null);
         setAvailabilityKnown(true);
@@ -164,7 +169,11 @@ useEffect(() => {
         setSpotError(null);
         setAvailabilityKnown(false);
 
-        const data = await getSupabaseSpots(period);
+        const currentDate = rentalDateInMakassar();
+        const [data, currentMapData] = await Promise.all([
+          getSupabaseSpots(period),
+          getSupabaseSpots({ start: currentDate, end: currentDate }),
+        ]);
         console.log("MODE DEMO:", demoMode);
         console.log("DATA KATALOG:", data.spots);
         console.log(
@@ -187,6 +196,7 @@ useEffect(() => {
 
         if (isMounted) {
           setSpots(data.spots);
+          setMapSpots(currentMapData.spots);
           setAvailabilityKnown(data.availabilityKnown);
         }
       } catch (error) {
@@ -342,6 +352,11 @@ useEffect(() => {
   );
 
   const handleApplyFilter = () => {
+    const minimumStart = minimumRentalStartDate();
+    if (dateStart < minimumStart) {
+      onShowToast({ type: "error", message: "Tanggal mulai sewa paling cepat dua hari dari hari ini." });
+      return;
+    }
     const duration = (Date.parse(dateEnd) - Date.parse(dateStart)) / 86_400_000 + 1;
     if (!Number.isFinite(duration) || duration < 1 || duration > 30) {
       onShowToast({ type: "error", message: "Pilih rentang sewa antara 1 dan 30 hari." });
@@ -359,10 +374,10 @@ useEffect(() => {
     setActiveChips(new Set());
     setCustomLokasi(null);
     setCurrentPage(1);
-    const now = today();
-    setDateStart(now);
-    setDateEnd(now);
-    setPeriod({ start: now, end: now });
+    const minimumStart = minimumRentalStartDate();
+    setDateStart(minimumStart);
+    setDateEnd(minimumStart);
+    setPeriod({ start: minimumStart, end: minimumStart });
   };
 
   const availableSpotsCount = useMemo(
@@ -443,10 +458,18 @@ useEffect(() => {
 
             {/* FULL WIDTH INTERACTIVE MAP */}
             <InteractiveMap
-              spots={spots}
+              spots={mapSpots}
+              availabilitySpots={spots}
               defaultStatus={availabilityKnown ? "tersedia" : "all"}
               defaultZone={zonaFilter}
               context="katalog"
+              rentalPeriod={{ start: dateStart, end: dateEnd }}
+              onRentalPeriodChange={({ start, end }) => {
+                setDateStart(start);
+                setDateEnd(end);
+                setPeriod({ start, end });
+                setCurrentPage(1);
+              }}
               onSelectSpot={onNavigateToDetail}
               className="mt-2"
             />

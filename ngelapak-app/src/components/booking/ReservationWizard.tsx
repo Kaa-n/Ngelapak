@@ -7,6 +7,7 @@ import { formatRupiah, type Spot } from "@/lib/mock-data";
 import {
   CANCELLATION_WINDOW_MS,
   CLEANING_DAYS,
+  minimumRentalStartDate,
   PAYMENT_WINDOW_MS,
   isDateBlocked,
   nextAvailableDate,
@@ -23,7 +24,8 @@ export default function ReservationWizard({ spot, occupied, signedIn }: Props) {
     start: range.start.slice(0, 10),
     end: range.end.slice(0, 10),
   }));
-  const fallback = nextAvailableDate(new Date().toISOString().slice(0, 10), occupiedRanges);
+  const minimumStart = minimumRentalStartDate();
+  const fallback = nextAvailableDate(minimumStart, occupiedRanges);
   const [step, setStep] = useState(1);
   const [start, setStart] = useState(fallback);
   const [end, setEnd] = useState(fallback);
@@ -39,6 +41,7 @@ export default function ReservationWizard({ spot, occupied, signedIn }: Props) {
 
   function validateDates() {
     if (!occupied) return "Jadwal belum bisa diperiksa. Muat ulang halaman untuk mencoba lagi.";
+    if (start < minimumStart) return "Tanggal mulai sewa paling cepat dua hari dari hari ini.";
     if (!Number.isInteger(days) || days < 1 || days > 30) return "Pilih tanggal sewa antara 1 dan 30 hari.";
     if (Date.now() + PAYMENT_WINDOW_MS > rentalStart(start)) {
       return "Pemesanan ditutup satu jam sebelum sewa mulai (08.00 WITA).";
@@ -88,7 +91,7 @@ export default function ReservationWizard({ spot, occupied, signedIn }: Props) {
               occupied={occupiedRanges}
               startDate={start}
               endDate={end}
-              minDate={new Date().toISOString().slice(0, 10)}
+              minDate={minimumStart}
               onChange={({ start: nextStart, end: nextEnd }) => {
                 setMessage("");
                 setStart(nextStart);

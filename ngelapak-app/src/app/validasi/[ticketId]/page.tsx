@@ -2,6 +2,7 @@
 
 import { use, useEffect, useState } from "react";
 import { MOCK_BOOKINGS } from "@/lib/mock-data";
+import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 
 const todayInBali = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Makassar" });
@@ -173,13 +174,50 @@ export default function ValidasiTicketPage({
 }) {
   const { ticketId } = use(params);
   const [currentTime, setCurrentTime] = useState<number | null>(null);
+
+  // State untuk data dari Supabase
+  const [booking, setBooking] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
     const frame = requestAnimationFrame(() => setCurrentTime(Date.now()));
     return () => cancelAnimationFrame(frame);
   }, []);
 
-  // 1. Lookup booking
-  const booking = MOCK_BOOKINGS.find((b) => b.id === ticketId);
+  // 1. Fetch data dari Supabase berdasarkan ticketId
+  useEffect(() => {
+    async function fetchTicket() {
+      setLoading(true);
+      const supabase = createClient();
+
+      const { data, error } = await supabase
+        .rpc("get_ticket_validation", { p_ticket_id: ticketId })
+        .maybeSingle();
+
+
+      if (!error && data) {
+        setBooking(data);
+      } else {
+        setBooking(null);
+      }
+      setLoading(false);
+    }
+
+    if (ticketId) {
+      fetchTicket();
+    }
+  }, [ticketId]);
+
+  // Tampilkan loading saat data masih diambil
+  if (loading) {
+    return (
+      <PageShell>
+        <div className="bg-white rounded-2xl shadow-md p-8 text-center text-gray-500">
+          Memverifikasi tiket...
+        </div>
+      </PageShell>
+    );
+  }
 
   // 2. Not found
   if (!booking) {
@@ -189,22 +227,25 @@ export default function ValidasiTicketPage({
   // 3. Cancelled or not approved
   if (
     booking.status === "dibatalkan" ||
-    booking.statusVerifikasi !== "disetujui"
+    booking.status_verifikasi !== "disetujui"
   ) {
     const reason =
       booking.status === "dibatalkan"
         ? "Izin lapak ini telah dibatalkan dan tidak berlaku lagi."
-        : booking.statusVerifikasi === "ditolak"
-        ? "Permohonan izin lapak ini telah ditolak oleh admin."
-        : "Izin lapak ini masih menunggu persetujuan admin dan belum aktif.";
+        : booking.status_verifikasi === "ditolak"
+          ? "Permohonan izin lapak ini telah ditolak oleh admin."
+          : "Izin lapak ini masih menunggu persetujuan admin dan belum aktif.";
     return <PermitNotActive ticketId={ticketId} reason={reason} />;
   }
 
   // 4. Valid – compute activity status (based on client date when mounted)
-  const todayStr = currentTime === null ? booking.tanggalMulai : todayInBali.format(currentTime);
+  const todayStr =
+    currentTime === null
+      ? booking.tanggal_mulai
+      : todayInBali.format(currentTime);
   const isActive =
-    booking.tanggalMulai <= todayStr && todayStr <= booking.tanggalSelesai;
-  const isUpcoming = booking.tanggalMulai > todayStr;
+    booking.tanggal_mulai <= todayStr && todayStr <= booking.tanggal_selesai;
+  const isUpcoming = booking.tanggal_mulai > todayStr;
 
   let statusBadge: React.ReactNode;
   if (isActive) {
@@ -270,14 +311,14 @@ export default function ValidasiTicketPage({
 
           {/* Info grid */}
           <div className="grid grid-cols-1 gap-3">
-            <InfoRow label="Nama Penyewa" value={booking.penyewa.nama} />
-            <InfoRow label="NIM" value={booking.penyewa.nim} />
-            <InfoRow label="Jenis Usaha" value={booking.jenisUsaha} />
-            <InfoRow label="Kode Lapak" value={booking.spotKode} mono />
-            <InfoRow label="Nama Spot" value={booking.spotNama} />
+            <InfoRow label="Nama Penyewa" value={booking.penyewa_nama ?? "-"} />
+            <InfoRow label="NIM" value={booking.penyewa_nim ?? "-"} />
+            <InfoRow label="Jenis Usaha" value={booking.jenis_usaha ?? "-"} />
+            <InfoRow label="Kode Lapak" value={booking.spot_kode ?? "-"} mono />
+            <InfoRow label="Nama Spot" value={booking.spot_nama ?? "-"} />
             <InfoRow
               label="Periode"
-              value={`${formatDate(booking.tanggalMulai)} – ${formatDate(booking.tanggalSelesai)}`}
+              value={`${formatDate(booking.tanggal_mulai)} – ${formatDate(booking.tanggal_selesai)}`}
             />
             <div className="flex items-start justify-between gap-2 py-2 border-b border-gray-100 last:border-0">
               <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
@@ -304,9 +345,7 @@ export default function ValidasiTicketPage({
           <p className="text-xs text-[#4edea3] font-semibold mb-1">
             Diperiksa: {checkedAt}
           </p>
-          <p className="text-xs text-blue-200 opacity-80">
-            Halaman ini bersifat publik dan dapat diakses tanpa login
-          </p>
+
         </div>
       </div>
 
