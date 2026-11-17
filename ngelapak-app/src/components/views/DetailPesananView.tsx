@@ -13,7 +13,6 @@ import {
   type Spot,
 } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
-import { printBuktiPembatalan } from "@/lib/pdf/generateBuktiPembatalan";
 import { printKuitansi } from "@/lib/pdf/generateKuitansi";
 import { printSPPLA } from "@/lib/pdf/generateSPPLA";
 import { getSupabaseBookingDetail, refreshPayment, requestSupabaseCancellation, resumePayment } from "@/lib/supabase/bookings";
@@ -704,22 +703,6 @@ export default function DetailPesananView({
     }
   }
 
-  async function handlePrintBuktiPembatalan() {
-    try {
-      await printBuktiPembatalan(currentBooking);
-      onShowToast?.({
-        type: "success",
-        message: "Bukti pembatalan diunduh",
-        description: "File berisi detail form dan jumlah pengembalian dana.",
-      });
-    } catch {
-      onShowToast?.({
-        type: "error",
-        message: "Gagal membuat bukti pembatalan",
-      });
-    }
-  }
-
   function handlePrintSPPLA() {
     try {
       printSPPLA(currentBooking);
@@ -934,7 +917,6 @@ export default function DetailPesananView({
             }
           />
           <DetailRow label="Alasan" value={cancellation.alasan ?? "—"} />
-          <DetailRow label="Jumlah pengembalian dana" value={formatRupiah(booking.totalBayar)} />
           {cancellation.admin_catatan && <DetailRow label="Catatan admin" value={cancellation.admin_catatan} />}
           {cancellation.status === "menunggu" && (
             <p className="mt-3 text-sm">
@@ -993,23 +975,11 @@ export default function DetailPesananView({
             value={booking.pembatalan.namaRekening}
           />
           <DetailRow label="Alasan" value={booking.pembatalan.alasan} />
-          <DetailRow
-            label="Jumlah pengembalian dana"
-            value={formatRupiah(booking.totalBayar)}
-          />
           {booking.pembatalan.adminNote && <DetailRow label="Catatan admin" value={booking.pembatalan.adminNote} />}
           <DetailRow
             label="Diajukan pada"
             value={formatDateTime(booking.pembatalan.diajukanPada)}
           />
-          <button
-            type="button"
-            onClick={handlePrintBuktiPembatalan}
-            className="mt-4 inline-flex items-center justify-center gap-2 w-full sm:w-auto rounded-xl border border-[#003466] text-[#003466] hover:bg-[#f0f3ff] font-semibold text-sm px-4 py-3 transition-colors"
-          >
-            <span className="material-symbols-outlined text-[18px]">download</span>
-            Unduh Bukti Pembatalan
-          </button>
         </SectionCard>
       )}
 
@@ -1057,20 +1027,6 @@ export default function DetailPesananView({
                 cancel
               </span>
               Ajukan Pembatalan
-            </button>
-          )}
-
-          {/* Unduh Bukti Pembatalan */}
-          {booking.pembatalan && (
-            <button
-              type="button"
-              onClick={handlePrintBuktiPembatalan}
-              className="flex items-center justify-center gap-2 border border-[#003466] text-[#003466] hover:bg-[#f0f3ff] font-semibold text-sm px-4 py-3 rounded-xl transition-colors"
-            >
-              <span className="material-symbols-outlined text-[18px]">
-                description
-              </span>
-              Unduh Bukti Pembatalan
             </button>
           )}
 
