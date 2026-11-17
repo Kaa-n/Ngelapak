@@ -36,7 +36,7 @@ test("guest, tenant, and admin navigation follow role authority", () => {
 });
 
 test("Midtrans demo confirms payment and releases a date on cancellation approval before recording refund", () => {
-  const { store, localStorage } = setup();
+  const { store, fixtures, localStorage } = setup();
   const read = (id) => JSON.parse(localStorage.getItem("ngelapak-demo-bookings-v1")).find(booking => booking.id === id);
   const date = new Date(Date.parse(store.today() + "T00:00:00Z") + 10 * 86400000).toISOString().slice(0, 10);
   const start = Date.parse(date + "T08:00:00+08:00");
@@ -60,12 +60,18 @@ test("Midtrans demo confirms payment and releases a date on cancellation approva
   assert.equal(store.canCancelBooking(nightBefore, Date.parse(nightBefore.paidAt)), false);
 
   store.cancelDemoBooking(id, form);
+  const pending = read(id);
+  assert.equal(pending.status, "aktif");
+  assert.equal(pending.pembatalan.status, "menunggu");
+  assert.equal(fixtures.isPendingCancellationRefund(pending), true);
+  assert.equal(store.canCancelBooking(pending), false);
   store.demoLogin("bayu");
   assert.throws(() => store.createDemoBooking(input), /bertabrakan/);
   store.demoLogin("admin");
   store.reviewDemoCancellation(id, "disetujui");
   assert.equal(read(id).status, "dibatalkan");
   assert.equal(read(id).pembatalan.refundCompleted, false);
+  assert.equal(fixtures.isPendingCancellationRefund(read(id)), false);
   store.demoLogin("bayu");
   assert.ok(store.createDemoBooking(input));
   store.demoLogin("admin");
@@ -113,7 +119,7 @@ test("tenant bookings persist, isolate identities, prevent overlaps, and accept 
 });
 
 test("tenant can cancel within 24 hours before admin verification", () => {
-  const { store, localStorage } = setup();
+  const { store, fixtures, localStorage } = setup();
   store.demoLogin("ayu");
   const input = { spotId: "spot-001", tanggalMulai: futureDate(90), jumlahHari: 1, jenisUsaha: "Kopi", catatan: "", metodePembayaran: "QRIS" };
   const id = store.createDemoBooking(input);
@@ -126,6 +132,7 @@ test("tenant can cancel within 24 hours before admin verification", () => {
   store.cancelDemoBooking(id, form);
   assert.equal(read()[0].status, "dibatalkan");
   assert.equal(read()[0].pembatalan.nomorRekening, "1234567890");
+  assert.equal(fixtures.isPendingCancellationRefund(read()[0]), true);
   assert.equal(store.canCancelBooking(read()[0]), false);
   store.demoLogin("admin");
   assert.throws(() => store.verifyDemoBooking(id, "disetujui"), /tidak lagi/);

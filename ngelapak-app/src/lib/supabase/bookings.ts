@@ -212,47 +212,17 @@ export async function cancelSupabaseBooking(
     namaRekening: string;
     alasan: string;
   },
-): Promise<void> {
-  const supabase = createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) throw new Error("Silakan masuk kembali sebelum membatalkan pesanan.");
-
-  const nama = input.nama.trim();
-  const nim = input.nim.trim();
-  const telepon = input.telepon.trim();
-  const bank = input.bank.trim();
-  const nomorRekening = input.nomorRekening.trim();
-  const namaRekening = input.namaRekening.trim();
-  const alasan = input.alasan.trim();
-
-  if (!nama || !nim || !telepon || !bank || !nomorRekening || !namaRekening || !alasan) {
-    throw new Error("Lengkapi identitas, rekening, dan alasan pembatalan.");
-  }
-
-  const { error } = await supabase.rpc("cancel_booking_as_tenant", {
+): Promise<string> {
+  return requestSupabaseCancellation({
     p_booking_id: bookingId,
-    p_nama: nama,
-    p_nim: nim,
-    p_telepon: telepon,
-    p_bank: bank,
-    p_nomor_rekening: nomorRekening,
-    p_nama_rekening: namaRekening,
-    p_alasan: alasan,
+    p_nama: input.nama,
+    p_nim: input.nim,
+    p_telepon: input.telepon,
+    p_bank: input.bank,
+    p_nomor_rekening: input.nomorRekening,
+    p_nama_rekening: input.namaRekening,
+    p_alasan: input.alasan,
   });
-
-  if (error) {
-    const message = error.message || "Gagal membatalkan pesanan.";
-    if (/hak|akses|milik|permission|policy/i.test(message)) {
-      throw new Error("Anda tidak memiliki hak untuk membatalkan pesanan ini.");
-    }
-    if (/24 jam|kedaluwarsa|expired/i.test(message)) {
-      throw new Error("Batas waktu pembatalan mandiri (1×24 jam) telah habis.");
-    }
-    if (/diproses|diverifikasi|verifikasi/i.test(message)) {
-      throw new Error("Pesanan yang sudah diverifikasi tidak dapat dibatalkan mandiri.");
-    }
-    throw new Error(message);
-  }
 }
 
 export async function getSupabaseBookingDetail(id: string) {
@@ -280,7 +250,30 @@ export async function getSupabaseBookingDetail(id: string) {
 
 export async function requestSupabaseCancellation(
   input: Database["public"]["Functions"]["cancel_booking_as_tenant"]["Args"],
-) {
-  const { error } = await createClient().rpc("cancel_booking_as_tenant", input);
-  if (error) throw new Error(error.message);
+): Promise<string> {
+  const response = await fetch("/api/pesanan/batal", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      bookingId: input.p_booking_id,
+      nama: input.p_nama,
+      nim: input.p_nim,
+      telepon: input.p_telepon,
+      bank: input.p_bank,
+      nomorRekening: input.p_nomor_rekening,
+      namaRekening: input.p_nama_rekening,
+      alasan: input.p_alasan,
+    }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      typeof result.error === "string" && result.error
+        ? result.error
+        : "Pengajuan pembatalan gagal disimpan.",
+    );
+  }
+  return typeof result.message === "string" && result.message
+    ? result.message
+    : "Pengajuan berhasil. Status pesanan: Menunggu Pengembalian Dana.";
 }
