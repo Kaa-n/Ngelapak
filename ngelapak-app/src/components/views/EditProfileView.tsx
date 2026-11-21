@@ -23,6 +23,8 @@ export default function EditProfileView({
 }: EditProfileViewProps) {
   const [nama, setNama] = useState(user.nama);
   const [email, setEmail] = useState(user.email);
+  const [nim, setNim] = useState(user.nim ?? "");
+  const [fakultas, setFakultas] = useState(user.fakultas ?? "");
   const [telepon, setTelepon] = useState(user.telepon ?? "");
   const [loading, setLoading] = useState(false);
 
@@ -37,12 +39,17 @@ export default function EditProfileView({
     if (isDemoUser) {
       updateDemoProfile({
         nama,
+        email: user.email,
+        nim,
+        fakultas,
         telepon,
       });
 
     } else {
       const updatedProfile = await updateCurrentSupabaseProfile({
         nama,
+        nim,
+        fakultas,
         telepon,
       });
 
@@ -144,6 +151,44 @@ export default function EditProfileView({
               className="w-full border border-[#d8deeb] rounded-xl px-4 py-3 bg-[#f4f6ff] text-[#737781] cursor-not-allowed outline-none"
             />
           </div>
+          <div>
+            <label
+              htmlFor="profile-nim"
+              className="block text-sm font-semibold text-[#172033] mb-2"
+            >
+              NIM / NIK
+            </label>
+            <input
+              id="profile-nim"
+              type="text"
+              value={nim}
+              onChange={(event) => setNim(event.target.value)}
+              required
+              maxLength={30}
+              placeholder="Masukkan NIM atau NIK"
+              className="w-full border border-[#d8deeb] rounded-xl px-4 py-3 outline-none focus:border-[#003466] focus:ring-2 focus:ring-[#003466]/10"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="profile-fakultas"
+              className="block text-sm font-semibold text-[#172033] mb-2"
+            >
+              Fakultas
+            </label>
+            <input
+              id="profile-fakultas"
+              type="text"
+              value={fakultas}
+              onChange={(event) => setFakultas(event.target.value)}
+              required
+              maxLength={100}
+              placeholder="Masukkan fakultas"
+              className="w-full border border-[#d8deeb] rounded-xl px-4 py-3 outline-none focus:border-[#003466] focus:ring-2 focus:ring-[#003466]/10"
+            />
+          </div>
+
           <div>
             <label
               htmlFor="profile-telepon"

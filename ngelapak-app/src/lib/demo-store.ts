@@ -29,8 +29,10 @@ const PRODUCTS = "ngelapak-demo-produk-v1";
 type ProfileOverrides = Record<
   string,
   {
-    nama?: string;
-    email?: string;
+    nama: string;
+    email: string;
+    nim?: string;
+    fakultas?: string;
     telepon?: string;
   }
 >;
@@ -254,9 +256,11 @@ export function demoLogin(id: string) {
 // UPDATE PROFILE
 // ============================================================
 
-
 export function updateDemoProfile(input: {
   nama: string;
+  email: string;
+  nim: string;
+  fakultas: string;
   telepon: string;
 }) {
   const user = currentUser();
@@ -266,17 +270,38 @@ export function updateDemoProfile(input: {
   }
 
   const nama = input.nama.trim();
+  const email = input.email.trim().toLowerCase();
+  const nim = input.nim.trim();
+  const fakultas = input.fakultas.trim();
   const telepon = input.telepon.trim();
 
-  if (!nama || !telepon) {
-    throw new Error("Nama dan nomor telepon wajib diisi.");
+  if (!nama || !email || !nim || !fakultas || !telepon) {
+    throw new Error("Semua data profil wajib diisi.");
+  }
+
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  if (!emailPattern.test(email)) {
+    throw new Error("Format email tidak valid.");
+  }
+
+  const duplicate = getDemoUsers().some(
+    (item) =>
+      item.id !== user.id &&
+      item.email.toLowerCase() === email,
+  );
+
+  if (duplicate) {
+    throw new Error("Email sudah digunakan oleh akun lain.");
   }
 
   const profiles = getProfileOverrides();
 
   profiles[user.id] = {
-    ...profiles[user.id],
     nama,
+    email,
+    nim,
+    fakultas,
     telepon,
   };
 
