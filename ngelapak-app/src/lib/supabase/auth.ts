@@ -121,15 +121,17 @@ export async function signUpWithEmail(input: {
 }
 
 // Mengambil profil pengguna yang sedang login.
-export async function getCurrentSupabaseProfile() {
+
+// Mengambil profil pengguna yang sedang login.
+export async function getCurrentSupabaseProfile(): Promise<SupabaseProfile | null> {
   const supabase = createClient();
+
   if (!supabase) {
     return null;
   }
 
   const { data, error } = await supabase.auth.getUser();
 
-  // Jika belum login (Auth session missing) atau tidak ada user, kembalikan null (bukan lempar error)
   if (error || !data?.user) {
     return null;
   }
@@ -138,9 +140,12 @@ export async function getCurrentSupabaseProfile() {
 }
 
 // Logout pengguna Supabase.
-export async function signOutSupabase() {
+export async function signOutSupabase(): Promise<void> {
   const supabase = createClient();
-  if (!supabase) return;
+
+  if (!supabase) {
+    return;
+  }
 
   const { error } = await supabase.auth.signOut();
 
@@ -187,8 +192,6 @@ export async function updatePassword(currentPassword: string, newPassword: strin
 // Memperbarui data profil pengguna yang sedang login.
 export async function updateCurrentSupabaseProfile(input: {
   nama: string;
-  nim: string;
-  fakultas: string;
   telepon: string;
 }): Promise<SupabaseProfile> {
   const supabase = createClient();
@@ -206,12 +209,10 @@ export async function updateCurrentSupabaseProfile(input: {
   }
 
   const nama = input.nama.trim();
-  const nim = input.nim.trim();
-  const fakultas = input.fakultas.trim();
   const telepon = input.telepon.trim();
 
-  if (!nama || !nim || !fakultas || !telepon) {
-    throw new Error("Semua data profil wajib diisi.");
+  if (!nama || !telepon) {
+    throw new Error("Nama dan nomor telepon wajib diisi.");
   }
 
   // Update hanya berdasarkan ID akun yang sedang login.
@@ -219,8 +220,6 @@ export async function updateCurrentSupabaseProfile(input: {
     .from("profiles")
     .update({
       nama,
-      nim,
-      fakultas,
       telepon,
       updated_at: new Date().toISOString(),
     })
@@ -246,3 +245,4 @@ export async function updateCurrentSupabaseProfile(input: {
     telepon: data.telepon,
   };
 }
+

@@ -117,13 +117,58 @@ export interface Booking {
   };
 }
 
-/** Label status: Menunggu Pengembalian Dana (pembatalan diajukan, refund belum diproses). */
+/** Label status: Menunggu Pengembalian Dana (pembatalan diajukan, refund belum diproses).
+ * Midtrans may keep booking.status = "aktif" until admin approves; legacy sets "dibatalkan" immediately.
+ */
 export function isPendingCancellationRefund(booking: Booking) {
   return (
-    booking.status === "dibatalkan" &&
     Boolean(booking.pembatalan) &&
-    (booking.pembatalan?.status ?? "menunggu") === "menunggu"
+    (booking.pembatalan?.status ?? "menunggu") === "menunggu" &&
+    !booking.pembatalan?.refundCompleted &&
+    (booking.status === "dibatalkan" || booking.status === "aktif")
   );
+}
+
+/** Keputusan admin atas pengajuan pembatalan: menunggu | disetujui | ditolak. */
+export function cancellationDecisionStatus(
+  booking: Booking,
+): TransactionStatus | null {
+  if (!booking.pembatalan) return null;
+  const status = booking.pembatalan.status ?? "menunggu";
+  if (status === "disetujui" || status === "ditolak" || status === "menunggu") {
+    return status;
+  }
+  return "menunggu";
+}
+
+export function cancellationStatusBadge(booking: Booking): {
+  label: string;
+  cls: string;
+  icon: string;
+} | null {
+  const decision = cancellationDecisionStatus(booking);
+  if (!decision) return null;
+  if (decision === "menunggu") {
+    return {
+      label: "Menunggu Pengembalian Dana",
+      cls: "bg-orange-50 text-orange-800 border-orange-200",
+      icon: "hourglass_top",
+    };
+  }
+  if (decision === "disetujui") {
+    return {
+      label: booking.pembatalan?.refundCompleted
+        ? "Pembatalan Disetujui — Refund Selesai"
+        : "Pembatalan Disetujui",
+      cls: "bg-emerald-50 text-emerald-800 border-emerald-200",
+      icon: "check_circle",
+    };
+  }
+  return {
+    label: "Pembatalan Ditolak",
+    cls: "bg-red-50 text-red-700 border-red-200",
+    icon: "do_not_disturb_on",
+  };
 }
 
 export interface SpotManagement {

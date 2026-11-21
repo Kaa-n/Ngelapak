@@ -23,8 +23,6 @@ export default function EditProfileView({
 }: EditProfileViewProps) {
   const [nama, setNama] = useState(user.nama);
   const [email, setEmail] = useState(user.email);
-  const [nim, setNim] = useState(user.nim ?? "");
-  const [fakultas, setFakultas] = useState(user.fakultas ?? "");
   const [telepon, setTelepon] = useState(user.telepon ?? "");
   const [loading, setLoading] = useState(false);
 
@@ -39,17 +37,12 @@ export default function EditProfileView({
     if (isDemoUser) {
       updateDemoProfile({
         nama,
-        email: user.email,
-        nim,
-        fakultas,
         telepon,
       });
 
     } else {
       const updatedProfile = await updateCurrentSupabaseProfile({
         nama,
-        nim,
-        fakultas,
         telepon,
       });
 

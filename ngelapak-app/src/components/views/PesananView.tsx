@@ -20,6 +20,12 @@ type FilterTab = "semua" | "aktif" | "menunggu" | "disetujui" | "selesai" | "dit
 
 function getEffectiveStatus(booking: Booking): FilterTab {
   if (booking.statusVerifikasi === "ditolak") return "ditolak";
+
+  const cancelDecision = cancellationDecisionStatus(booking);
+  if (cancelDecision === "menunggu") return "menunggu";
+  if (cancelDecision === "disetujui") return "disetujui";
+  if (cancelDecision === "ditolak") return "ditolak";
+
   if (booking.status === "dibatalkan") return "dibatalkan";
   if (booking.statusVerifikasi === "disetujui") {
     const currentDay = today();
@@ -39,13 +45,9 @@ function getStatusBadge(booking: Booking): {
   cls: string;
   icon: string;
 } {
-  if (isPendingCancellationRefund(booking)) {
-    return {
-      label: "Menunggu Pengembalian Dana",
-      cls: "bg-orange-50 text-orange-800 border-orange-200",
-      icon: "hourglass_top",
-    };
-  }
+  const cancelBadge = cancellationStatusBadge(booking);
+  if (cancelBadge) return cancelBadge;
+
   if (booking.status === "dibatalkan" && booking.statusVerifikasi !== "ditolak")
     return {
       label: "Dibatalkan",
@@ -98,7 +100,17 @@ const STEPS = [
   { label: "Sewa Aktif / Selesai", icon: "store" },
 ];
 
+const CANCEL_STEPS = [
+  { label: "Pesanan Dibuat", icon: "receipt_long" },
+  { label: "Pembayaran Lunas", icon: "payments" },
+  { label: "Pengajuan Pembatalan", icon: "cancel" },
+  { label: "Disetujui / Ditolak", icon: "fact_check" },
+];
+
 function getStepIndex(booking: Booking): number {
+  const cancelDecision = cancellationDecisionStatus(booking);
+  if (cancelDecision === "disetujui" || cancelDecision === "ditolak") return 4;
+  if (cancelDecision === "menunggu") return 3;
   if (booking.status === "selesai") return 4;
   if (booking.statusVerifikasi === "disetujui") {
     const currentDay = today();
@@ -117,21 +129,31 @@ function getStepIndex(booking: Booking): number {
 }
 
 function StatusStepper({ booking }: { booking: Booking }) {
+  const cancelDecision = cancellationDecisionStatus(booking);
   const current = getStepIndex(booking);
-  const steps = booking.metodePembayaran === "midtrans" ? [
-    STEPS[0], { label: "Menunggu pembayaran", icon: "pending_actions" },
-    { label: "Konfirmasi pembayaran", icon: "fact_check" }, STEPS[3],
-  ] : STEPS;
+  const steps = cancelDecision
+    ? CANCEL_STEPS
+    : booking.metodePembayaran === "midtrans"
+      ? [
+        STEPS[0],
+        { label: "Menunggu pembayaran", icon: "pending_actions" },
+        { label: "Konfirmasi pembayaran", icon: "fact_check" },
+        STEPS[3],
+      ]
+      : STEPS;
   const isRejected =
-    booking.statusVerifikasi === "ditolak" ||
-    booking.status === "dibatalkan";
+    cancelDecision === "ditolak" ||
+    (!cancelDecision &&
+      (booking.statusVerifikasi === "ditolak" || booking.status === "dibatalkan"));
+  const isApprovedCancel = cancelDecision === "disetujui";
+  const decisionStep = cancelDecision ? 3 : 2;
 
   return (
     <div className="flex items-start gap-0 w-full mt-4">
       {steps.map((step, idx) => {
-        const done = idx < current;
-        const active = idx === current;
-        const rejected = isRejected && idx === 2;
+        const done = idx < current || (isApprovedCancel && idx === decisionStep);
+        const active = idx === current && !(isApprovedCancel && idx === decisionStep);
+        const rejected = isRejected && idx === decisionStep;
 
         let dotCls = "bg-[#e2e7ff] border-[#c5cbe0]";
         let lineCls = "bg-[#e2e7ff]";
@@ -144,6 +166,9 @@ function StatusStepper({ booking }: { booking: Booking }) {
         } else if (active && rejected) {
           dotCls = "bg-red-500 border-red-500";
           textCls = "text-red-700";
+        } else if (active && cancelDecision === "menunggu" && idx === decisionStep) {
+          dotCls = "bg-orange-500 border-orange-500";
+          textCls = "text-orange-800 font-semibold";
         } else if (active) {
           dotCls = "bg-[#003466] border-[#003466]";
           textCls = "text-[#003466] font-semibold";
@@ -152,13 +177,11 @@ function StatusStepper({ booking }: { booking: Booking }) {
         return (
           <div key={idx} className="flex-1 flex flex-col items-center">
             <div className="flex items-center w-full">
-              {/* Left connector */}
               {idx > 0 && (
                 <div
-                  className={`flex-1 h-0.5 ${idx <= current ? lineCls : "bg-[#e2e7ff]"}`}
+                  className={`flex-1 h-0.5 ${idx <= current || (isApprovedCancel && idx <= decisionStep) ? lineCls : "bg-[#e2e7ff]"}`}
                 />
               )}
-              {/* Dot */}
               <div
                 className={`w-7 h-7 rounded-full border-2 flex items-center justify-center shrink-0 ${dotCls}`}
               >
@@ -168,21 +191,26 @@ function StatusStepper({ booking }: { booking: Booking }) {
                   </span>
                 ) : (
                   <span
-                    className={`material-symbols-outlined text-[14px] ${active && !rejected ? "text-white" : active && rejected ? "text-white" : "text-[#c5cbe0]"}`}
+                    className={`material-symbols-outlined text-[14px] ${active ? "text-white" : "text-[#c5cbe0]"}`}
                   >
                     {step.icon}
                   </span>
                 )}
               </div>
-              {/* Right connector */}
-              {idx < STEPS.length - 1 && (
+              {idx < steps.length - 1 && (
                 <div
-                  className={`flex-1 h-0.5 ${idx < current ? lineCls : "bg-[#e2e7ff]"}`}
+                  className={`flex-1 h-0.5 ${idx < current || (isApprovedCancel && idx < decisionStep) ? lineCls : "bg-[#e2e7ff]"}`}
                 />
               )}
             </div>
             <p className={`text-[10px] mt-1 text-center leading-tight ${textCls}`}>
-              {step.label}
+              {cancelDecision && idx === decisionStep
+                ? cancelDecision === "disetujui"
+                  ? "Disetujui"
+                  : cancelDecision === "ditolak"
+                    ? "Ditolak"
+                    : "Disetujui / Ditolak"
+                : step.label}
             </p>
           </div>
         );
