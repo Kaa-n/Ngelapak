@@ -5,6 +5,7 @@ import type {
   SpotStatus,
   JadwalOperasionalItem,
 } from "@/lib/mock-data";
+import { parseSpotImages } from "@/lib/mock-data";
 
 export async function getSupabaseSpots(
   period: { start: string; end: string },
@@ -83,6 +84,8 @@ export async function getSupabaseSpots(
 
     const relevantBooking = activeBooking ?? jadwalOperasional[0];
 
+    const parsedImg = parseSpotImages(item.gambar);
+
     return {
       id: item.id,
       kode: item.kode,
@@ -106,7 +109,8 @@ export async function getSupabaseSpots(
         x: Number(item.koordinat_x ?? 0),
         y: Number(item.koordinat_y ?? 0),
       },
-      gambar: item.gambar ?? "",
+      gambar: parsedImg.primary,
+      gambarList: parsedImg.list,
       rating: Number(item.rating ?? 0),
       totalSewa: item.total_sewa ?? 0,
       deskripsi: item.deskripsi ?? "",

@@ -7,7 +7,7 @@ import KatalogGrid from "./KatalogGrid";
 import type { Spot } from "@/lib/mock-data";
 import { minimumRentalStartDate } from "@/lib/rental-policy";
 
-export type ZonaFilter = "all" | "rektorat" | "boulevard" | "sc" | "agrokompleks";
+export type ZonaFilter = string;
 export type UkuranFilter = "all" | "2x2" | "3x3" | "4x4";
 export type SortOption = "populer" | "harga-asc" | "harga-desc" | "terbaru";
 
@@ -43,6 +43,9 @@ export interface KatalogHeroProps {
   onApplyFilter: () => void;
   onReset: () => void;
   chipOptions?: ChipOption[];
+  allFacilityItems?: { id: string; label: string }[];
+  availableZones?: { id: string; label: string }[];
+  allSpots?: Spot[];
 
   // Tabs & Sorting
   totalCount: number;
@@ -80,6 +83,9 @@ export default function KatalogHero({
   onApplyFilter,
   onReset,
   chipOptions = DEFAULT_CHIP_OPTIONS,
+  allFacilityItems,
+  availableZones,
+  allSpots,
 
   totalCount,
   availableCount,
@@ -156,8 +162,9 @@ export default function KatalogHero({
       </button>
 
       {/* 3. Filter Card Form */}
-      <div className="mt-4 bg-white rounded-xl shadow-md px-5 py-2 md:px-6 md:py-3 relative z-10 mb-6">
+      <div suppressHydrationWarning className="mt-4 bg-white rounded-xl shadow-md px-5 py-2 md:px-6 md:py-3 relative z-10 mb-6">
         <form
+          suppressHydrationWarning
           onSubmit={(e) => {
             e.preventDefault();
             onApplyFilter();
@@ -205,10 +212,18 @@ export default function KatalogHero({
                   className="w-full h-11 pl-10 pr-8 bg-[#f2f3ff] text-[#131b2e] text-[14px] rounded-lg shadow-sm outline-none appearance-none cursor-pointer focus:bg-white transition-all"
                 >
                   <option value="all">Semua Zona</option>
-                  <option value="rektorat">Zona A – Lapangan Rektorat</option>
-                  <option value="boulevard">Zona B – Boulevard Utama</option>
-                  <option value="sc">Zona C – Plaza Student Center</option>
-                  <option value="agrokompleks">Zona D – Agrokompleks Sudirman</option>
+                  {availableZones && availableZones.length > 0 ? (
+                    availableZones.map((z) => (
+                      <option key={z.id} value={z.id}>{z.label}</option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="rektorat">Zona A – Lapangan Rektorat</option>
+                      <option value="boulevard">Zona B – Boulevard Utama</option>
+                      <option value="sc">Zona C – Plaza Student Center</option>
+                      <option value="agrokompleks">Zona D – Agrokompleks Sudirman</option>
+                    </>
+                  )}
                 </select>
                 <span className="material-symbols-outlined absolute right-3 text-[#737781] text-[16px] pointer-events-none">
                   expand_more
@@ -305,6 +320,7 @@ export default function KatalogHero({
                 activeChips={activeChips}
                 onToggleChip={toggleChip}
                 onReset={onResetChips}
+                items={allFacilityItems || chipOptions.map((c) => ({ id: c.id, label: c.label }))}
               />
             </div>
 
@@ -340,6 +356,7 @@ export default function KatalogHero({
 
       {/* 4. Stats Bar, Zone Tabs & Sort (Inside the Unified Card) */}
       <KatalogZoneTabs
+        spots={allSpots || spots}
         totalCount={totalCount}
         availableCount={availableCount}
         zonaFilter={zonaFilter}

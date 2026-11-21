@@ -6,6 +6,7 @@ import {
   PDFName,
   PDFString,
 } from "pdf-lib";
+import QRCode from "qrcode";
 
 export interface AgreementData {
   id: string;
@@ -31,6 +32,7 @@ export interface AgreementData {
   googleMapsUrl?: string;
   lat?: number;
   lng?: number;
+  validationUrl?: string;
 }
 
 export function cleanWinAnsi(text: string | null | undefined): string {
@@ -302,6 +304,35 @@ export async function rentalAgreementPdf(
     spotKode: order.spotKode || "STAN",
     spotNama: order.spot || "Kavling Kampus",
   });
+
+  const origin =
+    typeof window !== "undefined" && window.location.origin
+      ? window.location.origin
+      : "https://ngelapak.vercel.app";
+  const validationUrl =
+    order.validationUrl || `${origin}/validasi/${encodeURIComponent(order.id)}`;
+
+  let qrImage: any = null;
+  try {
+    const qrDataUrl = await QRCode.toDataURL(validationUrl, {
+      width: 256,
+      margin: 1,
+      color: {
+        dark: "#003466",
+        light: "#FFFFFF",
+      },
+      errorCorrectionLevel: "M",
+    });
+    const base64Data = qrDataUrl.split(",")[1];
+    const binaryString = atob(base64Data);
+    const qrBytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      qrBytes[i] = binaryString.charCodeAt(i);
+    }
+    qrImage = await pdf.embedPng(qrBytes);
+  } catch (err) {
+    console.warn("Gagal membuat QR Code untuk MOU:", err);
+  }
 
   const pageWidth = PageSizes.A4[0]; // 595.28
   const pageHeight = PageSizes.A4[1]; // 841.89
@@ -796,8 +827,8 @@ export async function rentalAgreementPdf(
 
   y -= mapFrameH + 8;
 
-  // Kotak Panduan Akses & Link Klik Google Maps
-  const guideH = 58;
+  // Kotak Panduan Akses & Link Klik Google Maps + QR Validasi
+  const guideH = 64;
   p1.drawRectangle({
     x: marginX,
     y: y - guideH,
@@ -825,6 +856,7 @@ export async function rentalAgreementPdf(
       size: 8,
       font: fontSans,
       color: cMuted,
+      maxWidth: contentWidth - 75,
     }
   );
   drawText(
@@ -836,6 +868,7 @@ export async function rentalAgreementPdf(
       size: 8,
       font: fontSans,
       color: cMuted,
+      maxWidth: contentWidth - 75,
     }
   );
 
@@ -846,7 +879,7 @@ export async function rentalAgreementPdf(
     5
   )}, ${coords.lng.toFixed(5)}) ->`;
   const linkX = marginX + 10;
-  const linkY = y - 49.5;
+  const linkY = y - 52;
   const linkW = fontSansBold.widthOfTextAtSize(linkLabel, 8.2);
 
   drawText(p1, linkLabel, {
@@ -863,19 +896,60 @@ export async function rentalAgreementPdf(
     color: cNavy,
   });
 
-  // Buat hyperlink aktif yang bisa diklik langsung di PDF viewer
-  const linkAnnotation = pdf.context.obj({
-    Type: PDFName.of("Annot"),
-    Subtype: PDFName.of("Link"),
-    Rect: [linkX, linkY - 3, linkX + linkW, linkY + 9],
-    Border: [0, 0, 0],
-    A: {
-      Type: PDFName.of("Action"),
-      S: PDFName.of("URI"),
-      URI: PDFString.of(gmapsUrl),
-    },
-  });
-  p1.node.set(PDFName.of("Annots"), pdf.context.obj([linkAnnotation]));
+  const annotsP1: any[] = [];
+
+  // Buat hyperlink aktif untuk Google Maps
+  annotsP1.push(
+    pdf.context.obj({
+      Type: PDFName.of("Annot"),
+      Subtype: PDFName.of("Link"),
+      Rect: [linkX, linkY - 3, linkX + linkW, linkY + 9],
+      Border: [0, 0, 0],
+      A: {
+        Type: PDFName.of("Action"),
+        S: PDFName.of("URI"),
+        URI: PDFString.of(gmapsUrl),
+      },
+    })
+  );
+
+  // Gambar QR Code Validasi di pojok kanan panduan akses
+  const qrSize1 = 44;
+  const qrX1 = marginX + contentWidth - qrSize1 - 10;
+  const qrY1 = y - guideH + 11;
+
+  if (qrImage) {
+    p1.drawImage(qrImage, {
+      x: qrX1,
+      y: qrY1,
+      width: qrSize1,
+      height: qrSize1,
+    });
+    drawText(p1, "SCAN VALIDASI", {
+      x: qrX1 + qrSize1 / 2,
+      y: qrY1 - 6,
+      size: 5.5,
+      font: fontSansBold,
+      color: cNavy,
+      align: "center",
+    });
+
+    annotsP1.push(
+      pdf.context.obj({
+        Type: PDFName.of("Annot"),
+        Subtype: PDFName.of("Link"),
+        Rect: [qrX1, qrY1 - 7, qrX1 + qrSize1, qrY1 + qrSize1],
+        Border: [0, 0, 0],
+        A: {
+          Type: PDFName.of("Action"),
+          S: PDFName.of("URI"),
+          URI: PDFString.of(validationUrl),
+        },
+      })
+    );
+  }
+
+  p1.node.set(PDFName.of("Annots"), pdf.context.obj(annotsP1));
 
   drawFooter(p1, 1, 2);
 
@@ -1077,36 +1151,77 @@ export async function rentalAgreementPdf(
     align: "center",
   });
 
-  // Lencana Verifikasi Digital Resmi
-  const badgeW = 164;
-  const badgeH = 34;
+  // Lencana Verifikasi Digital Resmi & QR Validasi
+  const badgeW = 208;
+  const badgeH = 44;
   const badgeX = sigLeftX + (sigW - badgeW) / 2;
-  const badgeY = y - 72;
+  const badgeY = y - 76;
   p2.drawRectangle({
     x: badgeX,
     y: badgeY,
     width: badgeW,
     height: badgeH,
-    color: rgb(0.92, 0.95, 1.0),
+    color: rgb(0.93, 0.96, 1.0),
     borderColor: cNavy,
     borderWidth: 0.9,
   });
-  drawText(p2, "TERVERIFIKASI DIGITAL - BIRO ASET UNUD", {
-    x: sigLeftX + sigW / 2,
-    y: badgeY + 21,
-    size: 6.7,
+
+  const qrBadgeSize = 36;
+  const qrBadgeX = badgeX + 4;
+  const qrBadgeY = badgeY + 4;
+
+  if (qrImage) {
+    p2.drawImage(qrImage, {
+      x: qrBadgeX,
+      y: qrBadgeY,
+      width: qrBadgeSize,
+      height: qrBadgeSize,
+    });
+  }
+
+  const textStartX = qrImage ? badgeX + 44 : badgeX + 8;
+  drawText(p2, "TERVERIFIKASI ELEKTRONIK", {
+    x: textStartX,
+    y: badgeY + 31,
+    size: 6.8,
     font: fontSansBold,
     color: cNavy,
-    align: "center",
   });
-  drawText(p2, `KODE VALIDASI: ${cleanWinAnsi(order.id).slice(0, 22)}`, {
-    x: sigLeftX + sigW / 2,
-    y: badgeY + 9,
-    size: 6.3,
+  drawText(p2, "Scan QR untuk Validasi Langsung", {
+    x: textStartX,
+    y: badgeY + 22,
+    size: 5.8,
     font: fontSans,
     color: cMuted,
-    align: "center",
   });
+  drawText(p2, `ID: ${cleanWinAnsi(order.id).slice(0, 22)}`, {
+    x: textStartX,
+    y: badgeY + 13,
+    size: 6.3,
+    font: fontSansBold,
+    color: cNavy,
+  });
+  drawText(p2, "Biro Pengelolaan Aset Universitas Udayana", {
+    x: textStartX,
+    y: badgeY + 5,
+    size: 5.4,
+    font: fontSans,
+    color: cMuted,
+  });
+
+  // Anotasi link interaktif pada badge P2
+  const qrAnnotP2 = pdf.context.obj({
+    Type: PDFName.of("Annot"),
+    Subtype: PDFName.of("Link"),
+    Rect: [badgeX, badgeY, badgeX + badgeW, badgeY + badgeH],
+    Border: [0, 0, 0],
+    A: {
+      Type: PDFName.of("Action"),
+      S: PDFName.of("URI"),
+      URI: PDFString.of(validationUrl),
+    },
+  });
+  p2.node.set(PDFName.of("Annots"), pdf.context.obj([qrAnnotP2]));
 
   drawText(p2, "Dr. Ir. I Ketut Suartana, M.T.", {
     x: sigLeftX + sigW / 2,

@@ -345,11 +345,7 @@ export default function ActiveStallsSection({
   const displayedActiveSpots =
     activeZona === "all"
       ? activeSpots
-      : activeZona === "custom" && customActiveLokasi
-        ? activeSpots.filter((s) =>
-          s.lokasi.toLowerCase().includes(customActiveLokasi.toLowerCase())
-        )
-        : activeSpots.filter((s) => s.zona === activeZona);
+      : activeSpots.filter((s) => s.zona === activeZona);
 
   const paginatedActiveSpots = displayedActiveSpots.slice(
     (activePage - 1) * ITEMS_PER_PAGE,
@@ -369,11 +365,7 @@ export default function ActiveStallsSection({
   const displayedUpcomingSpots =
     upcomingZona === "all"
       ? upcomingSpots
-      : upcomingZona === "custom" && customUpcomingLokasi
-        ? upcomingSpots.filter((item) =>
-          item.spot.lokasi.toLowerCase().includes(customUpcomingLokasi.toLowerCase())
-        )
-        : upcomingSpots.filter((item) => item.spot.zona === upcomingZona);
+      : upcomingSpots.filter((item) => item.spot.zona === upcomingZona);
 
   const paginatedUpcomingSpots = displayedUpcomingSpots.slice(
     (upcomingPage - 1) * ITEMS_PER_PAGE,
@@ -383,43 +375,32 @@ export default function ActiveStallsSection({
   // Zona kampus utama yang selalu tampil (Semua Lokasi + 2 zona teratas)
   const visibleZonas = ["all", "rektorat", "boulevard"] as const;
 
-  // Opsi dropdown "Lokasi Lainnya" untuk seksi Lapak Sedang Beroperasi
-  const extraActiveOptions: LokasiItem[] = [
-    {
-      id: "sc",
-      label: ZONA_LABELS["sc"]?.split("–")[1]?.trim() ?? "Plaza Student Center",
-      zona: "sc",
-    },
-    {
-      id: "agrokompleks",
-      label:
-        ZONA_LABELS["agrokompleks"]?.split("–")[1]?.trim() ??
-        "Agrokompleks Sudirman",
-      zona: "agrokompleks",
-    },
-    { id: "kantin_teknik", label: "Kantin Fakultas Teknik" },
-    { id: "halte_bus", label: "Halte Bus Kampus" },
-    { id: "gedung_rektorat", label: "Depan Gedung Rektorat" },
-  ];
+  // Ekstrak zona-zona selain rektorat & boulevard langsung dari data spots
+  const dbExtraZones: LokasiItem[] = React.useMemo(() => {
+    const baseExtra = ["sc", "agrokompleks"];
+    const result: LokasiItem[] = baseExtra.map((z) => ({
+      id: z,
+      label: ZONA_LABELS[z]?.split("–")[1]?.trim() ?? z,
+      zona: z,
+    }));
 
-  // Opsi dropdown "Lokasi Lainnya" untuk seksi Operasional Mendatang
-  const extraUpcomingOptions: LokasiItem[] = [
-    {
-      id: "sc",
-      label: ZONA_LABELS["sc"]?.split("–")[1]?.trim() ?? "Plaza Student Center",
-      zona: "sc",
-    },
-    {
-      id: "agrokompleks",
-      label:
-        ZONA_LABELS["agrokompleks"]?.split("–")[1]?.trim() ??
-        "Agrokompleks Sudirman",
-      zona: "agrokompleks",
-    },
-    { id: "kantin_teknik", label: "Kantin Fakultas Teknik" },
-    { id: "halte_bus", label: "Halte Bus Kampus" },
-    { id: "gedung_rektorat", label: "Depan Gedung Rektorat" },
-  ];
+    for (const s of allSpots) {
+      if (s.zona && !["all", "rektorat", "boulevard", "sc", "agrokompleks"].includes(s.zona)) {
+        if (!result.some((r) => r.zona === s.zona)) {
+          result.push({
+            id: s.zona,
+            label: s.zonaLabel || s.zona,
+            zona: s.zona,
+          });
+        }
+      }
+    }
+    return result;
+  }, [allSpots]);
+
+  const extraActiveOptions: LokasiItem[] = dbExtraZones;
+
+  const extraUpcomingOptions = extraActiveOptions;
 
   return (
     <section
@@ -521,11 +502,7 @@ export default function ActiveStallsSection({
               setActiveZona("all");
             } else {
               setCustomActiveLokasi(item.label);
-              if (item.zona) {
-                setActiveZona(item.zona);
-              } else {
-                setActiveZona("custom");
-              }
+              setActiveZona(item.zona || item.id);
             }
           }}
         />
@@ -693,11 +670,7 @@ export default function ActiveStallsSection({
                 setUpcomingZona("all");
               } else {
                 setCustomUpcomingLokasi(item.label);
-                if (item.zona) {
-                  setUpcomingZona(item.zona);
-                } else {
-                  setUpcomingZona("custom");
-                }
+                setUpcomingZona(item.zona || item.id);
               }
             }}
           />

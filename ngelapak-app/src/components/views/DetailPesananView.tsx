@@ -1,23 +1,27 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { canCancelBooking, cancelDemoBooking, completeDemoPayment, useDemo } from "@/lib/demo-store";
+import { canCancelBooking, cancelDemoBooking, completeDemoPayment, getDemoReviewByBookingId, today, useDemo } from "@/lib/demo-store";
+import { getRefundProofSignedUrl } from "@/app/actions/refund";
 import {
   formatDate,
   formatRupiah,
   isPendingCancellationRefund,
   MOCK_SPOTS,
   type Booking,
+  type Review,
   type Spot,
 } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
 import { printKuitansi } from "@/lib/pdf/generateKuitansi";
 import { printSPPLA } from "@/lib/pdf/generateSPPLA";
 import { getSupabaseBookingDetail, refreshPayment, requestSupabaseCancellation, resumePayment } from "@/lib/supabase/bookings";
+import { getSupabaseReviewByBooking } from "@/lib/supabase/reviews";
 import { createClient } from "@/lib/supabase/client";
 import { cancellationDeadline, formatRentalTime, paymentLabel } from "@/lib/rental-policy";
 import ProductCaptionEditor from "@/components/booking/ProductCaptionEditor";
 import MapComponent from "@/components/home/MapComponent";
+import ReviewModal from "@/components/booking/ReviewModal";
 
 // ============================================================
 // TYPES
@@ -55,12 +59,28 @@ function getStatusInfo(booking: Booking): {
       cls: "bg-red-50 text-red-700 border-red-200",
       icon: "cancel",
     };
-  if (booking.statusVerifikasi === "disetujui")
+  if (booking.statusVerifikasi === "disetujui") {
+    const currentDay = today();
+    if (booking.status === "selesai" || currentDay > booking.tanggalSelesai) {
+      return {
+        label: "Selesai",
+        cls: "bg-blue-50 text-blue-700 border-blue-200",
+        icon: "task_alt",
+      };
+    }
+    if (currentDay >= booking.tanggalMulai && currentDay <= booking.tanggalSelesai) {
+      return {
+        label: "Sewa Aktif",
+        cls: "bg-emerald-50 text-emerald-700 border-emerald-200",
+        icon: "storefront",
+      };
+    }
     return {
-      label: booking.status === "selesai" ? "Selesai" : "Aktif",
-      cls: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      label: booking.metodePembayaran === "midtrans" ? "Lunas" : "Disetujui",
+      cls: "bg-teal-50 text-teal-700 border-teal-200",
       icon: "check_circle",
     };
+  }
   if (booking.statusVerifikasi === "ditolak")
     return {
       label: "Ditolak",
@@ -98,9 +118,13 @@ const STEPS = [
 
 function getStepIndex(booking: Booking): number {
   if (booking.status === "selesai") return 4;
-  if (booking.status === "aktif") return 3;
+  if (booking.statusVerifikasi === "disetujui") {
+    const currentDay = today();
+    if (currentDay > booking.tanggalSelesai) return 4;
+    if (currentDay >= booking.tanggalMulai) return 3;
+    return 2;
+  }
   if (
-    booking.statusVerifikasi === "disetujui" ||
     booking.statusVerifikasi === "ditolak" ||
     booking.status === "dibatalkan"
   )
@@ -393,6 +417,29 @@ export default function DetailPesananView({
   const [showCancelForm, setShowCancelForm] = useState(false);
   const [cancelNote, setCancelNote] = useState("");
   const [supabaseSpot, setSupabaseSpot] = useState<Spot | null>(null);
+  const [review, setReview] = useState<Review | null>(null);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    async function loadReview() {
+      if (!useSupabase) {
+        const rev = getDemoReviewByBookingId(bookingId);
+        if (active) setReview(rev);
+        return;
+      }
+      try {
+        const rev = await getSupabaseReviewByBooking(bookingId);
+        if (active) setReview(rev);
+      } catch {
+        // ignore
+      }
+    }
+    loadReview();
+    return () => {
+      active = false;
+    };
+  }, [bookingId, useSupabase, version]);
 
   useEffect(() => {
     if (!useSupabase || !booking?.spotId) return;
@@ -554,6 +601,9 @@ export default function DetailPesananView({
   const isPaid = isApproved && (isMidtrans ? currentBooking.paymentStatus === "settlement" : Boolean(currentBooking.paidAt));
   const canDownloadAgreement = isApproved && cancellationStatus !== "menunggu" && cancellationStatus !== "disetujui";
   const canContinuePayment = useSupabase && Date.parse(expiresAt ?? "") > now;
+  const isCompleted =
+    currentBooking.status === "selesai" ||
+    (currentBooking.statusVerifikasi === "disetujui" && today() > currentBooking.tanggalSelesai);
 
   async function checkPayment() {
     setPaymentError("");
@@ -613,6 +663,7 @@ export default function DetailPesananView({
         googleMapsUrl,
         lat: spotLat,
         lng: spotLng,
+        validationUrl: `${window.location.origin}/validasi/${encodeURIComponent(currentBooking.id)}`,
       });
       const url = URL.createObjectURL(
         new Blob([new Uint8Array(pdf)], { type: "application/pdf" })
@@ -644,12 +695,16 @@ export default function DetailPesananView({
 
   async function showRefundProof(path: string) {
     setProofError("");
-    const { data } = await createClient().storage.from("refund-proofs").createSignedUrl(path, 120);
-    if (!data) {
+    try {
+      const signedUrl = await getRefundProofSignedUrl(path);
+      if (!signedUrl) {
+        setProofError("Bukti refund gagal dimuat. Coba lagi.");
+        return;
+      }
+      window.open(signedUrl, "_blank", "noopener,noreferrer");
+    } catch {
       setProofError("Bukti refund gagal dimuat. Coba lagi.");
-      return;
     }
-    window.location.assign(data.signedUrl);
   }
 
   function handleCancelSuccess(msg: string) {
@@ -685,10 +740,7 @@ export default function DetailPesananView({
   }
 
   return (
-    <div
-      className="max-w-3xl mx-auto px-4 py-8 pb-28"
-      style={{ background: "#faf8ff", minHeight: "100vh" }}
-    >
+    <div className="max-w-3xl mx-auto px-4 py-8 pb-28 min-h-screen">
       {/* ── Back button ── */}
       <button
         onClick={onBack}
@@ -734,7 +786,7 @@ export default function DetailPesananView({
       <SectionCard title="Informasi Penyewa" icon="person">
         <DetailRow label="Nama" value={booking.penyewa.nama} />
         <DetailRow label="NIM" value={booking.penyewa.nim || "—"} mono />
-        <DetailRow label="Fakultas" value={booking.penyewa.fakultas || "—"} />
+        <DetailRow label="Instansi" value={booking.penyewa.fakultas || "—"} />
         <DetailRow label="Email" value={booking.penyewa.email} />
         <DetailRow label="Telepon" value={booking.penyewa.telepon || "—"} />
       </SectionCard>
@@ -946,6 +998,69 @@ export default function DetailPesananView({
         />
       )}
 
+      {/* ── Ulasan Lapak (Jika Pesanan Selesai) ── */}
+      {isCompleted && (
+        <SectionCard title="Ulasan Lapak" icon="rate_review">
+          {review ? (
+            <div className="bg-[#fffdf5] border border-amber-200 rounded-xl p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-1.5">
+                  <div className="flex items-center">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <span
+                        key={star}
+                        className={`material-symbols-outlined text-[18px] ${
+                          star <= review.rating ? "text-amber-400 fill-1" : "text-[#d1d7e8]"
+                        }`}
+                        style={{ fontVariationSettings: star <= review.rating ? "'FILL' 1" : "'FILL' 0" }}
+                      >
+                        star
+                      </span>
+                    ))}
+                  </div>
+                  <span className="text-xs font-bold text-[#131b2e]">({review.rating} dari 5)</span>
+                </div>
+                {review.tanggal && (
+                  <span className="text-[11px] text-[#737781]">{review.tanggal}</span>
+                )}
+              </div>
+              <p className="text-xs sm:text-sm text-[#424750] leading-relaxed italic bg-white/70 p-3 rounded-lg border border-amber-100">
+                &ldquo;{review.komentar}&rdquo;
+              </p>
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setIsReviewModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[15px]">edit</span>
+                  <span>Ubah Ulasan</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-[#fcfcff] border border-[#e2e7ff] rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-[#131b2e]">
+                  Bagikan pengalaman sewa Anda di stan ini
+                </p>
+                <p className="text-xs text-[#737781] mt-0.5">
+                  Ulasan Anda akan sangat membantu calon penyewa lain dan meningkatkan reputasi lapak.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsReviewModalOpen(true)}
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition-all shadow-xs cursor-pointer self-start sm:self-auto shrink-0"
+              >
+                <span className="material-symbols-outlined text-[16px]">rate_review</span>
+                <span>Beri Ulasan Sekarang</span>
+              </button>
+            </div>
+          )}
+        </SectionCard>
+      )}
+
       {/* ── Action buttons ── */}
       <div className="bg-white rounded-2xl border border-[#e2e7ff] p-5">
         <h3 className="text-xs font-semibold text-[#737781] uppercase tracking-widest mb-4">
@@ -1015,6 +1130,20 @@ export default function DetailPesananView({
             </button>
           )}
 
+          {/* Tombol Beri / Ubah Ulasan */}
+          {isCompleted && (
+            <button
+              type="button"
+              onClick={() => setIsReviewModalOpen(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 px-4 py-3 text-center text-sm font-semibold transition-colors cursor-pointer shadow-xs"
+            >
+              <span className="material-symbols-outlined text-[18px] text-amber-600">
+                {review ? "edit_note" : "rate_review"}
+              </span>
+              <span>{review ? "Ubah Ulasan Lapak" : "Beri Ulasan Lapak"}</span>
+            </button>
+          )}
+
           {/* No actions available */}
           {
             !isMidtrans && !bolehBatal && !isApproved && (
@@ -1031,12 +1160,30 @@ export default function DetailPesananView({
             )
           }
         </div >
-      </div >
+      </div>
+
+      {/* ── Modal Ulasan Lapak ── */}
+      <ReviewModal
+        isOpen={isReviewModalOpen}
+        booking={currentBooking}
+        existingReview={review}
+        useSupabase={useSupabase}
+        onClose={() => setIsReviewModalOpen(false)}
+        onSubmitSuccess={(savedReview) => {
+          setReview(savedReview);
+          setVersion((v) => v + 1);
+          onShowToast?.({
+            type: "success",
+            message: "Ulasan Berhasil Disimpan",
+            description: "Terima kasih atas ulasan dan masukan Anda untuk lapak ini.",
+          });
+        }}
+      />
 
       {/* ── Footer note ── */}
-      < p className="text-xs text-center text-[#9ba4b5] mt-6" >
+      <p className="text-xs text-center text-[#9ba4b5] mt-6">
         Dokumen ini merupakan detail transaksi dari sistem demonstrasi Ngelapak.
-      </p >
-    </div >
+      </p>
+    </div>
   );
 }

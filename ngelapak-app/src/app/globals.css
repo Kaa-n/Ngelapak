@@ -3,7 +3,174 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:is(.dark, .dark *));
+
+/* ── Dark mode token & global utility overrides ── */
+.dark, html.dark {
+  color-scheme: dark;
+  --color-surface: #0f1117;
+  --color-surface-bright: #161b27;
+  --color-surface-container-lowest: #090c14;
+  --color-surface-container-low: #161b27;
+  --color-surface-container: #1c2235;
+  --color-surface-container-high: #232942;
+  --color-surface-container-highest: #2a3050;
+  --color-surface-variant: #2a3050;
+  --color-on-surface: #e8ecf8;
+  --color-on-surface-variant: #bec3d0;
+  --color-background: #0f1117;
+  --color-on-background: #e8ecf8;
+  --color-outline: #8a8f9e;
+  --color-outline-variant: #3a3f52;
+
+  --background: oklch(0.1 0.02 240);
+  --foreground: oklch(0.92 0.01 240);
+  --card: oklch(0.14 0.02 240);
+  --card-foreground: oklch(0.92 0.01 240);
+  --popover: oklch(0.14 0.02 240);
+  --popover-foreground: oklch(0.92 0.01 240);
+  --muted: oklch(0.2 0.02 240);
+  --muted-foreground: oklch(0.65 0.02 240);
+  --accent: oklch(0.2 0.03 250);
+  --accent-foreground: oklch(0.9 0.01 240);
+  --border: oklch(0.28 0.03 240);
+  --input: oklch(0.28 0.03 240);
+  --sidebar: oklch(0.12 0.02 240);
+  --sidebar-foreground: oklch(0.9 0.01 240);
+  --sidebar-border: oklch(0.28 0.03 240);
+}
+
+/* =====================================================
+   GLOBAL DARK MODE THEME MAPPINGS
+   Ensures entire application switches cleanly to Dark Mode
+   ===================================================== */
+html.dark body,
+html.dark .bg-\[\#faf8ff\],
+html.dark [class*="bg-[#faf8ff]"] {
+  background-color: #0b0f19 !important;
+  color: #f1f5f9;
+}
+
+/* Card surfaces and white containers */
+html.dark .bg-white,
+html.dark [class*="bg-white"] {
+  background-color: #131927 !important;
+}
+
+/* Sub-containers, light chips, and hero containers */
+html.dark .bg-\[\#f2f3ff\],
+html.dark .bg-\[\#eaedff\],
+html.dark .bg-\[\#f4f6ff\],
+html.dark .bg-\[\#eef2f9\],
+html.dark .bg-\[\#f8faff\],
+html.dark .bg-\[\#edf3fa\],
+html.dark .bg-\[\#eaf0ff\] {
+  background-color: #1a2333 !important;
+}
+
+/* Main headings and prominent text */
+html.dark .text-\[\#131b2e\],
+html.dark .text-\[\#172033\] {
+  color: #f1f5f9 !important;
+}
+
+/* Secondary and descriptive text */
+html.dark .text-\[\#424750\] {
+  color: #94a3b8 !important;
+}
+
+/* Muted / Tertiary / Placeholder text */
+html.dark .text-\[\#737781\] {
+  color: #818cf8 !important;
+}
+
+/* Brand blue text transformed for high contrast on dark backgrounds */
+html.dark .text-\[\#003466\] {
+  color: #93bcfc !important;
+}
+
+/* Brand amber text transformed for readability */
+html.dark .text-\[\#855300\] {
+  color: #ffb95f !important;
+}
+
+/* Brand green text transformed for readability */
+html.dark .text-\[\#003c27\] {
+  color: #4edea3 !important;
+}
+
+/* Global borders */
+html.dark .border-\[\#e2e7ff\],
+html.dark .border-\[\#e1e7ff\],
+html.dark .border-\[\#dce1eb\],
+html.dark .border-\[\#d8deeb\],
+html.dark .border-\[\#c9d6f5\],
+html.dark .border-\[\#f2f3ff\],
+html.dark .border-\[\#d5e3ff\] {
+  border-color: #232d42 !important;
+}
+
+/* Form input fields, selects, textareas */
+html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]),
+html.dark select,
+html.dark textarea {
+  background-color: #1a2333 !important;
+  color: #f1f5f9 !important;
+  border-color: #2e3b52 !important;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #64748b !important;
+}
+
+/* Hover states */
+html.dark .hover\:bg-\[\#eaedff\]:hover,
+html.dark .hover\:bg-\[\#f4f6ff\]:hover,
+html.dark .hover\:bg-\[\#f2f3ff\]:hover,
+html.dark .hover\:bg-\[\#f8faff\]:hover,
+html.dark .hover\:bg-\[\#eef2f9\]:hover {
+  background-color: #243047 !important;
+}
+
+/* Status badges in dark mode */
+html.dark .badge-tersedia,
+html.dark .bg-\[\#6ffbbe\] {
+  background-color: #064e3b !important;
+  color: #6ffbbe !important;
+}
+
+html.dark .badge-dipesan,
+html.dark .bg-\[\#ffddb8\] {
+  background-color: #78350f !important;
+  color: #ffddb8 !important;
+}
+
+html.dark .bg-\[\#e2fced\] {
+  background-color: rgba(6, 78, 59, 0.4) !important;
+  color: #4edea3 !important;
+}
+
+html.dark .bg-\[\#fff6ea\] {
+  background-color: rgba(120, 53, 15, 0.4) !important;
+  color: #ffb95f !important;
+}
+
+/* Decorative background blobs in dark mode */
+html.dark .bg-\[\#d5e3ff\] {
+  background-color: rgba(30, 58, 138, 0.4) !important;
+}
+
+html.dark .bg-\[\#ffddb8\] {
+  background-color: rgba(120, 53, 15, 0.3) !important;
+}
+
+/* Leaflet maps popup & controls in dark mode */
+html.dark .leaflet-popup-content-wrapper,
+html.dark .leaflet-popup-tip {
+  background-color: #131927 !important;
+  color: #f1f5f9 !important;
+}
 
 
 :root {

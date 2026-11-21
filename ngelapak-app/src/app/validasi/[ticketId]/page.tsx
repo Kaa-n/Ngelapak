@@ -194,11 +194,55 @@ export default function ValidasiTicketPage({
         .rpc("get_ticket_validation", { p_ticket_id: ticketId })
         .maybeSingle();
 
-
       if (!error && data) {
         setBooking(data);
       } else {
-        setBooking(null);
+        // Fallback: periksa tabel bookings langsung jika RPC belum tersedia
+        let foundDirect: any = null;
+        try {
+          const { data: bkg } = await supabase
+            .from("bookings")
+            .select("*")
+            .eq("id", ticketId)
+            .maybeSingle();
+          if (bkg) foundDirect = bkg;
+        } catch {
+          // ignore
+        }
+
+        if (foundDirect) {
+          setBooking({
+            id: foundDirect.id,
+            penyewa_nama: foundDirect.penyewa_nama,
+            penyewa_nim: foundDirect.penyewa_nim,
+            jenis_usaha: foundDirect.jenis_usaha,
+            spot_kode: foundDirect.spot_kode,
+            spot_nama: foundDirect.spot_nama,
+            tanggal_mulai: foundDirect.tanggal_mulai,
+            tanggal_selesai: foundDirect.tanggal_selesai,
+            status: foundDirect.status,
+            status_verifikasi: foundDirect.status_verifikasi,
+          });
+        } else {
+          // Fallback demo/mock data
+          const found = MOCK_BOOKINGS.find((b) => b.id === ticketId);
+          if (found) {
+            setBooking({
+              id: found.id,
+              penyewa_nama: found.penyewa.nama,
+              penyewa_nim: found.penyewa.nim,
+              jenis_usaha: found.jenisUsaha,
+              spot_kode: found.spotKode,
+              spot_nama: found.spotNama,
+              tanggal_mulai: found.tanggalMulai,
+              tanggal_selesai: found.tanggalSelesai,
+              status: found.status,
+              status_verifikasi: found.statusVerifikasi,
+            });
+          } else {
+            setBooking(null);
+          }
+        }
       }
       setLoading(false);
     }

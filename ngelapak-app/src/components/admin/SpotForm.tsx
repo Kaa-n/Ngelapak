@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useTransition, type ChangeEvent, type KeyboardEvent } from "react";
+import { useState, useTransition, useRef, useEffect, type ChangeEvent, type KeyboardEvent } from "react";
 import type { Database } from "@/types/database";
 import { deleteSpot, saveSpot } from "@/app/admin/spots/actions";
+import { parseSpotImages } from "@/lib/mock-data";
 import ActionForm from "./ActionForm";
 import { inputClass } from "./styles";
 import SpotMapPicker from "./SpotMapPicker";
@@ -138,17 +139,52 @@ export default function SpotForm({ spot }: { spot?: Spot }) {
     }
   }
 
-  // Preview Foto Lapak
-  const [previewImage, setPreviewImage] = useState<string | null>(
-    spot?.gambar ?? null
-  );
+  // Preview & Manajemen Foto Lapak (Maksimal 5 foto)
+  const initialImages = parseSpotImages(spot?.gambar).list;
+  const [existingImages, setExistingImages] = useState<string[]>(initialImages);
+  const [newFiles, setNewFiles] = useState<{ id: string; file: File; preview: string }[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sinkronisasi file input dengan state newFiles via DataTransfer
+  useEffect(() => {
+    if (!fileInputRef.current) return;
+    try {
+      const dt = new DataTransfer();
+      newFiles.forEach((item) => dt.items.add(item.file));
+      fileInputRef.current.files = dt.files;
+    } catch {
+      // Fallback untuk browser yang membatasi manipulasi DataTransfer
+    }
+  }, [newFiles]);
 
   function handleImageChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) {
-      const objectUrl = URL.createObjectURL(file);
-      setPreviewImage(objectUrl);
-    }
+    const selected = Array.from(e.target.files || []);
+    if (selected.length === 0) return;
+
+    const remainingSlots = 5 - (existingImages.length + newFiles.length);
+    if (remainingSlots <= 0) return;
+
+    const toAdd = selected.slice(0, remainingSlots).map((file) => ({
+      id: `${file.name}-${Date.now()}-${Math.random()}`,
+      file,
+      preview: URL.createObjectURL(file),
+    }));
+
+    setNewFiles((prev) => [...prev, ...toAdd]);
+    // Reset file input value agar event onChange tetap terpicu jika file yang sama dipilih ulang
+    if (e.target) e.target.value = "";
+  }
+
+  function removeExistingImage(index: number) {
+    setExistingImages((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function removeNewFile(id: string) {
+    setNewFiles((prev) => {
+      const target = prev.find((item) => item.id === id);
+      if (target) URL.revokeObjectURL(target.preview);
+      return prev.filter((item) => item.id !== id);
+    });
   }
 
   // Ukuran custom / preset
@@ -179,8 +215,13 @@ export default function SpotForm({ spot }: { spot?: Spot }) {
           value={JSON.stringify(selectedTags)}
         />
         <input type="hidden" name="zona" value={effectiveZona} />
-        {spot?.gambar && (
-          <input type="hidden" name="existing_gambar" value={spot.gambar} />
+        <input
+          type="hidden"
+          name="existing_gambar_json"
+          value={JSON.stringify(existingImages)}
+        />
+        {existingImages[0] && (
+          <input type="hidden" name="existing_gambar" value={existingImages[0]} />
         )}
 
         {/* ── BAGIAN 1: INFORMASI UTAMA LAPAK ── */}
@@ -564,46 +605,107 @@ export default function SpotForm({ spot }: { spot?: Spot }) {
           )}
         </div>
 
-        {/* ── BAGIAN 6: UPLOAD FOTO SPOT KE BUCKET STORAGE SUPABASE ── */}
+        {/* ── BAGIAN 6: UPLOAD FOTO SPOT KE BUCKET STORAGE SUPABASE (MAKSIMAL 5 FOTO) ── */}
         <div className="bg-[#faf8ff] p-4 sm:p-5 rounded-2xl border border-[#e2e7ff] space-y-4">
-          <h3 className="font-bold text-sm text-[#003466] flex items-center gap-1.5 uppercase tracking-wider">
-            <span className="material-symbols-outlined text-[18px]">photo_camera</span>
-            Foto Lapak (Tersimpan di Supabase Storage &apos;spot-images&apos;)
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-sm text-[#003466] flex items-center gap-1.5 uppercase tracking-wider">
+              <span className="material-symbols-outlined text-[18px]">photo_library</span>
+              Foto Lapak (Hingga 5 Foto di Supabase Storage &apos;spot-images&apos;)
+            </h3>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-white border border-[#e2e7ff] text-[#003466]">
+              {existingImages.length + newFiles.length} / 5 Foto
+            </span>
+          </div>
 
-          <div className="grid gap-4 sm:grid-cols-[180px_minmax(0,1fr)] items-center">
-            {/* Thumbnail Preview */}
-            <div className="w-full h-32 rounded-xl bg-gray-100 border border-[#e2e7ff] overflow-hidden flex items-center justify-center relative">
-              {previewImage ? (
+          <p className="text-xs text-[#424750]">
+            Unggah hingga 5 foto lapak dari berbagai sudut. Foto pertama akan menjadi sampul utama di kartu katalog.
+          </p>
+
+          {/* Grid Preview Foto Lapak */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+            {/* Foto-foto existing */}
+            {existingImages.map((url, idx) => (
+              <div
+                key={`existing-${idx}`}
+                className="relative aspect-square rounded-xl bg-gray-100 border border-[#e2e7ff] overflow-hidden group shadow-xs"
+              >
                 <img
-                  src={previewImage}
-                  alt="Preview Foto Lapak"
+                  src={url}
+                  alt={`Foto ${idx + 1}`}
                   className="w-full h-full object-cover"
                 />
-              ) : (
-                <div className="flex flex-col items-center justify-center text-gray-400 gap-1 text-xs text-center p-2">
-                  <span className="material-symbols-outlined text-[32px]">image</span>
-                  <span>Belum ada foto</span>
+                <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/60 text-white text-[10px] font-semibold">
+                  {idx === 0 ? "Utama" : `#${idx + 1}`}
                 </div>
-              )}
-            </div>
+                <button
+                  type="button"
+                  onClick={() => removeExistingImage(idx)}
+                  className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-red-600 text-white flex items-center justify-center opacity-90 hover:opacity-100 hover:scale-110 transition-all cursor-pointer shadow-sm"
+                  title="Hapus foto ini"
+                >
+                  <span className="material-symbols-outlined text-[14px]">close</span>
+                </button>
+              </div>
+            ))}
 
-            <div className="space-y-2">
-              <label className="grid gap-1 text-xs font-medium text-[#131b2e]">
-                <span>Pilih Foto Baru (JPG, PNG, WebP — maks. 6 MB)</span>
+            {/* Foto-foto baru yang dipilih */}
+            {newFiles.map((item, idx) => {
+              const displayIndex = existingImages.length + idx + 1;
+              return (
+                <div
+                  key={item.id}
+                  className="relative aspect-square rounded-xl bg-gray-100 border-2 border-dashed border-[#003466]/40 overflow-hidden group shadow-xs"
+                >
+                  <img
+                    src={item.preview}
+                    alt={`Foto Baru ${displayIndex}`}
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-[#003466] text-white text-[10px] font-semibold">
+                    {displayIndex === 1 ? "Utama (Baru)" : `Baru #${displayIndex}`}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeNewFile(item.id)}
+                    className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-red-600 text-white flex items-center justify-center opacity-90 hover:opacity-100 hover:scale-110 transition-all cursor-pointer shadow-sm"
+                    title="Hapus foto baru ini"
+                  >
+                    <span className="material-symbols-outlined text-[14px]">close</span>
+                  </button>
+                </div>
+              );
+            })}
+
+            {/* Tombol / Slot Tambah Foto jika belum mencapai 5 */}
+            {existingImages.length + newFiles.length < 5 && (
+              <label className="aspect-square rounded-xl border-2 border-dashed border-[#c5cbe0] hover:border-[#003466] bg-white hover:bg-[#f2f3ff] flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors p-2 text-center">
+                <span className="material-symbols-outlined text-[28px] text-[#003466]">add_photo_alternate</span>
+                <span className="text-[11px] font-semibold text-[#003466]">Tambah Foto</span>
+                <span className="text-[9px] text-[#737781]">JPG, PNG, WebP</span>
                 <input
-                  className={inputClass}
-                  name="gambar"
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
+                  multiple
                   onChange={handleImageChange}
+                  className="hidden"
                 />
               </label>
-              <p className="text-[11px] text-[#737781]">
-                Foto akan otomatis diunggah ke bucket storage resmi Supabase &apos;spot-images&apos; dan dapat diakses publik di katalog.
-              </p>
-            </div>
+            )}
           </div>
+
+          {/* Hidden input yang menampung file-file baru untuk form submission */}
+          <input
+            ref={fileInputRef}
+            name="gambar"
+            type="file"
+            multiple
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+          />
+
+          <p className="text-[11px] text-[#737781]">
+            Foto yang diunggah akan disimpan di bucket storage resmi Supabase &apos;spot-images&apos; dan otomatis ditampilkan dalam bentuk swipe carousel interaktif di halaman detail lapak.
+          </p>
         </div>
       </ActionForm>
 
