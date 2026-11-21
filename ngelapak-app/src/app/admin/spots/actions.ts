@@ -28,6 +28,7 @@ const inventory = z.object({
   koordinat_x: z.string().max(30).trim().optional(),
   koordinat_y: z.string().max(30).trim().optional(),
   existing_gambar: z.string().trim().optional(),
+  existing_gambar_json: z.string().trim().optional(),
 });
 
 export async function saveSpot(id: string | null, _state: ActionState, data: FormData): Promise<ActionState> {
@@ -38,7 +39,7 @@ export async function saveSpot(id: string | null, _state: ActionState, data: For
     return { error: "Periksa kode, nama, lokasi, tarif, dan daya lapak." };
   }
 
-  const { zona, zona_label, ukuran, koordinat_x, koordinat_y, status, existing_gambar, ...values } = parsed.data;
+  const { zona, zona_label, ukuran, koordinat_x, koordinat_y, status, existing_gambar, existing_gambar_json, ...values } = parsed.data;
   const x = koordinat_x ? Number(koordinat_x) : null;
   const y = koordinat_y ? Number(koordinat_y) : null;
   if ((x === null) !== (y === null) || (x !== null && !Number.isFinite(x)) || (y !== null && !Number.isFinite(y))) {
@@ -108,29 +109,62 @@ export async function saveSpot(id: string | null, _state: ActionState, data: For
 
   const storageClient = createServiceRoleClient();
   const bucket = storageClient.storage.from("spot-images");
-  const file = data.get("gambar");
-  let newImagePath: string | undefined;
-  let imageUrl: string | undefined = existing_gambar || undefined;
 
-  if (file instanceof File && file.size > 0) {
+  // Ambil daftar gambar yang sudah ada (existing)
+  let existingList: string[] = [];
+  if (existing_gambar_json) {
+    try {
+      const parsedList = JSON.parse(existing_gambar_json);
+      if (Array.isArray(parsedList)) {
+        existingList = parsedList.filter((url): url is string => typeof url === "string" && url.trim().length > 0);
+      }
+    } catch {
+      // Fallback
+      if (existing_gambar) existingList = [existing_gambar];
+    }
+  } else if (existing_gambar) {
+    existingList = [existing_gambar];
+  }
+
+  // Upload gambar-gambar baru (hingga maksimal 5 total gambar)
+  const files = data.getAll("gambar").filter((f): f is File => f instanceof File && f.size > 0);
+  const uploadedPaths: string[] = [];
+  const newUrls: string[] = [];
+
+  for (const file of files) {
+    if (existingList.length + newUrls.length >= 5) break;
+    let newImagePath: string;
     try {
       newImagePath = getUploadPath(file, ["image/jpeg", "image/png", "image/webp"]);
     } catch (error) {
+      if (uploadedPaths.length > 0) await bucket.remove(uploadedPaths);
       return { error: (error as Error).message };
     }
 
     const { error } = await bucket.upload(newImagePath, file, { upsert: true });
-    if (error) return { error: `Foto gagal diunggah ke storage: ${error.message}` };
-    imageUrl = bucket.getPublicUrl(newImagePath).data.publicUrl;
+    if (error) {
+      if (uploadedPaths.length > 0) await bucket.remove(uploadedPaths);
+      return { error: `Foto gagal diunggah ke storage: ${error.message}` };
+    }
+    uploadedPaths.push(newImagePath);
+    newUrls.push(bucket.getPublicUrl(newImagePath).data.publicUrl);
   }
 
-  const payload = imageUrl ? { ...changes, gambar: imageUrl } : changes;
+  const combinedImages = [...existingList, ...newUrls].slice(0, 5);
+  let finalGambarValue: string | null = null;
+  if (combinedImages.length === 1) {
+    finalGambarValue = combinedImages[0];
+  } else if (combinedImages.length > 1) {
+    finalGambarValue = JSON.stringify(combinedImages);
+  }
+
+  const payload = finalGambarValue !== null ? { ...changes, gambar: finalGambarValue } : changes;
   const result = await (id
     ? supabase.from("spots").update(payload as any).eq("id", id).select("id").maybeSingle()
     : supabase.from("spots").insert(payload as any).select("id").single());
 
   if (result.error || !result.data) {
-    if (newImagePath) await bucket.remove([newImagePath]);
+    if (uploadedPaths.length > 0) await bucket.remove(uploadedPaths);
     return {
       error:
         result.error?.code === "23505"

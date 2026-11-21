@@ -175,7 +175,7 @@ export default function EditProfileView({
               htmlFor="profile-fakultas"
               className="block text-sm font-semibold text-[#172033] mb-2"
             >
-              Fakultas
+              Instansi
             </label>
             <input
               id="profile-fakultas"
@@ -184,7 +184,7 @@ export default function EditProfileView({
               onChange={(event) => setFakultas(event.target.value)}
               required
               maxLength={100}
-              placeholder="Masukkan fakultas"
+              placeholder="Masukkan instansi"
               className="w-full border border-[#d8deeb] rounded-xl px-4 py-3 outline-none focus:border-[#003466] focus:ring-2 focus:ring-[#003466]/10"
             />
           </div>

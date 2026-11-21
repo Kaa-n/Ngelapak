@@ -63,14 +63,6 @@ useEffect(() => {
   const search = params.get("search");
   const sort = params.get("sort");
 
-  const validZona = [
-    "all",
-    "rektorat",
-    "boulevard",
-    "sc",
-    "agrokompleks",
-  ];
-
   const validUkuran = ["all", "2x2", "3x3", "4x4"];
   const validSort = [
     "populer",
@@ -79,9 +71,7 @@ useEffect(() => {
     "terbaru",
   ];
 
-  setZonaFilter(
-    validZona.includes(zona ?? "") ? zona as ZonaFilter : "all"
-  );
+  setZonaFilter(zona ?? "all");
 
   setUkuranFilter(
     validUkuran.includes(ukuran ?? "") ? ukuran as UkuranFilter : "all"
@@ -93,18 +83,10 @@ useEffect(() => {
 
   setSearchQuery(search ?? "");
 
-  const validFacilities = [
-    "listrik", "air", "kanopi", "meja", "wifi", "parkir",
-    "toilet", "genset", "cctv", "sampah", "atm", "ventilasi",
-  ];
-
-  setActiveChips(
-    new Set(
-      (fasilitas ?? "")
-        .split(",")
-        .filter((id) => validFacilities.includes(id))
-    )
-  );
+  if (fasilitas) {
+    const list = fasilitas.split(",").map((s) => s.trim()).filter(Boolean);
+    setActiveChips(new Set(list));
+  }
 
   setIsUrlInitialized(true);
 }, []);
@@ -258,15 +240,6 @@ useEffect(() => {
       );
     }
 
-    // Filter lokasi tambahan hanya untuk opsi yang tidak memiliki zona
-    if (customLokasi && zonaFilter === "all") {
-      filteredSpots = filteredSpots.filter((spot) =>
-        spot.lokasi
-          .toLowerCase()
-          .includes(customLokasi.toLowerCase())
-      );
-    }
-
     if (ukuranFilter !== "all") {
       filteredSpots = filteredSpots.filter(
         (s) => s.ukuran === ukuranFilter
@@ -292,13 +265,13 @@ useEffect(() => {
 
       filteredSpots = filteredSpots.filter((spot) =>
         [...activeChips].every((chipId) => {
-          const keywords = facilityKeywords[chipId] ?? [];
+          const keywords = facilityKeywords[chipId] || [chipId.toLowerCase()];
 
           return spot.fasilitas.some((facility) => {
             const normalized = facility.toLowerCase();
 
             return keywords.some((keyword) =>
-              normalized.includes(keyword)
+              normalized.includes(keyword) || keyword.includes(normalized)
             );
           });
         })
@@ -385,6 +358,45 @@ useEffect(() => {
     [filteredAndSorted]
   );
 
+  // Hitung fasilitas terpopuler berdasarkan frekuensi kemunculan di spot
+  const { topFacilityChips, allFacilityItems } = useMemo(() => {
+    const freqMap = new Map<string, number>();
+    for (const spot of spots) {
+      if (Array.isArray(spot.fasilitas)) {
+        for (const f of spot.fasilitas) {
+          const trimmed = f.trim();
+          if (trimmed) {
+            freqMap.set(trimmed, (freqMap.get(trimmed) || 0) + 1);
+          }
+        }
+      }
+    }
+    if (freqMap.size === 0) {
+      return { topFacilityChips: undefined, allFacilityItems: undefined };
+    }
+
+    // Urutkan dari yang paling populer (paling sering muncul)
+    const sorted = Array.from(freqMap.entries()).sort((a, b) => b[1] - a[1]);
+    
+    // 5 chip teratas untuk baris cepat (cukup 1 baris)
+    const top5 = sorted.slice(0, 5).map(([label]) => ({ id: label, label }));
+    // Seluruh fasilitas diurutkan popularitas untuk dropdown "Lainnya"
+    const all = sorted.map(([label]) => ({ id: label, label }));
+
+    return { topFacilityChips: top5, allFacilityItems: all };
+  }, [spots]);
+
+  // Ambil zona unik langsung dari data database
+  const dynamicZones = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const spot of spots) {
+      if (spot.zona && !map.has(spot.zona)) {
+        map.set(spot.zona, spot.zonaLabel || spot.zona.charAt(0).toUpperCase() + spot.zona.slice(1));
+      }
+    }
+    return Array.from(map.entries()).map(([id, label]) => ({ id, label }));
+  }, [spots]);
+
   return (
     <div className="bg-[#faf8ff] min-h-screen flex flex-col">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 w-full flex-1">
@@ -422,6 +434,10 @@ useEffect(() => {
           setCustomLokasi={setCustomLokasi}
           sortBy={sortBy}
           setSortBy={setSortBy}
+          chipOptions={topFacilityChips}
+          allFacilityItems={allFacilityItems}
+          availableZones={dynamicZones}
+          allSpots={spots}
           spots={paginatedSpots}
           currentPage={currentPage}
           totalPages={totalPages}

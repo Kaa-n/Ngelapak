@@ -94,20 +94,64 @@ function GoogleMapsIcon({ className = "w-4 h-4" }: { className?: string }) {
 }
 
 /**
- * Helper Sub-Komponen untuk mengontrol perpindahan koordinat peta (flyTo)
- * saat pengguna memilih zona kampus tertentu.
+ * Helper Sub-Komponen untuk mengontrol perpindahan koordinat peta (flyTo / flyToBounds)
+ * saat pengguna memilih zona kampus tertentu berdasarkan titik tengah (centre point) cluster.
  */
 function MapController({
+  targetSpots,
+  selectedZone,
   center,
   zoom,
 }: {
+  targetSpots: Spot[];
+  selectedZone: string;
   center: [number, number];
   zoom: number;
 }) {
   const map = useMap();
+
   useEffect(() => {
-    map.flyTo(center, zoom, { duration: 0.8 });
-  }, [center, zoom, map]);
+    if (!targetSpots || targetSpots.length === 0) {
+      map.flyTo(center, zoom, { duration: 0.8 });
+      return;
+    }
+
+    if (selectedZone === "all") {
+      map.flyTo(center, 16, { duration: 0.8 });
+      return;
+    }
+
+    if (targetSpots.length === 1) {
+      const latlng = getSpotLatLng(targetSpots[0]);
+      map.flyTo(latlng, 18, { duration: 0.8 });
+      return;
+    }
+
+    // Hitung titik tengah (centre point of cluster) dan batas sebaran titik
+    const lats = targetSpots.map((s) => getSpotLatLng(s)[0]);
+    const lngs = targetSpots.map((s) => getSpotLatLng(s)[1]);
+    const minLat = Math.min(...lats);
+    const maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs);
+    const maxLng = Math.max(...lngs);
+
+    const centerLat = (minLat + maxLat) / 2;
+    const centerLng = (minLng + maxLng) / 2;
+
+    // Jika seluruh spot berada di satu koordinat yang sama persis
+    if (Math.abs(maxLat - minLat) < 0.00005 && Math.abs(maxLng - minLng) < 0.00005) {
+      map.flyTo([centerLat, centerLng], 18, { duration: 0.8 });
+    } else {
+      map.flyToBounds(
+        [
+          [minLat, minLng],
+          [maxLat, maxLng],
+        ],
+        { padding: [50, 50], maxZoom: 18, duration: 0.8 }
+      );
+    }
+  }, [selectedZone, center[0], center[1], zoom, targetSpots.length, map]);
+
   return null;
 }
 
@@ -283,14 +327,17 @@ export default function InteractiveMap({
     return () => { active = false; };
   }, [availabilitySpots, localPeriod, statusFilter]);
 
-  // Tab Zona Kampus
-  const ZONES = [
-    { id: "all", label: "Semua Kawasan" },
-    { id: "rektorat", label: "Lapangan Rektorat" },
-    { id: "boulevard", label: "Boulevard Utama" },
-    { id: "sc", label: "Student Center" },
-    { id: "agrokompleks", label: "Agrokompleks Sudirman" },
-  ];
+  // Tab Zona Kampus langsung terhubung dari data database
+  const ZONES = useMemo(() => {
+    const zoneMap = new Map<string, string>();
+    zoneMap.set("all", "Semua Kawasan");
+    for (const s of spots) {
+      if (s.zona && !zoneMap.has(s.zona)) {
+        zoneMap.set(s.zona, s.zonaLabel || s.zona.charAt(0).toUpperCase() + s.zona.slice(1));
+      }
+    }
+    return Array.from(zoneMap.entries()).map(([id, label]) => ({ id, label }));
+  }, [spots]);
 
   // Hitung jumlah spot per status untuk label badge
   const counts = useMemo(() => {
@@ -325,13 +372,32 @@ export default function InteractiveMap({
     });
   }, [availabilitySource, spots, selectedZone, statusFilter, isSingleSpot]);
 
-  // Tentukan pusat koordinat kamera peta
+  const currentClusterSpots = useMemo(() => {
+    if (selectedZone === "all") return spots;
+    return spots.filter((s) => s.zona === selectedZone);
+  }, [spots, selectedZone]);
+
+  // Tentukan pusat koordinat kamera peta berdasarkan titik tengah (centroid) dari kelompok tersebut
   const activeCenter = useMemo(() => {
     if (spots.length === 1) {
       return { center: getSpotLatLng(spots[0]), zoom: 17 };
     }
+    const targetSpots = currentClusterSpots;
+
+    if (targetSpots.length > 0) {
+      const sumLat = targetSpots.reduce((acc, s) => acc + getSpotLatLng(s)[0], 0);
+      const sumLng = targetSpots.reduce((acc, s) => acc + getSpotLatLng(s)[1], 0);
+      const centroid: [number, number] = [
+        sumLat / targetSpots.length,
+        sumLng / targetSpots.length,
+      ];
+      return {
+        center: centroid,
+        zoom: selectedZone === "all" ? 16 : 17,
+      };
+    }
     return ZONE_CENTERS[selectedZone] || ZONE_CENTERS.all;
-  }, [spots, selectedZone]);
+  }, [spots, selectedZone, currentClusterSpots]);
 
   return (
     <div
@@ -476,8 +542,10 @@ export default function InteractiveMap({
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
 
-          {/* Pengontrol Dinamis Posisi Peta */}
+          {/* Pengontrol Dinamis Posisi Peta Berdasarkan Centroid Cluster */}
           <MapController
+            targetSpots={currentClusterSpots}
+            selectedZone={selectedZone}
             center={activeCenter.center}
             zoom={activeCenter.zoom}
           />

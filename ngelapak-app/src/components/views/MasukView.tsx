@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { DEMO_USERS } from "@/lib/demo-store";
-import { signInWithEmail, type SupabaseProfile } from "@/lib/supabase/auth";
+import { signInWithEmail, resetPasswordForEmail, type SupabaseProfile } from "@/lib/supabase/auth";
 
 interface MasukViewProps {
   onLoginDemo: (id: string) => Promise<void> | void;
   onLoginSupabase: (profile: SupabaseProfile) => void;
   onNavigateToRegister: () => void;
+  onForgotPassword?: () => void;
 }
 
 const QUICK_SUPABASE_ACCOUNTS = [
@@ -31,6 +32,7 @@ export default function MasukView({
   onLoginDemo,
   onLoginSupabase,
   onNavigateToRegister,
+  onForgotPassword,
 }: MasukViewProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -39,6 +41,26 @@ export default function MasukView({
   const [loading, setLoading] = useState(false);
   const [quickLoadingEmail, setQuickLoadingEmail] = useState<string | null>(null);
   const [showLocalDemo, setShowLocalDemo] = useState(false);
+
+  // Lupa password state
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotSuccess, setForgotSuccess] = useState(false);
+
+  async function handleForgotPassword(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setForgotLoading(true);
+    setError("");
+    try {
+      await resetPasswordForEmail(forgotEmail);
+      setForgotSuccess(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan.");
+    } finally {
+      setForgotLoading(false);
+    }
+  }
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -97,6 +119,62 @@ export default function MasukView({
     <div className="min-h-[calc(100vh-128px)] flex items-center justify-center px-4 py-10 pb-24">
       <div className="w-full max-w-md">
         <div className="bg-white border border-[#e2e7ff] rounded-2xl shadow-sm p-6 sm:p-8">
+
+          {/* ── Lupa Password Panel ── */}
+          {showForgotPassword ? (
+            <div>
+              <button
+                type="button"
+                onClick={() => { setShowForgotPassword(false); setForgotSuccess(false); setError(""); setForgotEmail(""); }}
+                className="flex items-center gap-1 text-sm font-semibold text-[#003466] hover:underline mb-6"
+              >
+                <span className="material-symbols-outlined text-lg">arrow_back</span>
+                Kembali ke Login
+              </button>
+              <div className="text-center mb-6">
+                <div className="w-14 h-14 bg-[#edf3fa] rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <span className="material-symbols-outlined text-[#003466] text-3xl">lock_reset</span>
+                </div>
+                <h2 className="text-xl font-bold">Lupa Password?</h2>
+                <p className="text-sm text-[#737781] mt-2">
+                  Masukkan email Anda dan kami akan mengirim tautan untuk mengatur ulang password.
+                </p>
+              </div>
+              {forgotSuccess ? (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+                  <span className="material-symbols-outlined text-green-600 text-3xl mb-2 block">mark_email_read</span>
+                  <p className="text-sm font-semibold text-green-800">Email terkirim!</p>
+                  <p className="text-xs text-green-700 mt-1">Cek inbox atau folder spam untuk tautan reset password.</p>
+                </div>
+              ) : (
+                <form onSubmit={handleForgotPassword} className="space-y-4">
+                  {error && (
+                    <div role="alert" className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">{error}</div>
+                  )}
+                  <div>
+                    <label htmlFor="forgot-email" className="block text-sm font-semibold mb-2">Email</label>
+                    <input
+                      id="forgot-email"
+                      type="email"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      required
+                      placeholder="Masukkan email akun Anda"
+                      className="w-full border border-[#dce1eb] rounded-xl px-4 py-3 text-sm outline-none focus:border-[#003466] focus:ring-2 focus:ring-[#003466]/10"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={forgotLoading}
+                    className="w-full bg-[#003466] hover:bg-[#1a4b84] disabled:opacity-60 text-white rounded-xl py-3 font-semibold text-sm transition-colors cursor-pointer"
+                  >
+                    {forgotLoading ? "Mengirim..." : "Kirim Tautan Reset"}
+                  </button>
+                </form>
+              )}
+            </div>
+          ) : (
+            <>
           <div className="text-center mb-7">
             <div className="w-14 h-14 bg-[#003466] rounded-2xl flex items-center justify-center mx-auto mb-4">
               <span className="material-symbols-outlined text-white text-3xl">
@@ -183,7 +261,18 @@ export default function MasukView({
             </button>
           </form>
 
-          <p className="text-center text-sm text-[#737781] mt-5">
+          {/* Lupa password link */}
+          <div className="text-center mt-3">
+            <button
+              type="button"
+              onClick={() => { setShowForgotPassword(true); setError(""); }}
+              className="text-sm text-[#737781] hover:text-[#003466] hover:underline cursor-pointer"
+            >
+              Lupa password?
+            </button>
+          </div>
+
+          <p className="text-center text-sm text-[#737781] mt-4">
             Belum memiliki akun?{" "}
             <button
               type="button"
@@ -331,6 +420,8 @@ export default function MasukView({
               </div>
             )}
           </div>
+            </>
+          )}
         </div>
 
         <p className="text-center text-xs text-[#737781] mt-5">

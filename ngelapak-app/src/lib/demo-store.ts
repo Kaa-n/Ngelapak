@@ -5,7 +5,9 @@ import {
   DEMO_USERS,
   MOCK_BOOKINGS,
   MOCK_SPOTS,
+  MOCK_REVIEWS,
   type Booking,
+  type Review,
   type TransactionStatus,
 } from "./mock-data";
 import type { DemoUser, Role } from "./types";
@@ -25,6 +27,7 @@ const BOOKINGS = "ngelapak-demo-bookings-v1";
 const EVENT = "ngelapak-demo-change";
 const PROFILES = "ngelapak-demo-profiles-v1";
 const PRODUCTS = "ngelapak-demo-produk-v1";
+const REVIEWS = "ngelapak-demo-reviews-v1";
 
 type ProfileOverrides = Record<
   string,
@@ -737,4 +740,81 @@ export function reviewDemoCancellation(id: string, decision: "disetujui" | "dito
       adminNote: decision === "ditolak" ? adminNote : request.adminNote,
     },
   } : item));
+}
+
+// ============================================================
+// DEMO REVIEWS MANAGEMENT
+// ============================================================
+
+export function getDemoReviews(spotId?: string): Review[] {
+  try {
+    const raw = read(REVIEWS);
+    const stored: Review[] = raw ? JSON.parse(raw) : [];
+    const all = [...stored, ...MOCK_REVIEWS.filter((m) => !stored.some((s) => s.id === m.id || s.bookingId === m.bookingId))];
+    if (spotId) {
+      return all.filter((r) => r.spotId === spotId);
+    }
+    return all;
+  } catch {
+    return spotId ? MOCK_REVIEWS.filter((r) => r.spotId === spotId) : MOCK_REVIEWS;
+  }
+}
+
+export function getDemoReviewByBookingId(bookingId: string): Review | null {
+  const reviews = getDemoReviews();
+  return reviews.find((r) => r.bookingId === bookingId) || null;
+}
+
+export function saveDemoReview(reviewData: {
+  bookingId: string;
+  spotId: string;
+  ownerId?: string;
+  nama: string;
+  fakultas?: string;
+  rating: number;
+  komentar: string;
+}): Review {
+  const raw = read(REVIEWS);
+  const stored: Review[] = raw ? JSON.parse(raw) : [];
+  
+  const existingIndex = stored.findIndex((r) => r.bookingId === reviewData.bookingId);
+  const now = new Date();
+  const months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+  const formattedDate = `${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
+
+  let result: Review;
+
+  if (existingIndex >= 0) {
+    result = {
+      ...stored[existingIndex],
+      rating: reviewData.rating,
+      komentar: reviewData.komentar,
+      tanggal: formattedDate,
+      createdAt: now.toISOString(),
+    };
+    stored[existingIndex] = result;
+  } else {
+    result = {
+      id: `rev-${Date.now()}`,
+      bookingId: reviewData.bookingId,
+      spotId: reviewData.spotId,
+      ownerId: reviewData.ownerId,
+      nama: reviewData.nama,
+      fakultas: reviewData.fakultas,
+      rating: reviewData.rating,
+      komentar: reviewData.komentar,
+      tanggal: formattedDate,
+      createdAt: now.toISOString(),
+    };
+    stored.unshift(result);
+  }
+
+  try {
+    localStorage.setItem(REVIEWS, JSON.stringify(stored));
+    window.dispatchEvent(new Event(EVENT));
+  } catch {
+    // fallback ignore storage error
+  }
+
+  return result;
 }

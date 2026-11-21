@@ -2,12 +2,13 @@
 
 import React, { useMemo } from "react";
 import LokasiDropdown, { LokasiItem } from "@/components/ui-custom/LokasiDropdown";
-import { ZONA_LABELS, ZONA_COUNTS } from "@/lib/mock-data";
+import { ZONA_LABELS, ZONA_COUNTS, type Spot } from "@/lib/mock-data";
 import type { ZonaFilter } from "./KatalogHero";
 
 export type SortOption = "populer" | "harga-asc" | "harga-desc" | "terbaru";
 
 export interface KatalogZoneTabsProps {
+  spots?: Spot[];
   totalCount: number;
   availableCount: number;
   zonaFilter: ZonaFilter;
@@ -20,6 +21,7 @@ export interface KatalogZoneTabsProps {
 }
 
 export default function KatalogZoneTabs({
+  spots,
   totalCount,
   availableCount,
   zonaFilter,
@@ -30,30 +32,46 @@ export default function KatalogZoneTabs({
   setSortBy,
   onResetPage,
 }: KatalogZoneTabsProps) {
-  // Compute top 2 visible non-all zones and hidden zones for "Lokasi Lainnya"
-  const { visibleZonas, extraLokasiOptions } = useMemo(() => {
-    const allZonas = Object.keys(ZONA_COUNTS) as ZonaFilter[];
-    const nonAll = allZonas
-      .filter((z) => z !== "all")
-      .sort((a, b) => (ZONA_COUNTS[b] ?? 0) - (ZONA_COUNTS[a] ?? 0));
+  // Hitung zona dan opsi lokasi langsung dari data database spots
+  const { visibleZonas, extraLokasiOptions, zoneCounts, zoneLabels } = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const labels: Record<string, string> = { ...ZONA_LABELS };
 
-    const top2 = nonAll.slice(0, 2);
+    if (spots && spots.length > 0) {
+      counts.all = spots.length;
+      for (const s of spots) {
+        if (s.zona) {
+          counts[s.zona] = (counts[s.zona] || 0) + 1;
+          if (s.zonaLabel && !labels[s.zona]) {
+            labels[s.zona] = s.zonaLabel;
+          }
+        }
+      }
+    } else {
+      Object.assign(counts, ZONA_COUNTS);
+    }
+
+    const allZonas = Object.keys(counts).filter((z) => z !== "all");
+    allZonas.sort((a, b) => (counts[b] ?? 0) - (counts[a] ?? 0));
+
+    const top2 = allZonas.slice(0, 2);
     const visible: ZonaFilter[] = ["all", ...top2];
+    const hidden = allZonas.slice(2);
 
-    const hidden = nonAll.slice(2);
-    const options: LokasiItem[] = [
-      ...hidden.map((z) => ({
-        id: z,
-        label: ZONA_LABELS[z]?.split("–")[1]?.trim() ?? z,
-        zona: z,
-      })),
-      { id: "kantin_teknik", label: "Kantin Fakultas Teknik" },
-      { id: "halte_bus", label: "Halte Bus Kampus" },
-      { id: "gedung_rektorat", label: "Depan Gedung Rektorat" },
-    ];
+    // Opsi zona tambahan dari database untuk dropdown (filter berbasis zona)
+    const options: LokasiItem[] = hidden.map((z) => ({
+      id: z,
+      label: labels[z]?.split("–")[1]?.trim() ?? labels[z] ?? z,
+      zona: z,
+    }));
 
-    return { visibleZonas: visible, extraLokasiOptions: options };
-  }, []);
+    return {
+      visibleZonas: visible,
+      extraLokasiOptions: options,
+      zoneCounts: counts,
+      zoneLabels: labels,
+    };
+  }, [spots]);
 
   return (
     <div className="flex flex-col gap-4 mb-6">
@@ -67,7 +85,7 @@ export default function KatalogZoneTabs({
             {customLokasi
               ? ` di ${customLokasi}`
               : zonaFilter !== "all"
-                ? ` di ${ZONA_LABELS[zonaFilter]?.split("–")[1]?.trim()}`
+                ? ` di ${zoneLabels[zonaFilter]?.split("–")[1]?.trim() ?? zoneLabels[zonaFilter] ?? zonaFilter}`
                 : ""}
           </span>
           {availableCount > 0 && (
@@ -84,11 +102,11 @@ export default function KatalogZoneTabs({
         <div className="flex items-center gap-2 flex-wrap pb-1 -mx-1 px-1">
           {visibleZonas.map((zona) => {
             const isActive = zonaFilter === zona;
-            const count = ZONA_COUNTS[zona];
+            const count = zoneCounts[zona] ?? 0;
             const label =
               zona === "all"
                 ? "Semua Lokasi"
-                : ZONA_LABELS[zona]?.split("–")[1]?.trim() || zona;
+                : zoneLabels[zona]?.split("–")[1]?.trim() || zoneLabels[zona] || zona;
 
             return (
               <button
@@ -115,7 +133,7 @@ export default function KatalogZoneTabs({
             );
           })}
 
-          {/* Reusable LokasiDropdown for "Lokasi Lainnya" */}
+          {/* Reusable LokasiDropdown for "Lokasi Lainnya" (Zona Tambahan) */}
           <LokasiDropdown
             selectedLokasi={customLokasi}
             options={extraLokasiOptions}
@@ -125,12 +143,7 @@ export default function KatalogZoneTabs({
                 setZonaFilter("all");
               } else {
                 setCustomLokasi(item.label);
-
-                if (item.zona) {
-                  setZonaFilter(item.zona as ZonaFilter);
-                } else {
-                  setZonaFilter("all");
-                }
+                setZonaFilter(item.zona || item.id);
               }
 
               if (onResetPage) onResetPage();

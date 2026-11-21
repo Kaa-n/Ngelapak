@@ -20,6 +20,19 @@ export interface JadwalOperasionalItem {
   productCaption?: string;
 }
 
+export interface Review {
+  id: string;
+  bookingId: string;
+  spotId: string;
+  ownerId?: string;
+  nama: string;
+  fakultas?: string;
+  rating: number; // 1-5
+  komentar: string;
+  tanggal?: string;
+  createdAt: string;
+}
+
 export interface Spot {
   id: string;
   kode: string;
@@ -36,6 +49,7 @@ export interface Spot {
   tags: string[];
   koordinat: { x: number; y: number };
   gambar: string;
+  gambarList?: string[];
   rating: number;
   totalSewa: number;
   deskripsi: string;
@@ -671,8 +685,45 @@ export const MOCK_BOOKINGS: Booking[] = [
 ];
 
 // ============================================================
-// DATA MANAJEMEN SPOT (DASHBOARD PENGELOLA)
+// DATA ULASAN SPOT (MOCK DATA)
 // ============================================================
+export const MOCK_REVIEWS: Review[] = [
+  {
+    id: "rev-001",
+    bookingId: "BKG-004",
+    spotId: "spot-001",
+    ownerId: "bayu",
+    nama: "Bayu Pratama",
+    fakultas: "FEB",
+    rating: 5,
+    komentar: "Lokasi sangat strategis di Lapangan Rektorat, banyak mahasiswa lewat saat jam istirahat. Fasilitas lengkap!",
+    tanggal: "22 Okt 2025",
+    createdAt: "2025-10-22T14:30:00Z",
+  },
+  {
+    id: "rev-002",
+    bookingId: "BKG-006",
+    spotId: "spot-002",
+    ownerId: "ayu",
+    nama: "Ayu Maharani",
+    fakultas: "FT",
+    rating: 5,
+    komentar: "Spotnya bersih dan nyaman. Kanopi cukup melindungi dari panas dan hujan. Proses reservasi sangat cepat dan rapi.",
+    tanggal: "20 Okt 2025",
+    createdAt: "2025-10-20T16:00:00Z",
+  },
+  {
+    id: "rev-003",
+    bookingId: "BKG-MOCK-003",
+    spotId: "spot-003",
+    nama: "Deva Mahendra",
+    fakultas: "FH",
+    rating: 4,
+    komentar: "Proses booking mudah, admin responsif saat verifikasi dokumen. Akses listrik juga aman.",
+    tanggal: "15 Okt 2025",
+    createdAt: "2025-10-15T11:00:00Z",
+  },
+];
 export const MOCK_SPOT_MANAGEMENT: SpotManagement[] = [
   {
     id: "spot-001",
@@ -936,4 +987,29 @@ export function buildDefaultCaption(spot: Spot): string {
   lines.push(`Tarif: Rp ${spot.tarifPerHari.toLocaleString("id-ID")}/hari`);
 
   return lines.join("\n");
+}
+
+export function parseSpotImages(raw: string | null | undefined): { primary: string; list: string[] } {
+  if (!raw || !raw.trim()) {
+    return { primary: "", list: [] };
+  }
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const valid = parsed.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+        if (valid.length > 0) {
+          return { primary: valid[0], list: valid };
+        }
+      }
+    } catch {}
+  }
+  if (trimmed.includes("||")) {
+    const parts = trimmed.split("||").map((s) => s.trim()).filter(Boolean);
+    if (parts.length > 0) {
+      return { primary: parts[0], list: parts };
+    }
+  }
+  return { primary: trimmed, list: [trimmed] };
 }

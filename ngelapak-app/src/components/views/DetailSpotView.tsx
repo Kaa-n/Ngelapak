@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useState, useSyncExternalStore } from "react";
-import type { JadwalOperasionalItem, Spot } from "@/lib/mock-data";
+import React, { useEffect, useState, useRef, useMemo, useSyncExternalStore } from "react";
+import type { JadwalOperasionalItem, Review, Spot } from "@/lib/mock-data";
 import dynamic from "next/dynamic";
 import { formatRupiah, formatDate } from "@/lib/mock-data";
 import type { ToastMessage, DemoUser } from "@/lib/types";
@@ -9,7 +9,8 @@ import type { SupabaseProfile } from "@/lib/supabase/auth";
 import BookingDateFields from "@/components/booking/BookingDateFields";
 import { createSupabaseBooking } from "@/lib/supabase/bookings";
 import { createClient } from "@/lib/supabase/client";
-import { createDemoBooking, getAllDemoBookings, today } from "@/lib/demo-store";
+import { createDemoBooking, getAllDemoBookings, getDemoReviews, today } from "@/lib/demo-store";
+import { getSupabaseReviewsBySpot } from "@/lib/supabase/reviews";
 import {
   CANCELLATION_WINDOW_MS,
   CLEANING_DAYS,
@@ -179,6 +180,40 @@ export default function DetailSpotView({
     setActiveTab(initialTab);
   }
   const [imgError, setImgError] = useState(false);
+  const [activeImageIdx, setActiveImageIdx] = useState(0);
+  const touchStartX = useRef<number | null>(null);
+  const touchEndX = useRef<number | null>(null);
+
+  const spotImages = useMemo(() => {
+    if (spot?.gambarList && spot.gambarList.length > 0) return spot.gambarList;
+    if (spot?.gambar) return [spot.gambar];
+    return [];
+  }, [spot]);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.targetTouches[0].clientX;
+    touchEndX.current = null;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    touchEndX.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStartX.current === null || touchEndX.current === null) return;
+    const diff = touchStartX.current - touchEndX.current;
+    if (Math.abs(diff) > 40 && spotImages.length > 1) {
+      if (diff > 0) {
+        // Swipe left -> Next
+        setActiveImageIdx((prev) => (prev + 1) % spotImages.length);
+      } else {
+        // Swipe right -> Prev
+        setActiveImageIdx((prev) => (prev - 1 + spotImages.length) % spotImages.length);
+      }
+    }
+    touchStartX.current = null;
+    touchEndX.current = null;
+  };
 
   // Client-side rendering flag untuk InteractiveMap Leaflet
   const isMounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
@@ -264,6 +299,53 @@ export default function DetailSpotView({
     { nama: "Bayu Pratama", fakultas: "FEB", rating: 4, komentar: "Spotnya bersih dan nyaman. Kanopi cukup untuk melindungi dari hujan.", tanggal: "10 Okt 2026" },
     { nama: "Deva Mahendra", fakultas: "FH", rating: 5, komentar: "Proses booking mudah, admin responsif. Pasti akan sewa lagi!", tanggal: "5 Okt 2026" },
   ];
+
+  const [spotReviews, setSpotReviews] = useState<Review[]>([]);
+  const isDemo = user?.id === "ayu" || user?.id === "bayu";
+
+  useEffect(() => {
+    if (!spot) return;
+    let active = true;
+    async function loadReviews() {
+      if (isDemo) {
+        const revs = getDemoReviews(spot!.id);
+        if (active) setSpotReviews(revs);
+        return;
+      }
+      try {
+        const revs = await getSupabaseReviewsBySpot(spot!.id);
+        if (active) {
+          if (revs.length > 0) {
+            setSpotReviews(revs);
+          } else {
+            setSpotReviews(getDemoReviews(spot!.id));
+          }
+        }
+      } catch {
+        if (active) setSpotReviews(getDemoReviews(spot!.id));
+      }
+    }
+    loadReviews();
+    return () => {
+      active = false;
+    };
+  }, [spot?.id, isDemo]);
+
+  const displayedReviews = useMemo(() => {
+    if (spotReviews.length > 0) return spotReviews;
+    const spotId = spot?.id || "default";
+    return ULASAN_MOCK.map((m, idx) => ({
+      id: `mock-${idx}`,
+      bookingId: `mock-bkg-${idx}`,
+      spotId,
+      nama: m.nama,
+      fakultas: m.fakultas,
+      rating: m.rating,
+      komentar: m.komentar,
+      tanggal: m.tanggal,
+      createdAt: new Date().toISOString(),
+    }));
+  }, [spotReviews, spot?.id]);
 
   // LANGKAH 1: Validasi Form & Buka Modal Pembayaran (Barcode QRIS & Token)
   const handleOpenPayment = () => {
@@ -401,41 +483,104 @@ export default function DetailSpotView({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* KIRI: Detail Spot & Peta Interaktif Leaflet */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Gambar Hero Spot */}
-            <div className="relative h-64 md:h-80 w-full rounded-2xl overflow-hidden bg-[#eaedff] shadow-sm">
-              {!imgError ? (
+            {/* Gambar Hero Spot (Interactive Swipe Carousel) */}
+            <div
+              className="relative h-64 md:h-80 w-full rounded-2xl overflow-hidden bg-[#eaedff] shadow-sm select-none"
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+            >
+              {spotImages.length > 0 && !imgError ? (
                 <img
-                  src={spot.gambar}
-                  alt={spot.nama}
-                  className="w-full h-full object-cover"
+                  src={spotImages[activeImageIdx] || spotImages[0]}
+                  alt={`${spot.nama} - Foto ${activeImageIdx + 1}`}
+                  className="w-full h-full object-cover transition-all duration-300"
                   onError={() => setImgError(true)}
+                  draggable={false}
                 />
               ) : (
                 <div className="w-full h-full bg-gradient-to-br from-[#003466]/30 to-[#1a4b84]/20 flex items-center justify-center">
                   <span className="material-symbols-outlined text-white/30 text-[80px]">storefront</span>
                 </div>
               )}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
 
               {/* Status Badge */}
-              <div className="absolute top-4 left-4">
+              <div className="absolute top-4 left-4 z-10">
                 <span className={`px-3 py-1 rounded-full text-[12px] font-bold uppercase tracking-wide shadow-sm ${isSelectedPeriodAvailable
                   ? "bg-[#6ffbbe] text-[#002113]"
-                  : spot.status === "dipesan"
-                    ? "bg-[#ffddb8] text-[#2a1700]"
-                    : "bg-[#e2e7ff] text-[#424750]"
+                  : spot.status === "pemeliharaan"
+                    ? "bg-[#e2e7ff] text-[#424750]"
+                    : "bg-[#ffddb8] text-[#2a1700]"
                   }`}>
-                  {isSelectedPeriodAvailable ? "Tersedia untuk periode pilihan" : spot.status === "dipesan" ? "Tidak tersedia pada periode pilihan" : "Pemeliharaan"}
+                  {isSelectedPeriodAvailable
+                    ? "Tersedia untuk periode pilihan"
+                    : spot.status === "pemeliharaan"
+                      ? "Pemeliharaan"
+                      : "Tidak tersedia pada periode pilihan"}
                 </span>
               </div>
 
+              {/* Photo Counter Badge (jika ada lebih dari 1 foto) */}
+              {spotImages.length > 1 && (
+                <div className="absolute top-4 right-4 z-10 flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md text-white text-[11px] font-bold">
+                  <span className="material-symbols-outlined text-[13px]">photo_camera</span>
+                  <span>{activeImageIdx + 1} / {spotImages.length}</span>
+                </div>
+              )}
+
+              {/* Tombol Navigasi Carousel Kiri & Kanan */}
+              {spotImages.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveImageIdx((prev) => (prev - 1 + spotImages.length) % spotImages.length);
+                    }}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-sm transition-all cursor-pointer shadow-md"
+                    aria-label="Foto sebelumnya"
+                  >
+                    <span className="material-symbols-outlined text-[20px]">chevron_left</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveImageIdx((prev) => (prev + 1) % spotImages.length);
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 z-10 w-9 h-9 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-sm transition-all cursor-pointer shadow-md"
+                    aria-label="Foto berikutnya"
+                  >
+                    <span className="material-symbols-outlined text-[20px]">chevron_right</span>
+                  </button>
+
+                  {/* Indikator Titik (Dots) di Bawah Carousel */}
+                  <div className="absolute bottom-4 right-4 z-10 flex items-center gap-1.5">
+                    {spotImages.map((_, dotIdx) => (
+                      <button
+                        key={dotIdx}
+                        type="button"
+                        onClick={() => setActiveImageIdx(dotIdx)}
+                        className={`h-2 rounded-full transition-all cursor-pointer ${
+                          dotIdx === activeImageIdx
+                            ? "w-6 bg-white shadow-sm"
+                            : "w-2 bg-white/50 hover:bg-white/80"
+                        }`}
+                        aria-label={`Lihat foto ${dotIdx + 1}`}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+
               {/* Rating & Total Sewa */}
-              <div className="absolute bottom-4 left-4 flex items-center gap-2">
+              <div className="absolute bottom-4 left-4 z-10 flex items-center gap-2">
                 <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-sm">
                   <span className="material-symbols-outlined text-[#fea619] text-[14px]">star</span>
                   <span className="text-white text-[13px] font-semibold">{spot.rating}</span>
                 </div>
-                <span className="text-white/80 text-[12px]">{spot.totalSewa || 0} kali disewa</span>
+                <span className="text-white/90 text-[12px] drop-shadow-sm">{spot.totalSewa || 0} kali disewa</span>
               </div>
             </div>
 
@@ -461,7 +606,7 @@ export default function DetailSpotView({
                   { id: "detail", label: "Detail & Spesifikasi" },
                   { id: "operasional", label: "Jadwal Operasional" },
                   { id: "fasilitas", label: "Fasilitas" },
-                  { id: "ulasan", label: `Ulasan (${ULASAN_MOCK.length})` },
+                  { id: "ulasan", label: `Ulasan (${displayedReviews.length})` },
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -629,18 +774,38 @@ export default function DetailSpotView({
             {/* Tab Content 4: Ulasan */}
             {activeTab === "ulasan" && (
               <div className="space-y-4">
-                {ULASAN_MOCK.map((ulasan, i) => (
-                  <div key={i} className="bg-white rounded-xl p-4 border border-[#e2e7ff] shadow-sm">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="w-8 h-8 rounded-full bg-[#1a4b84] flex items-center justify-center text-white font-bold text-xs">
-                        {ulasan.nama[0]}
+                {displayedReviews.map((ulasan, i) => (
+                  <div key={ulasan.id || i} className="bg-white rounded-xl p-4 border border-[#e2e7ff] shadow-xs">
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-[#1a4b84] flex items-center justify-center text-white font-bold text-xs uppercase">
+                          {ulasan.nama ? ulasan.nama[0] : "U"}
+                        </div>
+                        <div>
+                          <p className="text-[13px] font-bold text-[#131b2e]">{ulasan.nama}</p>
+                          <p className="text-[11px] text-[#737781]">
+                            {ulasan.fakultas ? `${ulasan.fakultas} • ` : ""}{ulasan.tanggal || "Penyewa Lapak"}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-[13px] font-bold text-[#131b2e]">{ulasan.nama}</p>
-                        <p className="text-[11px] text-[#737781]">{ulasan.fakultas} • {ulasan.tanggal}</p>
+                      <div className="flex items-center gap-0.5 bg-amber-50 px-2 py-1 rounded-md border border-amber-200">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <span
+                            key={star}
+                            className={`material-symbols-outlined text-[14px] ${
+                              star <= ulasan.rating ? "text-amber-400 fill-1" : "text-[#d1d7e8]"
+                            }`}
+                            style={{ fontVariationSettings: star <= ulasan.rating ? "'FILL' 1" : "'FILL' 0" }}
+                          >
+                            star
+                          </span>
+                        ))}
+                        <span className="text-[11px] font-bold text-amber-800 ml-1">
+                          {ulasan.rating}
+                        </span>
                       </div>
                     </div>
-                    <p className="text-[13px] text-[#424750]">{ulasan.komentar}</p>
+                    <p className="text-[13px] text-[#424750] leading-relaxed mt-2">{ulasan.komentar}</p>
                   </div>
                 ))}
               </div>
@@ -1233,8 +1398,8 @@ export default function DetailSpotView({
                   {/* Tombol Membuka Modal Pembayaran (QRIS / Token) */}
                   <button
                     onClick={handleOpenPayment}
-                    disabled={spot.status === "dipesan" || isConflicted}
-                    className={`w-full h-12 rounded-xl text-[14px] font-bold transition-all flex items-center justify-center gap-2 ${spot.status === "dipesan" || isConflicted
+                    disabled={isConflicted}
+                    className={`w-full h-12 rounded-xl text-[14px] font-bold transition-all flex items-center justify-center gap-2 ${isConflicted
                       ? "bg-[#eaedff] text-[#737781] cursor-not-allowed"
                       : "bg-[#003466] text-white hover:bg-[#1a4b84] shadow-md hover:shadow-lg"
                       }`}

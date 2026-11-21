@@ -12,6 +12,7 @@ export type PageView =
   | "masuk"
   | "daftar"
   | "edit-profile"
+  | "settings"
   | "help-center";
 
 export type Role = "admin" | "penyewa";
@@ -35,7 +36,7 @@ export function canAccess(view: PageView, role?: Role) {
     return role === "penyewa";
   }
 
-  if (view === "edit-profile") {
+  if (view === "edit-profile" || view === "settings") {
     return role !== undefined;
   }
 

@@ -12,6 +12,7 @@ import Footer from "../components/ui-custom/Footer";
 import Toast from "../components/ui-custom/Toast";
 import PesananView from "../components/views/PesananView";
 import EditProfileView from "../components/views/EditProfileView";
+import SettingsView from "../components/views/SettingsView";
 import DetailPesananView from "../components/views/DetailPesananView";
 import { useDemo, demoLogout } from "../lib/demo-store";
 import { canAccess } from "../lib/types";
@@ -201,6 +202,7 @@ useEffect(() => {
     if (requestedView === "katalog") return "katalog";
     if (requestedView === "pesanan") return "pesanan";
     if (requestedView === "edit-profile") return "edit-profile";
+    if (requestedView === "settings") return "settings";
     if (requestedView === "help-center") return "help-center";
     return "home";
   });
@@ -248,6 +250,8 @@ useEffect(() => {
       setCurrentView("pesanan");
     } else if (v === "edit-profile") {
       setCurrentView("edit-profile");
+    } else if (v === "settings") {
+      setCurrentView("settings");
     } else if (v === "help-center") {
       setCurrentView("help-center");
     } else if (!v) {
@@ -315,6 +319,8 @@ useEffect(() => {
       if (orderId) params.set("pesanan", orderId);
     } else if (view === "edit-profile") {
       params.set("view", "edit-profile");
+    } else if (view === "settings") {
+      params.set("view", "settings");
     } else if (view === "help-center") {
       params.set("view", "help-center");
     }
@@ -348,13 +354,14 @@ useEffect(() => {
       pesanan: "Pesanan Saya | Ngelapak",
       "detail-pesanan": "Detail Pesanan | Ngelapak",
       "edit-profile": "Edit Profil | Ngelapak",
+      settings: "Pengaturan Akun | Ngelapak",
       "help-center": "Pusat Bantuan | Ngelapak",
     };
     document.title = titles[currentView] ?? "Ngelapak";
   }, [currentView, selectedSpot]);
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#faf8ff]">
+    <div className="flex flex-col min-h-screen bg-[#faf8ff] dark:bg-[#0b0f19] transition-colors duration-150">
       {/* Top Navbar */}
       <Navbar
         currentView={currentView}
@@ -426,6 +433,13 @@ useEffect(() => {
             onBack={() => navigate("home")}
             onShowToast={showToast}
             onProfileUpdated={handleProfileUpdated}
+          />
+        )}
+        {currentView === "settings" && user && (
+          <SettingsView
+            user={user}
+            onBack={() => navigate("home")}
+            onShowToast={showToast}
           />
         )}
         {currentView === "katalog" && (

@@ -149,6 +149,41 @@ export async function signOutSupabase() {
   }
 }
 
+// Kirim email reset password ke alamat email yang diberikan.
+export async function resetPasswordForEmail(email: string): Promise<void> {
+  const supabase = createClient();
+  if (!supabase) throw new Error("Koneksi Supabase belum dikonfigurasi.");
+  const redirectTo = typeof window !== "undefined"
+    ? new URL("/masuk?konfirmasi=reset", window.location.origin).href
+    : undefined;
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo });
+  if (error) throw new Error(error.message);
+}
+
+// Ubah email pengguna yang sedang login.
+export async function updateEmail(newEmail: string): Promise<void> {
+  const supabase = createClient();
+  if (!supabase) throw new Error("Koneksi Supabase belum dikonfigurasi.");
+  const { error } = await supabase.auth.updateUser({ email: newEmail.trim().toLowerCase() });
+  if (error) throw new Error(error.message);
+}
+
+// Ubah password pengguna yang sedang login.
+export async function updatePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const supabase = createClient();
+  if (!supabase) throw new Error("Koneksi Supabase belum dikonfigurasi.");
+  // Verifikasi password lama dengan re-login
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user?.email) throw new Error("Sesi login tidak ditemukan.");
+  const { error: signInError } = await supabase.auth.signInWithPassword({
+    email: userData.user.email,
+    password: currentPassword,
+  });
+  if (signInError) throw new Error("Password lama tidak sesuai.");
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw new Error(error.message);
+}
+
 // Memperbarui data profil pengguna yang sedang login.
 export async function updateCurrentSupabaseProfile(input: {
   nama: string;

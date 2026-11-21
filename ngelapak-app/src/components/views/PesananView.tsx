@@ -1,36 +1,36 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { canCancelBooking, useDemo } from "@/lib/demo-store";
+import { canCancelBooking, getDemoReviews, today, useDemo } from "@/lib/demo-store";
 import { paymentLabel } from "@/lib/rental-policy";
-import {
-  cancellationDecisionStatus,
-  cancellationStatusBadge,
-  formatDate,
-  formatRupiah,
-} from "@/lib/mock-data";
-import type { Booking } from "@/lib/mock-data";
+import { formatDate, formatRupiah, isPendingCancellationRefund } from "@/lib/mock-data";
+import type { Booking, Review } from "@/lib/mock-data";
 import type { ToastMessage } from "@/lib/types";
 import type { SupabaseProfile } from "@/lib/supabase/auth";
 import { getSupabaseBookings } from "@/lib/supabase/bookings";
+import { getSupabaseReviewByBooking } from "@/lib/supabase/reviews";
 import DetailPesananView from "./DetailPesananView";
+import ReviewModal from "@/components/booking/ReviewModal";
 
 // ============================================================
 // TYPES & HELPERS
 // ============================================================
 
-type FilterTab = "semua" | "menunggu" | "disetujui" | "ditolak" | "dibatalkan";
+type FilterTab = "semua" | "aktif" | "menunggu" | "disetujui" | "selesai" | "ditolak" | "dibatalkan";
 
 function getEffectiveStatus(booking: Booking): FilterTab {
   if (booking.statusVerifikasi === "ditolak") return "ditolak";
-
-  const cancelDecision = cancellationDecisionStatus(booking);
-  if (cancelDecision === "menunggu") return "menunggu";
-  if (cancelDecision === "disetujui") return "disetujui";
-  if (cancelDecision === "ditolak") return "ditolak";
-
   if (booking.status === "dibatalkan") return "dibatalkan";
-  if (booking.statusVerifikasi === "disetujui") return "disetujui";
+  if (booking.statusVerifikasi === "disetujui") {
+    const currentDay = today();
+    if (booking.status === "selesai" || currentDay > booking.tanggalSelesai) {
+      return "selesai";
+    }
+    if (currentDay >= booking.tanggalMulai && currentDay <= booking.tanggalSelesai) {
+      return "aktif";
+    }
+    return "disetujui";
+  }
   return "menunggu";
 }
 
@@ -39,22 +39,41 @@ function getStatusBadge(booking: Booking): {
   cls: string;
   icon: string;
 } {
-  const cancelBadge = cancellationStatusBadge(booking);
-  if (cancelBadge) return cancelBadge;
-
+  if (isPendingCancellationRefund(booking)) {
+    return {
+      label: "Menunggu Pengembalian Dana",
+      cls: "bg-orange-50 text-orange-800 border-orange-200",
+      icon: "hourglass_top",
+    };
+  }
   if (booking.status === "dibatalkan" && booking.statusVerifikasi !== "ditolak")
     return {
       label: "Dibatalkan",
       cls: "bg-red-50 text-red-700 border-red-200",
       icon: "cancel",
     };
-  if (booking.statusVerifikasi === "disetujui")
+  if (booking.statusVerifikasi === "disetujui") {
+    const currentDay = today();
+    if (booking.status === "selesai" || currentDay > booking.tanggalSelesai) {
+      return {
+        label: "Selesai",
+        cls: "bg-blue-50 text-blue-700 border-blue-200",
+        icon: "task_alt",
+      };
+    }
+    if (currentDay >= booking.tanggalMulai && currentDay <= booking.tanggalSelesai) {
+      return {
+        label: "Sewa Aktif",
+        cls: "bg-emerald-50 text-emerald-700 border-emerald-200",
+        icon: "storefront",
+      };
+    }
     return {
-      label: booking.status === "selesai" ? "Selesai"
-        : booking.metodePembayaran === "midtrans" ? "Lunas" : "Disetujui",
-      cls: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      label: booking.metodePembayaran === "midtrans" ? "Lunas" : "Disetujui",
+      cls: "bg-teal-50 text-teal-700 border-teal-200",
       icon: "check_circle",
     };
+  }
   if (booking.statusVerifikasi === "ditolak")
     return {
       label: booking.metodePembayaran === "midtrans" ? paymentLabel(booking.statusVerifikasi, booking.paymentStatus) : "Ditolak",
@@ -79,21 +98,15 @@ const STEPS = [
   { label: "Sewa Aktif / Selesai", icon: "store" },
 ];
 
-const CANCEL_STEPS = [
-  { label: "Pesanan Dibuat", icon: "receipt_long" },
-  { label: "Pembayaran Lunas", icon: "payments" },
-  { label: "Pengajuan Pembatalan", icon: "cancel" },
-  { label: "Disetujui / Ditolak", icon: "fact_check" },
-];
-
 function getStepIndex(booking: Booking): number {
-  const cancelDecision = cancellationDecisionStatus(booking);
-  if (cancelDecision === "disetujui" || cancelDecision === "ditolak") return 4;
-  if (cancelDecision === "menunggu") return 3;
   if (booking.status === "selesai") return 4;
-  if (booking.status === "aktif") return 3;
+  if (booking.statusVerifikasi === "disetujui") {
+    const currentDay = today();
+    if (currentDay > booking.tanggalSelesai) return 4;
+    if (currentDay >= booking.tanggalMulai) return 3;
+    return 2;
+  }
   if (
-    booking.statusVerifikasi === "disetujui" ||
     booking.statusVerifikasi === "ditolak" ||
     booking.status === "dibatalkan"
   )
@@ -104,31 +117,21 @@ function getStepIndex(booking: Booking): number {
 }
 
 function StatusStepper({ booking }: { booking: Booking }) {
-  const cancelDecision = cancellationDecisionStatus(booking);
   const current = getStepIndex(booking);
-  const steps = cancelDecision
-    ? CANCEL_STEPS
-    : booking.metodePembayaran === "midtrans"
-      ? [
-        STEPS[0],
-        { label: "Menunggu pembayaran", icon: "pending_actions" },
-        { label: "Konfirmasi pembayaran", icon: "fact_check" },
-        STEPS[3],
-      ]
-      : STEPS;
+  const steps = booking.metodePembayaran === "midtrans" ? [
+    STEPS[0], { label: "Menunggu pembayaran", icon: "pending_actions" },
+    { label: "Konfirmasi pembayaran", icon: "fact_check" }, STEPS[3],
+  ] : STEPS;
   const isRejected =
-    cancelDecision === "ditolak" ||
-    (!cancelDecision &&
-      (booking.statusVerifikasi === "ditolak" || booking.status === "dibatalkan"));
-  const isApprovedCancel = cancelDecision === "disetujui";
-  const decisionStep = cancelDecision ? 3 : 2;
+    booking.statusVerifikasi === "ditolak" ||
+    booking.status === "dibatalkan";
 
   return (
     <div className="flex items-start gap-0 w-full mt-4">
       {steps.map((step, idx) => {
-        const done = idx < current || (isApprovedCancel && idx === decisionStep);
-        const active = idx === current && !(isApprovedCancel && idx === decisionStep);
-        const rejected = isRejected && idx === decisionStep;
+        const done = idx < current;
+        const active = idx === current;
+        const rejected = isRejected && idx === 2;
 
         let dotCls = "bg-[#e2e7ff] border-[#c5cbe0]";
         let lineCls = "bg-[#e2e7ff]";
@@ -141,9 +144,6 @@ function StatusStepper({ booking }: { booking: Booking }) {
         } else if (active && rejected) {
           dotCls = "bg-red-500 border-red-500";
           textCls = "text-red-700";
-        } else if (active && cancelDecision === "menunggu" && idx === decisionStep) {
-          dotCls = "bg-orange-500 border-orange-500";
-          textCls = "text-orange-800 font-semibold";
         } else if (active) {
           dotCls = "bg-[#003466] border-[#003466]";
           textCls = "text-[#003466] font-semibold";
@@ -152,11 +152,13 @@ function StatusStepper({ booking }: { booking: Booking }) {
         return (
           <div key={idx} className="flex-1 flex flex-col items-center">
             <div className="flex items-center w-full">
+              {/* Left connector */}
               {idx > 0 && (
                 <div
-                  className={`flex-1 h-0.5 ${idx <= current || (isApprovedCancel && idx <= decisionStep) ? lineCls : "bg-[#e2e7ff]"}`}
+                  className={`flex-1 h-0.5 ${idx <= current ? lineCls : "bg-[#e2e7ff]"}`}
                 />
               )}
+              {/* Dot */}
               <div
                 className={`w-7 h-7 rounded-full border-2 flex items-center justify-center shrink-0 ${dotCls}`}
               >
@@ -166,26 +168,21 @@ function StatusStepper({ booking }: { booking: Booking }) {
                   </span>
                 ) : (
                   <span
-                    className={`material-symbols-outlined text-[14px] ${active ? "text-white" : "text-[#c5cbe0]"}`}
+                    className={`material-symbols-outlined text-[14px] ${active && !rejected ? "text-white" : active && rejected ? "text-white" : "text-[#c5cbe0]"}`}
                   >
                     {step.icon}
                   </span>
                 )}
               </div>
-              {idx < steps.length - 1 && (
+              {/* Right connector */}
+              {idx < STEPS.length - 1 && (
                 <div
-                  className={`flex-1 h-0.5 ${idx < current || (isApprovedCancel && idx < decisionStep) ? lineCls : "bg-[#e2e7ff]"}`}
+                  className={`flex-1 h-0.5 ${idx < current ? lineCls : "bg-[#e2e7ff]"}`}
                 />
               )}
             </div>
             <p className={`text-[10px] mt-1 text-center leading-tight ${textCls}`}>
-              {cancelDecision && idx === decisionStep
-                ? cancelDecision === "disetujui"
-                  ? "Disetujui"
-                  : cancelDecision === "ditolak"
-                    ? "Ditolak"
-                    : "Disetujui / Ditolak"
-                : step.label}
+              {step.label}
             </p>
           </div>
         );
@@ -200,14 +197,18 @@ function StatusStepper({ booking }: { booking: Booking }) {
 
 function BookingCard({
   booking,
+  review,
   onViewDetail,
+  onOpenReview,
 }: {
   booking: Booking;
+  review?: Review;
   onViewDetail: (id: string) => void;
+  onOpenReview?: (booking: Booking) => void;
 }) {
   const badge = getStatusBadge(booking);
   const eligible = canCancelBooking(booking);
-  const canEditCaption =
+  const isCompleted = getEffectiveStatus(booking) === "selesai";
     booking.status !== "dibatalkan" &&
     booking.statusVerifikasi === "disetujui" &&
     Boolean(booking.paidAt) &&
@@ -277,26 +278,39 @@ function BookingCard({
       </div>
 
       {/* Actions */}
-      <div className="px-4 pb-4 flex gap-2 mt-auto">
+      <div className="px-4 pb-4 flex items-center gap-2 mt-auto">
         <button
+          type="button"
           onClick={() => onViewDetail(booking.id)}
-          className="flex-1 flex items-center justify-center gap-1.5 bg-[#003466] hover:bg-[#004785] text-white text-xs font-semibold py-2.5 rounded-xl transition-colors"
+          className="flex-1 flex items-center justify-center gap-1.5 bg-[#003466] hover:bg-[#004785] text-white text-xs font-semibold py-2.5 rounded-xl transition-colors cursor-pointer"
         >
           <span className="material-symbols-outlined text-[15px]">
             open_in_new
           </span>
-          Lihat Detail
+          <span>Lihat Detail</span>
         </button>
-        {/* {canEditCaption /* && TODO: hapus kalau tidak digunakan */}
-        {/*       <button
-            onClick={() => onViewDetail(booking.id)}
-            className="flex items-center gap-1 border border-[#003466] text-[#003466] hover:bg-[#eef3ff] text-xs font-semibold px-3 py-2.5 rounded-xl transition-colors cursor-pointer"
-            aria-label={`Edit deskripsi produk untuk ${booking.namaUsaha || booking.spotNama}`}
+
+        {isCompleted && onOpenReview && (
+          <button
+            type="button"
+            onClick={() => onOpenReview(booking)}
+            className={`flex items-center gap-1 text-xs font-semibold px-3 py-2.5 rounded-xl transition-all cursor-pointer border shrink-0 ${
+              review
+                ? "bg-amber-50/80 border-amber-300 text-amber-900 hover:bg-amber-100"
+                : "bg-[#fffbf0] border-amber-300 text-[#855300] hover:bg-[#fff5d6]"
+            }`}
+            title={review ? "Klik untuk melihat atau mengubah ulasan Anda" : "Beri ulasan untuk lapak ini"}
           >
-            <span className="material-symbols-outlined text-[15px]">edit_note</span>
-            Edit Produk
+            <span
+              className="material-symbols-outlined text-[15px] text-amber-500"
+              style={{ fontVariationSettings: review ? "'FILL' 1" : "'FILL' 0" }}
+            >
+              star
+            </span>
+            <span>{review ? `${review.rating}★ Ulasan` : "Beri Ulasan"}</span>
           </button>
-        )} */}
+        )}
+
         {eligible && (
           <button
             onClick={() => onViewDetail(booking.id)}
@@ -319,8 +333,10 @@ function BookingCard({
 
 const TABS: { key: FilterTab; label: string }[] = [
   { key: "semua", label: "Semua" },
+  { key: "aktif", label: "Sewa Aktif" },
   { key: "menunggu", label: "Menunggu" },
   { key: "disetujui", label: "Disetujui" },
+  { key: "selesai", label: "Selesai" },
   { key: "ditolak", label: "Ditolak" },
   { key: "dibatalkan", label: "Dibatalkan" },
 ];
@@ -388,6 +404,44 @@ export default function PesananView({
 
   const [activeTab, setActiveTab] = useState<FilterTab>("semua");
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [reviewsMap, setReviewsMap] = useState<Record<string, Review>>({});
+  const [reviewBooking, setReviewBooking] = useState<Booking | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadReviews() {
+      if (isDemoUser) {
+        const demoRevs = getDemoReviews();
+        const map: Record<string, Review> = {};
+        for (const r of demoRevs) {
+          map[r.bookingId] = r;
+        }
+        if (isMounted) setReviewsMap(map);
+        return;
+      }
+
+      try {
+        const map: Record<string, Review> = {};
+        await Promise.all(
+          bookings.map(async (b) => {
+            const rev = await getSupabaseReviewByBooking(b.id);
+            if (rev) map[b.id] = rev;
+          })
+        );
+        if (isMounted) setReviewsMap(map);
+      } catch {
+        // ignore
+      }
+    }
+
+    if (bookings.length > 0) {
+      loadReviews();
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [bookings, isDemoUser, reloadVersion]);
 
   if (user?.role !== "penyewa") return null;
 
@@ -416,17 +470,16 @@ export default function PesananView({
   // Counts for badges
   const counts: Record<FilterTab, number> = {
     semua: bookings.length,
+    aktif: bookings.filter((b) => getEffectiveStatus(b) === "aktif").length,
     menunggu: bookings.filter((b) => getEffectiveStatus(b) === "menunggu").length,
     disetujui: bookings.filter((b) => getEffectiveStatus(b) === "disetujui").length,
+    selesai: bookings.filter((b) => getEffectiveStatus(b) === "selesai").length,
     ditolak: bookings.filter((b) => getEffectiveStatus(b) === "ditolak").length,
     dibatalkan: bookings.filter((b) => getEffectiveStatus(b) === "dibatalkan").length,
   };
 
   return (
-    <div
-      className="max-w-6xl mx-auto px-4 py-8 pb-28"
-      style={{ background: "#faf8ff", minHeight: "100vh" }}
-    >
+    <div className="max-w-6xl mx-auto px-4 py-8 pb-28 min-h-screen">
       {/* ── HEADER ── */}
       <div className="flex flex-wrap justify-between items-start gap-4 mb-6">
         <div>
@@ -456,22 +509,22 @@ export default function PesananView({
           color="text-[#003466]"
         />
         <SummaryCard
+          label="Sewa Aktif"
+          value={counts.aktif}
+          icon="storefront"
+          color="text-emerald-600"
+        />
+        <SummaryCard
           label="Menunggu"
           value={counts.menunggu}
           icon="schedule"
           color="text-amber-600"
         />
         <SummaryCard
-          label="Disetujui"
-          value={counts.disetujui}
-          icon="check_circle"
-          color="text-emerald-600"
-        />
-        <SummaryCard
-          label="Ditolak"
-          value={counts.ditolak + counts.dibatalkan}
-          icon="cancel"
-          color="text-red-500"
+          label="Selesai"
+          value={counts.selesai}
+          icon="task_alt"
+          color="text-blue-600"
         />
       </div>
 
@@ -556,11 +609,33 @@ export default function PesananView({
             <BookingCard
               key={booking.id}
               booking={booking}
+              review={reviewsMap[booking.id]}
               onViewDetail={setDetailId}
+              onOpenReview={setReviewBooking}
             />
           ))}
         </div>
       )}
+
+      {/* ── MODAL ULASAN ── */}
+      <ReviewModal
+        isOpen={Boolean(reviewBooking)}
+        booking={reviewBooking}
+        existingReview={reviewBooking ? reviewsMap[reviewBooking.id] : null}
+        useSupabase={!isDemoUser}
+        onClose={() => setReviewBooking(null)}
+        onSubmitSuccess={(savedReview) => {
+          setReviewsMap((prev) => ({
+            ...prev,
+            [savedReview.bookingId]: savedReview,
+          }));
+          onShowToast({
+            type: "success",
+            message: "Ulasan Berhasil Disimpan",
+            description: "Terima kasih telah memberikan ulasan untuk spot lapak ini.",
+          });
+        }}
+      />
     </div>
   );
 }

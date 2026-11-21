@@ -52,14 +52,22 @@ export const metadata: Metadata = {
   alternates: { canonical: "https://ngelapak-ayorvup1k-kan04.vercel.app" },
 };
 
+// Inline script injected before first paint – safely adds "dark" class
+// without any hydration mismatch (runs before React hydrates).
+const darkModeScript = `(function(){try{var t=localStorage.getItem('ngelapak_theme');if(t==='dark'||((!t||t==='auto')&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.documentElement.classList.add('dark');}else{document.documentElement.classList.remove('dark');}}catch(e){}})();`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="id"
       data-scroll-behavior="smooth"
       className={`${plusJakartaSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
       <head>
+        {/* Dark-mode detection: runs synchronously before paint, no flash */}
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        <script dangerouslySetInnerHTML={{ __html: darkModeScript }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
@@ -71,7 +79,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
         />
       </head>
-      <body className="min-h-full flex flex-col bg-[#faf8ff] text-[#131b2e]">
+      <body className="min-h-full flex flex-col bg-[#faf8ff] dark:bg-[#0b0f19] text-[#131b2e] dark:text-[#f1f5f9] transition-colors duration-150" suppressHydrationWarning>
         {children}
       </body>
     </html>
