@@ -1,7 +1,33 @@
-
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+const guideSections = [
+  {
+    id: "prosedur-izin",
+    icon: "assignment",
+    title: "Prosedur Izin Usaha Mahasiswa",
+    body: "Mahasiswa wirausaha mengajukan sewa lapak melalui Ngelapak, melengkapi data usaha, memilih titik lokasi, lalu menyelesaikan pembayaran sesuai ketentuan yang berlaku di Universitas Udayana.",
+  },
+  {
+    id: "tarif-kebersihan",
+    icon: "payments",
+    title: "Ketentuan Tarif & Kebersihan",
+    body: "Tarif sewa mengikuti kategori zona dan ukuran lapak yang tertera pada katalog. Penyewa wajib menjaga kebersihan area usaha selama masa sewa dan mengembalikan kondisi lapak setelah periode berakhir.",
+  },
+  {
+    id: "verifikasi-pembayaran",
+    icon: "verified_user",
+    title: "Verifikasi Rekening & Bukti Bayar",
+    body: "Pembayaran diproses melalui kanal resmi pada aplikasi. Status pesanan dapat dipantau di Pesanan Saya. Jika terjadi kendala, hubungi pengelola melalui kontak resmi di bagian bawah halaman ini.",
+  },
+  {
+    id: "kontak-bantuan",
+    icon: "support_agent",
+    title: "Biro Umum & Pengelolaan Aset",
+    body: "Kontak resmi: aset.lapak@unud.ac.id · (0361) 701954 ext. 202 · Senin–Jumat, 08.00–16.00 WITA.",
+  },
+] as const;
 
 const faqData = [
   {
@@ -92,6 +118,19 @@ export default function HelpCenterView() {
   const [activeCategory, setActiveCategory] = useState("Semua");
   const [openQuestion, setOpenQuestion] = useState<string | null>(null);
 
+  useEffect(() => {
+    function scrollToHash() {
+      const id = window.location.hash.replace(/^#/, "");
+      if (!id) return;
+      window.setTimeout(() => {
+        document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 50);
+    }
+    scrollToHash();
+    window.addEventListener("hashchange", scrollToHash);
+    return () => window.removeEventListener("hashchange", scrollToHash);
+  }, []);
+
   const filteredFaq = useMemo(() => {
     const keyword = search.trim().toLowerCase();
 
@@ -139,6 +178,25 @@ export default function HelpCenterView() {
             Temukan jawaban atas pertanyaan seputar akun, penyewaan lapak,
             pesanan, dan penggunaan platform Ngelapak.
           </p>
+        </div>
+      </section>
+
+      {/* Panduan layanan (anchor dari footer) */}
+      <section className="max-w-5xl mx-auto px-4 sm:px-6 pt-10 md:pt-14">
+        <div className="grid gap-4 sm:grid-cols-2">
+          {guideSections.map((section) => (
+            <article
+              key={section.id}
+              id={section.id}
+              className="scroll-mt-24 rounded-2xl border border-[#e2e7ff] bg-white p-5 sm:p-6"
+            >
+              <div className="mb-3 flex items-center gap-2">
+                <span className="material-symbols-outlined text-[#003466]">{section.icon}</span>
+                <h2 className="text-base font-bold text-[#003466] sm:text-lg">{section.title}</h2>
+              </div>
+              <p className="text-sm leading-relaxed text-[#5c6270]">{section.body}</p>
+            </article>
+          ))}
         </div>
       </section>
 

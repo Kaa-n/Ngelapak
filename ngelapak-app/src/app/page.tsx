@@ -16,8 +16,9 @@ import SettingsView from "../components/views/SettingsView";
 import DetailPesananView from "../components/views/DetailPesananView";
 import { useDemo, demoLogout } from "../lib/demo-store";
 import { canAccess } from "../lib/types";
-import { MOCK_SPOTS, type Spot } from "../lib/mock-data";
+import type { Spot } from "../lib/mock-data";
 import type { PageView, ToastMessage } from "../lib/types";
+import { rentalDateInMakassar } from "@/lib/rental-policy";
 import {
   getCurrentSupabaseProfile,
   signOutSupabase,
@@ -105,70 +106,41 @@ const [statsLoading, setStatsLoading] = useState(true);
     };
   }, []);
 
-  // Mengambil data lapak dari Supabase
-useEffect(() => {
-  let isMounted = true;
+  // Mengambil data lapak dari Supabase (tanpa fallback mock)
+  useEffect(() => {
+    let isMounted = true;
 
-  async function loadSpots() {
-    try {
-      const now = new Date();
+    async function loadSpots() {
+      try {
+        const today = rentalDateInMakassar();
+        const scheduleEnd = rentalDateInMakassar(90);
+        const result = await getSupabaseSpots(
+          { start: today, end: today },
+          { start: today, end: scheduleEnd },
+        );
 
-      // Menggunakan tanggal lokal browser
-      const today = [
-        now.getFullYear(),
-        String(now.getMonth() + 1).padStart(2, "0"),
-        String(now.getDate()).padStart(2, "0"),
-      ].join("-");
-
-      // Rentang ketersediaan lapak: hari ini
-      const availabilityPeriod = {
-        start: today,
-        end: today,
-      };
-
-      // Rentang jadwal operasional: hari ini sampai 90 hari ke depan
-      const scheduleEnd = new Date(now);
-      scheduleEnd.setDate(scheduleEnd.getDate() + 90);
-
-      const scheduleEndDate = [
-        scheduleEnd.getFullYear(),
-        String(scheduleEnd.getMonth() + 1).padStart(2, "0"),
-        String(scheduleEnd.getDate()).padStart(2, "0"),
-      ].join("-");
-
-      const result = await getSupabaseSpots(
-        availabilityPeriod,
-        {
-          start: today,
-          end: scheduleEndDate,
+        if (isMounted) {
+          setSpots(result.spots);
         }
-      );
+      } catch (error) {
+        console.error("Gagal mengambil data lapak:", error);
 
-      console.log("DATA DARI SUPABASE:", result.spots);
-      console.log("JUMLAH LAPAK:", result.spots.length);
-
-      if (isMounted) {
-        setSpots(result.spots);
-      }
-    } catch (error) {
-      console.error("Gagal mengambil data lapak:", error);
-
-      if (isMounted) {
-        setSpots([]);
-      }
-    } finally {
-      if (isMounted) {
-        setSpotsLoading(false);
+        if (isMounted) {
+          setSpots([]);
+        }
+      } finally {
+        if (isMounted) {
+          setSpotsLoading(false);
+        }
       }
     }
-  }
 
-  loadSpots();
+    loadSpots();
 
-  return () => {
-    isMounted = false;
-  };
-}, []);
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
 useEffect(() => {
   let isMounted = true;
@@ -206,31 +178,27 @@ useEffect(() => {
     if (requestedView === "help-center") return "help-center";
     return "home";
   });
-  const [selectedSpot, setSelectedSpot] = useState<Spot>(() => {
-    if (requestedSpot) {
-      const match = MOCK_SPOTS.find(
-        (s) => s.kode.toLowerCase() === requestedSpot.toLowerCase()
-      );
-      if (match) return match;
-    }
-    return MOCK_SPOTS[0];
-  });
+  const [selectedSpot, setSelectedSpot] = useState<Spot | null>(null);
   const [detailInitialTab, setDetailInitialTab] = useState<"detail" | "operasional" | "fasilitas" | "ulasan">("detail");
   const [orderId, setOrderId] = useState<string | null>(returningOrder);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  // Sinkronisasi selectedSpot jika spots dari Supabase baru selesai dimuat
+  // Sinkronisasi selectedSpot dari spots Supabase (URL spot=… atau default pertama)
   useEffect(() => {
+    if (!spots.length) {
+      setSelectedSpot(null);
+      return;
+    }
     const spotParam = searchParams.get("spot");
     if (spotParam) {
-      const allSpots = spots.length > 0 ? spots : MOCK_SPOTS;
-      const found = allSpots.find(
-        (s) => s.kode.toLowerCase() === spotParam.toLowerCase()
+      setSelectedSpot(
+        spots.find((s) => s.kode.toLowerCase() === spotParam.toLowerCase()) ?? null,
       );
-      if (found) {
-        setSelectedSpot(found);
-      }
+      return;
     }
+    setSelectedSpot((current) =>
+      current && spots.some((s) => s.id === current.id) ? current : spots[0],
+    );
   }, [searchParams, spots]);
 
   // Sinkronisasi browser back/forward buttons dengan URL searchParams
@@ -450,24 +418,30 @@ useEffect(() => {
           />
         )}
         {currentView === "detail" && (
-          <DetailSpotView
-            key={`${selectedSpot.id}-${user?.id ?? "guest"}-${detailInitialTab}`}
-            spot={selectedSpot || MOCK_SPOTS[0]}
-            user={user}
-            initialTab={detailInitialTab}
-            onBack={() => navigate("katalog")}
-            onLogin={() => navigate("masuk")}
-            onOrderDetail={(id) => {
-              setOrderId(id);
-              const params = new URLSearchParams(searchParams.toString());
-              params.set("view", "detail-pesanan");
-              params.set("pesanan", id);
-              router.push(`/?${params.toString()}`, { scroll: false });
-              setCurrentView("detail-pesanan");
-              window.scrollTo({ top: 0, behavior: "smooth" });
-            }}
-            onShowToast={showToast}
-          />
+          selectedSpot ? (
+            <DetailSpotView
+              key={`${selectedSpot.id}-${user?.id ?? "guest"}-${detailInitialTab}`}
+              spot={selectedSpot}
+              user={user}
+              initialTab={detailInitialTab}
+              onBack={() => navigate("katalog")}
+              onLogin={() => navigate("masuk")}
+              onOrderDetail={(id) => {
+                setOrderId(id);
+                const params = new URLSearchParams(searchParams.toString());
+                params.set("view", "detail-pesanan");
+                params.set("pesanan", id);
+                router.push(`/?${params.toString()}`, { scroll: false });
+                setCurrentView("detail-pesanan");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              onShowToast={showToast}
+            />
+          ) : (
+            <p role="status" className="mx-auto max-w-md px-4 py-10 text-sm text-[#424750]">
+              {spotsLoading ? "Memuat detail lapak…" : "Lapak tidak ditemukan di inventaris."}
+            </p>
+          )
         )}
       </main>
 
