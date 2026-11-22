@@ -13,5 +13,5 @@ export const requireAdmin = cache(async () => {
   if (error) throw new Error("Gagal memeriksa izin admin.");
   if (data?.role !== "admin") redirect("/");
 
-  return { supabase, name: data.nama };
+  return { supabase, name: data.nama, email: user.email ?? "" };
 });

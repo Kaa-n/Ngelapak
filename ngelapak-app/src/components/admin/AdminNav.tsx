@@ -35,7 +35,7 @@ export default function AdminNav({ basePath, mobile = false }: { basePath: strin
   if (!mobile) return <nav aria-label="Panel admin" className="grid gap-1">{links}</nav>;
 
   return (
-    <details className="relative ml-auto lg:hidden" onKeyDown={(event) => {
+    <details className="relative lg:hidden" onKeyDown={(event) => {
       if (event.key !== "Escape" || !event.currentTarget.open) return;
       event.currentTarget.open = false;
       event.currentTarget.querySelector("summary")?.focus();

@@ -1,15 +1,14 @@
 import { Suspense, type ReactNode } from "react";
-import AdminShell, { adminLogoutClass } from "@/components/admin/AdminShell";
+import AdminAccountMenu from "@/components/admin/AdminAccountMenu";
+import AdminShell from "@/components/admin/AdminShell";
 import { requireAdmin } from "@/lib/supabase/admin";
 import { logoutAdmin } from "./session";
 
 async function ProtectedAdminShell({ children }: { children: ReactNode }) {
-  const { name } = await requireAdmin();
+  const { name, email } = await requireAdmin();
   return (
     <AdminShell name={name} basePath="/admin" accountAction={
-      <form action={logoutAdmin}>
-        <button className={adminLogoutClass}>Keluar</button>
-      </form>
+      <AdminAccountMenu name={name} email={email} onLogout={logoutAdmin} />
     }>
       {children}
     </AdminShell>

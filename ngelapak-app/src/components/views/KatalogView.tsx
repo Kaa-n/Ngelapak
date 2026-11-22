@@ -53,43 +53,36 @@ export default function KatalogView({ onNavigateToDetail, onShowToast, demoMode 
   const searchParams = useSearchParams();
   const [isUrlInitialized, setIsUrlInitialized] = useState(false);
 
-  // Membaca filter dari URL saat Katalog pertama kali dibuka
-useEffect(() => {
-  const params = new URLSearchParams(searchParams.toString());
+  // Sinkronkan filter katalog dari URL (termasuk klik footer zonasi)
+  useEffect(() => {
+    const zona = searchParams.get("zona");
+    const ukuran = searchParams.get("ukuran");
+    const fasilitas = searchParams.get("fasilitas");
+    const search = searchParams.get("search");
+    const sort = searchParams.get("sort");
 
-  const zona = params.get("zona");
-  const ukuran = params.get("ukuran");
-  const fasilitas = params.get("fasilitas");
-  const search = params.get("search");
-  const sort = params.get("sort");
+    const validUkuran = ["all", "2x2", "3x3", "4x4"];
+    const validSort = ["populer", "harga-asc", "harga-desc", "terbaru"];
 
-  const validUkuran = ["all", "2x2", "3x3", "4x4"];
-  const validSort = [
-    "populer",
-    "harga-asc",
-    "harga-desc",
-    "terbaru",
-  ];
+    setZonaFilter(zona || "all");
+    setUkuranFilter(validUkuran.includes(ukuran ?? "") ? (ukuran as UkuranFilter) : "all");
+    setSortBy(validSort.includes(sort ?? "") ? (sort as SortOption) : "populer");
+    setSearchQuery(search ?? "");
+    setActiveChips(
+      fasilitas
+        ? new Set(fasilitas.split(",").map((item) => item.trim()).filter(Boolean))
+        : new Set(),
+    );
+    setCurrentPage(1);
+    setIsUrlInitialized(true);
 
-  setZonaFilter(zona ?? "all");
-
-  setUkuranFilter(
-    validUkuran.includes(ukuran ?? "") ? ukuran as UkuranFilter : "all"
-  );
-
-  setSortBy(
-    validSort.includes(sort ?? "") ? sort as SortOption : "populer"
-  );
-
-  setSearchQuery(search ?? "");
-
-  if (fasilitas) {
-    const list = fasilitas.split(",").map((s) => s.trim()).filter(Boolean);
-    setActiveChips(new Set(list));
-  }
-
-  setIsUrlInitialized(true);
-}, []);
+    const hash = window.location.hash.replace(/^#/, "");
+    if (hash) {
+      window.setTimeout(() => {
+        document.getElementById(hash)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 80);
+    }
+  }, [searchParams]);
 
   // Menyimpan perubahan filter ke URL
 useEffect(() => {
@@ -156,26 +149,8 @@ useEffect(() => {
           getSupabaseSpots(period),
           getSupabaseSpots({ start: currentDate, end: currentDate }),
         ]);
-        console.log("MODE DEMO:", demoMode);
-        console.log("DATA KATALOG:", data.spots);
-        console.log(
-          "FASILITAS LAPAK:",
-          data.spots.map((spot) => ({
-            kode: spot.kode,
-            fasilitas: spot.fasilitas,
-          }))
-        );
 
-        console.table(
-          data.spots.map((spot) => ({
-            kode: spot.kode,
-            nama: spot.nama,
-            zona: spot.zona,
-            zonaLabel: spot.zonaLabel,
-            lokasi: spot.lokasi,
-          }))
-        );
-
+        // Hanya tampilkan inventaris Supabase; jangan fallback ke MOCK_SPOTS.
         if (isMounted) {
           setSpots(data.spots);
           setMapSpots(currentMapData.spots);
@@ -184,6 +159,8 @@ useEffect(() => {
       } catch (error) {
         if (isMounted) {
           setSpots([]);
+          setMapSpots([]);
+          setAvailabilityKnown(false);
           setSpotError(
             error instanceof Error
               ? error.message
@@ -399,7 +376,7 @@ useEffect(() => {
 
   return (
     <div className="bg-[#faf8ff] min-h-screen flex flex-col">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 w-full flex-1">
+      <div id="katalog-konten" className="max-w-7xl mx-auto px-4 sm:px-6 py-8 w-full flex-1 scroll-mt-24">
         {/* ========================================================
             1. KATALOG HERO (KESATUAN UTAMA: Banner, Filter Card,
                Zone Tabs, Spot Grid, & Paginasi di dalam Card)
