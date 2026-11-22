@@ -105,11 +105,9 @@ export default function SpotCard({
             {/* Badge Status Operasional */}
             {badgeText && (
               <span
-                className={`absolute top-3 right-3 px-2.5 py-1 rounded-full ${
-                  badgeColor?.bg ?? "bg-[#e2fced]"
-                } ${
-                  badgeColor?.text ?? "text-[#003c27]"
-                } text-[11px] font-bold tracking-wide shadow-sm flex items-center gap-1.5`}
+                className={`absolute top-3 right-3 px-2.5 py-1 rounded-full ${badgeColor?.bg ?? "bg-[#e2fced]"
+                  } ${badgeColor?.text ?? "text-[#003c27]"
+                  } text-[11px] font-bold tracking-wide shadow-sm flex items-center gap-1.5`}
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-current" />
                 <span>{badgeText}</span>
@@ -220,14 +218,14 @@ export default function SpotCard({
         </span>
 
         {/* Active / Operating Badge */}
-        {spot.status === "dipesan" && (
+        {/* {spot.status === "dipesan" && (
           <div className="absolute bottom-3 left-3 z-10 pointer-events-none">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#002113]/85 text-[#6ffbbe] text-[11px] font-bold shadow-md backdrop-blur-sm">
               <span className="w-1.5 h-1.5 rounded-full bg-[#4edea3] animate-pulse" />
               Sedang Beroperasi
             </span>
           </div>
-        )}
+        )} */}
 
         {/* Rating */}
         <div className="absolute bottom-3 right-3 flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/50 backdrop-blur-sm">
