@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useSelectedLayoutSegment } from "next/navigation";
-import { LayoutDashboard, Menu, ReceiptText, Store, Undo2 } from "lucide-react";
+import { LayoutDashboard, Menu, ReceiptText, Store, Undo2, FileText } from "lucide-react";
 
 const pages = [
   { segment: null, label: "Dasbor", icon: LayoutDashboard },
   { segment: "spots", label: "Kelola Lapak", icon: Store },
   { segment: "pembayaran", label: "Riwayat Pembayaran", icon: ReceiptText },
   { segment: "refund", label: "Pembatalan & Refund", icon: Undo2 },
+  { segment: "ketentuan", label: "Syarat & Ketentuan", icon: FileText },
 ];
 
 export default function AdminNav({ basePath, mobile = false }: { basePath: string; mobile?: boolean }) {

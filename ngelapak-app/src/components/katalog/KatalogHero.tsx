@@ -133,7 +133,7 @@ export default function KatalogHero({
           const el = document.getElementById("peta-spasial");
           if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
         }}
-        className="hidden md:flex absolute top-21 right-10 z-20 w-72 flex-col overflow-hidden rounded-xl border border-[#c9d6f5] shadow-md hover:shadow-lg transition-all duration-200 hover:-translate-y-0.5 group"
+        className="hidden lg:flex absolute top-21 right-10 z-20 w-72 flex-col overflow-hidden rounded-xl border border-[#c9d6f5] shadow-md hover:shadow-lg transition-all duration-200 hover:-translate-y-0.5 group"
         aria-label="Jelajahi Peta Spasial"
       >
         <div className="relative w-full overflow-hidden" style={{ paddingBottom: "25%" }}>
@@ -159,7 +159,25 @@ export default function KatalogHero({
             east
           </span>
         </div>
+        
       </button>
+      {/* Teks Link Mobile: Jelajahi Peta Spasial */}
+      <button
+            type="button"
+            onClick={() => {
+              const el = document.getElementById("peta-spasial");
+              if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+            className="lg:hidden inline-flex items-center gap-1 text-xs font-semibold text-[#003466] hover:text-[#002144] transition-colors cursor-pointer py-1"
+          >
+            <span className="material-symbols-outlined text-[12px]">
+              explore
+            </span>
+            <span className="underline underline-offset-4 decoration-[#003466]/50">
+              Jelajahi Peta Spasial
+            </span>
+            
+          </button>
 
       {/* 3. Filter Card Form */}
       <div suppressHydrationWarning className="mt-4 bg-white rounded-xl shadow-md px-5 py-2 md:px-6 md:py-3 relative z-10 mb-6">

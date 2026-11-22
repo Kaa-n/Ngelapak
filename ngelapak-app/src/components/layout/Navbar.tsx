@@ -87,9 +87,11 @@ export default function Navbar({
           onClick={() => onNavigate("home")}
           className="flex items-center gap-2 text-[#003466] dark:text-[#a6c8ff] font-bold cursor-pointer"
         >
-          <span className="material-symbols-outlined bg-[#003466] text-white rounded-lg p-1.5">
-            storefront
-          </span>
+          <img
+            src="/logo%20ngelapak.png"
+            alt="Ngelapak"
+            className="w-10 h-10 rounded-lg object-contain"
+          />
           <span>
             Ngelapak
             <span className="hidden sm:block text-[10px] text-[#424750] dark:text-[#bec3d0] font-medium">

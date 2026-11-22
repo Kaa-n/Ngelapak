@@ -16,6 +16,10 @@ export default function LoginPage() {
       <Suspense fallback={null}><ConfirmationFeedback /></Suspense>
       <MasukView
         onLoginDemo={async (id) => {
+          if (typeof window !== "undefined") {
+            sessionStorage.setItem("ngelapak_fresh_login", "true");
+            sessionStorage.removeItem("ngelapak_map_info_dismissed");
+          }
           if (id === "admin") {
             demoLogin(id);
             router.replace("/demo/admin");
@@ -26,6 +30,10 @@ export default function LoginPage() {
           router.replace("/");
         }}
         onLoginSupabase={(user) => {
+          if (typeof window !== "undefined") {
+            sessionStorage.setItem("ngelapak_fresh_login", "true");
+            sessionStorage.removeItem("ngelapak_map_info_dismissed");
+          }
           demoLogout();
           const id = new URLSearchParams(window.location.search).get("pesanan") ?? "";
           router.replace(user.role === "admin" ? "/admin" : /^MT-[a-f0-9]{32}$/.test(id) ? `/?pesanan=${id}` : "/");

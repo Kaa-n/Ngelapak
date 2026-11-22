@@ -73,6 +73,11 @@ export async function signInWithEmail(
     throw new Error("Profil pengguna tidak ditemukan di database.");
   }
 
+  if (typeof window !== "undefined") {
+    sessionStorage.setItem("ngelapak_fresh_login", "true");
+    sessionStorage.removeItem("ngelapak_map_info_dismissed");
+  }
+
   return profile;
 }
 
@@ -139,6 +144,11 @@ export async function getCurrentSupabaseProfile() {
 
 // Logout pengguna Supabase.
 export async function signOutSupabase() {
+  if (typeof window !== "undefined") {
+    sessionStorage.removeItem("ngelapak_fresh_login");
+    sessionStorage.removeItem("ngelapak_map_info_dismissed");
+  }
+
   const supabase = createClient();
   if (!supabase) return;
 

@@ -955,7 +955,7 @@ export function buildDefaultCaption(spot: Spot): string {
   const lines: string[] = [];
 
   // Deskripsi utama lapak
-  lines.push(`📍 ${spot.nama} (${spot.kode})`);
+  lines.push(`${spot.nama} (${spot.kode})`);
   lines.push(`Lokasi: ${spot.lokasi}`);
   if (spot.jenisUsaha) lines.push(`Jenis Usaha: ${spot.jenisUsaha}`);
   lines.push("");
@@ -979,12 +979,18 @@ export function buildDefaultCaption(spot: Spot): string {
       }
     }
   }
-
   lines.push("");
-  lines.push("--- INFORMASI TAMBAHAN ---");
-  lines.push(`Fasilitas: ${spot.fasilitas.join(", ")}`);
-  lines.push(`Ukuran: ${spot.ukuranLabel} | Daya: ${spot.daya}W`);
-  lines.push(`Tarif: Rp ${spot.tarifPerHari.toLocaleString("id-ID")}/hari`);
+  lines.push("[INFORMASI OPERASINAL BELUM DIATUR OLEH PENYEWA LAPAK]");
+  lines.push("");
+  lines.push(`Jadwal Operasional: ${spot.jadwalOperasional?.map((j) => `${j.startDate} sampai ${j.endDate}`).join(", ")}`);
+  // lines.push(`Status: ${spot.status}`);
+  // lines.push(`Status Verifikasi: ${spot.statusVerifikasi}`);
+  // lines.push(`Jenis Usaha: ${spot.jenisUsaha}`);
+  // lines.push(`Nama Usaha: ${spot.namaUsaha}`);
+  // lines.push(`Kategori Penjual: ${spot.kategoriPenjual}`);
+  // lines.push(`Catatan: ${spot.catatan}`);
+  lines.push("");
+  
 
   return lines.join("\n");
 }

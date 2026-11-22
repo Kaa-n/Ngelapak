@@ -109,7 +109,7 @@ export default function DashboardBanner({
       <button
         type="button"
         onClick={handleScrollToMap}
-        className="hidden md:flex absolute top-8 md:top-10 right-6 md:right-10 z-20 w-64 md:w-72 flex-col overflow-hidden rounded-xl border border-white/20 shadow-lg hover:shadow-2xl transition-all duration-200 hover:-translate-y-0.5 group cursor-pointer text-left backdrop-blur-md"
+        className="hidden lg:flex absolute top-8 lg:top-10 right-6 lg:right-10 z-20 w-64 lg:w-72 flex-col overflow-hidden rounded-xl border border-white/20 shadow-lg hover:shadow-2xl transition-all duration-200 hover:-translate-y-0.5 group cursor-pointer text-left backdrop-blur-md"
         aria-label="Jelajahi Peta Spasial"
       >
         <div className="relative w-full overflow-hidden bg-black/20" style={{ paddingBottom: "25%" }}>
@@ -151,22 +151,7 @@ export default function DashboardBanner({
             <span>Universitas Udayana · Platform Resmi Sewa Lapak Kampus</span>
           </div>
 
-          {/* Teks Link Mobile: Jelajahi Peta Spasial */}
-          <button
-            type="button"
-            onClick={handleScrollToMap}
-            className="md:hidden inline-flex items-center gap-1 text-xs font-semibold text-[#93bcfc] hover:text-white transition-colors cursor-pointer py-1"
-          >
-            <span className="material-symbols-outlined text-[16px] text-[#fea619]">
-              explore
-            </span>
-            <span className="underline underline-offset-4 decoration-[#93bcfc]/50">
-              Jelajahi Peta Spasial
-            </span>
-            <span className="material-symbols-outlined text-[14px]">
-              arrow_downward
-            </span>
-          </button>
+          
         </div>
 
         {/* Teks Headline Utama */}
@@ -177,8 +162,7 @@ export default function DashboardBanner({
         {/* Deskripsi Singkat */}
         <p className="text-base sm:text-lg text-[#e2e7ff] leading-relaxed mb-8 max-w-2xl font-normal">
           Temukan dan ajukan sewa spot usaha temporer legal di lingkungan kampus
-          Universitas Udayana (Lapangan Rektorat, Boulevard, Student Center, dan
-          Agrokompleks). Proses cepat, transparan, dan terverifikasi resmi oleh Biro
+          Universitas Udayana. Proses cepat, transparan, dan terverifikasi resmi oleh Biro
           Pengelolaan Aset.
         </p>
 
@@ -225,6 +209,20 @@ export default function DashboardBanner({
               arrow_downward
             </span>
           </button>
+          {/* Teks Link Mobile: Jelajahi Peta Spasial */}
+          <button
+            type="button"
+            onClick={handleScrollToMap}
+            className="lg:hidden inline-flex items-center gap-1 text-xs font-semibold text-[#93bcfc] hover:text-white transition-colors cursor-pointer pt-2 pl-4 -mb-3"
+          >
+            <span className="material-symbols-outlined text-[12px]">
+              explore
+            </span>
+            <span className="underline underline-offset-4 decoration-[#93bcfc]/50">
+              Jelajahi Peta Spasial
+            </span>
+            
+          </button>
         </div>
 
         {/* ========================================================
@@ -235,7 +233,7 @@ export default function DashboardBanner({
             <span className="material-symbols-outlined text-[#4edea3] text-[18px]">
               check_circle
             </span>
-            <span>Izin Resmi Biro Aset</span>
+            <span>Pembayaran Mudah</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-[#fea619] text-[18px]">
@@ -247,7 +245,7 @@ export default function DashboardBanner({
             <span className="material-symbols-outlined text-[#93bcfc] text-[18px]">
               schedule
             </span>
-            <span>Verifikasi 1×24 Jam</span>
+            <span>Verifikasi Cepat</span>
           </div>
         </div>
       </div>
