@@ -430,16 +430,13 @@ useEffect(() => {
           <div id="peta-spasial" className="mt-8 pt-8 border-t border-[#e2e7ff] mb-10">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
               <div>
-                <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#003466] uppercase tracking-wider mb-1">
-                  <span className="material-symbols-outlined text-[16px]">explore</span>
-                  <span>Pemetaan Geografis Kampus</span>
+                <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#003466] tracking-wider mb-1">
+                  <span className="material-symbols-outlined text-[16px]">
+                    explore
+                  </span>
+                  <span className="text-xl sm:text-2xl font-bold text-[#131b2e] tracking-tight">Pemetaan Geografis Kampus</span>
                 </div>
-                <h3 className="text-xl sm:text-2xl font-bold text-[#131b2e] tracking-tight">
-                  Peta Lokasi &amp; Sebaran Spot Kampus
-                </h3>
-                <p className="text-xs sm:text-sm text-[#424750]">
-                  Visualisasi tata letak spasial zona lapak di sekitar Kampus Jimbaran &amp; Sudirman.
-                </p>
+                
               </div>
 
               {/* Status Gateway Peta */}

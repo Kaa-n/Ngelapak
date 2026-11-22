@@ -252,6 +252,8 @@ export function demoLogin(id: string) {
   }
 
   sessionStorage.setItem(SESSION, id);
+  sessionStorage.setItem("ngelapak_fresh_login", "true");
+  sessionStorage.removeItem("ngelapak_map_info_dismissed");
   window.dispatchEvent(new Event(EVENT));
 }
 
@@ -372,6 +374,8 @@ export function saveProductCaption(spotId: string, text: string) {
 
 export function demoLogout() {
   sessionStorage.removeItem(SESSION);
+  sessionStorage.removeItem("ngelapak_fresh_login");
+  sessionStorage.removeItem("ngelapak_map_info_dismissed");
   window.dispatchEvent(new Event(EVENT));
 }
 

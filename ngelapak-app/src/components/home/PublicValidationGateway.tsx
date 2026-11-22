@@ -43,9 +43,7 @@ export default function PublicValidationGateway() {
             </span>
             Validasi Lapangan Publik • Tanpa Login
           </span>
-          <span className="text-xs text-blue-200/80 font-medium">
-            Biro Pengelolaan Aset Universitas Udayana
-          </span>
+          
         </div>
 
         <h3
@@ -56,7 +54,7 @@ export default function PublicValidationGateway() {
         </h3>
 
         <p className="text-xs sm:text-sm text-blue-100/90 leading-relaxed max-w-3xl mb-6">
-          Disediakan khusus untuk <strong>Satpam Kampus</strong>, <strong>Tim Pengawas Aset</strong>, maupun <strong>Civitas Akademika</strong> untuk memverifikasi keaslian izin operasional stan secara langsung saat berpatroli di lapangan tanpa perlu membuat akun atau masuk ke sistem.
+          Disediakan khusus untuk <strong>Satpam Kampus</strong>, <strong>Tim Pengawas Aset</strong>, maupun <strong>Civitas Akademika</strong> untuk memverifikasi keaslian izin operasional stan.
         </p>
 
         {/* Kotak Jaminan Privasi Data */}
@@ -69,9 +67,9 @@ export default function PublicValidationGateway() {
             </div>
             <div className="text-xs sm:text-sm text-blue-50 leading-relaxed">
               <strong className="text-white block mb-0.5">
-                Perlindungan Privasi &amp; Keamanan Data Pengguna:
+                Kami memahami Perlindungan Privasi &amp; Keamanan Data Pengguna
               </strong>
-              Pemeriksaan publik ini hanya memvalidasi keaslian izin stan, kesesuaian nomor kavling, masa operasional aktif, dan pengesahan resmi dari kampus. Data privat pengguna (seperti nomor rekening bank, bukti pembayaran, rincian biaya transaksi, kontak pribadi, dan surel) <strong>sepenuhnya dijaga dan tidak ditampilkan ke publik</strong>.
+                Data pribadi pengguna akan <strong>sepenuhnya dijaga dan tidak ditampilkan ke publik</strong>.
             </div>
           </div>
         </div>
@@ -90,7 +88,7 @@ export default function PublicValidationGateway() {
                   setTicketInput(e.target.value);
                   if (errorMsg) setErrorMsg("");
                 }}
-                placeholder="Masukkan ID Tiket / Kontrak (contoh: MT-ae3cae... atau TXN-2025-001)"
+                placeholder="Masukkan ID Tiket / Kontrak (contoh: MT-ae3cae...)"
                 className="w-full h-12 pl-11 pr-4 rounded-xl bg-white text-[#131b2e] placeholder-[#737781] text-xs sm:text-sm font-medium outline-none border border-transparent focus:border-[#4edea3] focus:ring-2 focus:ring-[#4edea3]/30 transition shadow-sm"
               />
             </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useLayoutEffect } from "react";
+import React, { useState, useMemo, useEffect, useLayoutEffect, useCallback } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -160,40 +160,65 @@ function TouchGestureController() {
 
   useEffect(() => {
     const container = map.getContainer();
+    const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
 
-    const handleTouchStart = (event: TouchEvent) => {
-      if (event.touches.length >= 2) {
-        map.dragging.enable();
-      } else {
-        map.dragging.disable();
-      }
+    // Leaflet already pans with one finger and pinch-zooms with two.
+    // Keep both handlers on so a single finger is not swallowed by page scroll.
+    map.dragging.enable();
+    if (map.touchZoom) map.touchZoom.enable();
+
+    if (!coarsePointer) return;
+
+    container.style.touchAction = "none";
+
+    const keepGestureOnMap = (event: TouchEvent) => {
+      if (event.touches.length >= 1) event.preventDefault();
     };
 
-    const handleTouchEnd = (event: TouchEvent) => {
-      if (event.touches.length < 2) {
-        map.dragging.disable();
-      }
-    };
-
-    container.addEventListener("touchstart", handleTouchStart, {
-      passive: true,
-      capture: true,
-    });
-    container.addEventListener("touchend", handleTouchEnd, {
-      passive: true,
-      capture: true,
-    });
-    container.addEventListener("touchcancel", handleTouchEnd, {
-      passive: true,
-      capture: true,
-    });
+    container.addEventListener("touchmove", keepGestureOnMap, { passive: false });
 
     return () => {
-      container.removeEventListener("touchstart", handleTouchStart, true);
-      container.removeEventListener("touchend", handleTouchEnd, true);
-      container.removeEventListener("touchcancel", handleTouchEnd, true);
+      container.style.touchAction = "";
+      container.removeEventListener("touchmove", keepGestureOnMap);
     };
   }, [map]);
+
+  return null;
+}
+
+/**
+ * Sub-komponen pendengar interaksi pengguna pada peta.
+ * Saat pengguna menggeser, menyentuh, memperbesar, atau mengklik peta/marker,
+ * callback onInteract akan dipanggil agar panduan navigasi dapat menutup secara otomatis.
+ */
+function MapInteractionWatcher({ onInteract }: { onInteract: () => void }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!map) return;
+    const container = map.getContainer();
+
+    const handleInteraction = () => {
+      onInteract();
+    };
+
+    map.on("dragstart", handleInteraction);
+    map.on("popupopen", handleInteraction);
+    map.on("click", handleInteraction);
+
+    container.addEventListener("pointerdown", handleInteraction, { passive: true });
+    container.addEventListener("touchstart", handleInteraction, { passive: true });
+    container.addEventListener("wheel", handleInteraction, { passive: true });
+
+    return () => {
+      map.off("dragstart", handleInteraction);
+      map.off("popupopen", handleInteraction);
+      map.off("click", handleInteraction);
+      container.removeEventListener("pointerdown", handleInteraction);
+      container.removeEventListener("touchstart", handleInteraction);
+      container.removeEventListener("wheel", handleInteraction);
+    };
+  }, [map, onInteract]);
 
   return null;
 }
@@ -292,6 +317,56 @@ export default function InteractiveMap({
     return { start, end: start };
   });
   const [localAvailabilitySpots, setLocalAvailabilitySpots] = useState<Spot[] | null>(null);
+
+  // State panduan/informasi peta:
+  // Terbuka hanya saat baru login, dan otomatis menutup jika pengguna berinteraksi dengan peta.
+  const [isInfoOpen, setIsInfoOpen] = useState(false);
+
+  useEffect(() => {
+    const checkFreshLogin = () => {
+      if (typeof window === "undefined") return;
+      const isDismissed = sessionStorage.getItem("ngelapak_map_info_dismissed") === "true";
+      const isFreshLogin = sessionStorage.getItem("ngelapak_fresh_login") === "true";
+      if (!isDismissed && isFreshLogin) {
+        setIsInfoOpen(true);
+      }
+    };
+
+    checkFreshLogin();
+    window.addEventListener("storage", checkFreshLogin);
+    window.addEventListener("ngelapak-demo-change", checkFreshLogin);
+
+    return () => {
+      window.removeEventListener("storage", checkFreshLogin);
+      window.removeEventListener("ngelapak-demo-change", checkFreshLogin);
+    };
+  }, []);
+
+  // Menutup panduan otomatis saat pengguna berinteraksi dengan peta
+  const handleMapInteraction = useCallback(() => {
+    setIsInfoOpen((prev) => {
+      if (prev) {
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("ngelapak_map_info_dismissed", "true");
+          sessionStorage.removeItem("ngelapak_fresh_login");
+        }
+        return false;
+      }
+      return false;
+    });
+  }, []);
+
+  // Toggle manual untuk membuka/menutup panduan peta
+  const handleToggleInfo = useCallback(() => {
+    setIsInfoOpen((prev) => {
+      const next = !prev;
+      if (!next && typeof window !== "undefined") {
+        sessionStorage.setItem("ngelapak_map_info_dismissed", "true");
+        sessionStorage.removeItem("ngelapak_fresh_login");
+      }
+      return next;
+    });
+  }, []);
 
   useLayoutEffect(() => {
     // Next.js keeps hidden routes mounted, but React Leaflet removes the map
@@ -529,12 +604,13 @@ export default function InteractiveMap({
           center={activeCenter.center}
           zoom={activeCenter.zoom}
           scrollWheelZoom={false}
-          touchZoom={true}
-          dragging={true}
+          touchZoom
+          dragging
           className="w-full h-full"
         >
 
         <TouchGestureController />
+        <MapInteractionWatcher onInteract={handleMapInteraction} />
 
           {/* Tile Layer OpenStreetMap */}
           <TileLayer
@@ -676,18 +752,62 @@ export default function InteractiveMap({
       </div>
 
       {/* ========================================================
-          FOOTER INFORMASI PETA
+          FOOTER INFORMASI PETA (BISA DITUTUP / COLLAPSIBLE)
           ======================================================== */}
-      <div className="px-5 py-2.5 bg-[#f2f3ff] border-t border-[#e2e7ff] text-xs text-[#424750] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5">
-          <span className="material-symbols-outlined text-[15px] text-[#003466]">
-            touch_app
+      <div className="bg-[#f2f3ff] border-t border-[#e2e7ff] text-xs text-[#424750] transition-colors">
+        {/* Bar Header: Tombol Toggle Accordion & Jumlah Titik */}
+        <div
+          className={`px-4 sm:px-5 py-2 flex items-center justify-between gap-2 ${
+            isInfoOpen ? "border-b border-[#e2e7ff]/70" : ""
+          }`}
+        >
+          <button
+            type="button"
+            onClick={handleToggleInfo}
+            className="flex items-center gap-1.5 text-xs font-semibold text-[#003466] hover:text-[#002144] py-0.5 px-1 -ml-1 rounded transition-colors cursor-pointer group select-none"
+            title={isInfoOpen ? "Tutup petunjuk navigasi" : "Buka petunjuk navigasi"}
+            aria-expanded={isInfoOpen}
+          >
+            <span className="material-symbols-outlined text-[18px] text-[#003466] transition-transform">
+              {isInfoOpen ? "expand_more" : "chevron_right"}
+            </span>
+            <span>Petunjuk Navigasi Peta</span>
+          </button>
+
+          <span className="text-[11px] text-[#737781] font-mono shrink-0">
+            Menampilkan {filteredSpots.length} dari {spots.length} titik lapak
           </span>
-          Klik penanda ikon pada peta untuk melihat info lengkap dan membuka reservasi.
-        </span>
-        <span className="text-[11px] text-[#737781] font-mono">
-          Menampilkan {filteredSpots.length} dari {spots.length} titik lapak
-        </span>
+        </div>
+
+        {/* Konten Tips Interaksi (Menutup otomatis saat pengguna berinteraksi dengan peta) */}
+        {isInfoOpen && (
+          <div className="px-5 py-2.5 flex flex-col sm:flex-row sm:items-center justify-start gap-8 bg-[#f8f9ff]/70 animate-in fade-in duration-150">
+            <span className="flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-[15px] text-[#003466]">
+                touch_app
+              </span>
+              Klik penanda ikon untuk info lengkap
+            </span>
+            <span className="flex lg:hidden items-center gap-1.5">
+              <span className="material-symbols-outlined text-[15px] text-[#003466]">
+                swipe
+              </span>
+              Satu jari untuk geser posisi view
+            </span>
+            <span className="hidden lg:flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-[15px] text-[#003466]">
+                swipe
+              </span>
+              Klik kanan lalu geser untuk memindahkan posisi view
+            </span>
+            <span className="flex lg:hidden items-center gap-1.5">
+              <span className="material-symbols-outlined text-[15px] text-[#003466]">
+                pinch
+              </span>
+              Dua jari untuk zoom in/out
+            </span>
+          </div>
+        )}
       </div>
 
       {statusFilter === "tersedia" && !isSingleSpot && (
