@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   app:
@@ -9,7 +9,7 @@ services:
       - .:/app
       - /app/node_modules
     env_file:
-      - .env
+      - .env.local
 
   db:
     image: postgres:16-alpine

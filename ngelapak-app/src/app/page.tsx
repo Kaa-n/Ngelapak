@@ -398,7 +398,7 @@ useEffect(() => {
         {currentView === "edit-profile" && user && (
           <EditProfileView
             user={user}
-            onBack={() => navigate("home")}
+            onBack={() => navigate(user.role === "admin" ? "dasbor" : "home")}
             onShowToast={showToast}
             onProfileUpdated={handleProfileUpdated}
           />
@@ -406,7 +406,7 @@ useEffect(() => {
         {currentView === "settings" && user && (
           <SettingsView
             user={user}
-            onBack={() => navigate("home")}
+            onBack={() => navigate(user.role === "admin" ? "dasbor" : "home")}
             onShowToast={showToast}
           />
         )}
