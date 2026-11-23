@@ -117,6 +117,7 @@ export default function ReservationWizard({ spot, occupied, signedIn }: Props) {
                 <option>UMKM Umum</option><option>Mahasiswa Wirausaha</option>
               </select></label>
               <p className="text-sm text-slate-600">Selesaikan pembayaran lewat Midtrans dalam satu jam. Status pesanan diperbarui otomatis.</p>
+              <Link href="/syarat-ketentuan" target="_blank" className="text-sm font-semibold text-blue-900 underline">Baca Syarat &amp; Ketentuan (tab baru)</Link>
               <label className="flex gap-2 text-sm"><input type="checkbox" checked={agreed} onChange={(event) => setAgreed(event.target.checked)} />Saya menyetujui aturan penyewaan dan pembatalan.</label>
             </> : <p className="text-sm"><Link href="/masuk" className="font-semibold text-blue-900 underline">Masuk</Link> untuk melanjutkan ke pembayaran.</p>}
             <div className="flex flex-wrap gap-2">

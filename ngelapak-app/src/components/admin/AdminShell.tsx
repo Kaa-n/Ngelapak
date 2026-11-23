@@ -1,6 +1,6 @@
 import Link from "next/link";
+import Image from "next/image";
 import type { ReactNode } from "react";
-import { Store } from "lucide-react";
 import AdminNav from "@/components/admin/AdminNav";
 import Footer from "@/components/ui-custom/Footer";
 
@@ -15,9 +15,7 @@ export default function AdminShell({ basePath, accountAction, children }: {
       <header className="relative z-30 shrink-0 border-b border-[#e2e7ff] bg-white shadow-sm dark:border-[#232942] dark:bg-[#0f1117]">
         <div className="mx-auto flex h-16 max-w-7xl items-center gap-2 px-4 sm:gap-3 sm:px-6">
           <Link href={basePath} aria-label="Ngelapak, Dasbor Admin" className="flex shrink-0 items-center gap-2 text-sm font-bold text-[#003466] dark:text-[#a6c8ff]">
-            <span aria-hidden="true" className="grid size-9 place-items-center rounded-lg bg-[#003466] text-white">
-              <Store className="size-[22px]" />
-            </span>
+            <Image src="/logo%20ngelapak.png" alt="" width={40} height={40} className="size-10 rounded-lg object-contain" />
             <span className="leading-tight">
               Ngelapak
               <span className="hidden text-[10px] font-medium text-[#424750] sm:block dark:text-[#bec3d0]">Universitas Udayana</span>
